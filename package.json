@@ -1,0 +1,35 @@
+{
+  "name": "pulso",
+  "private": true,
+  "version": "0.1.0",
+  "description": "PULSO — e-commerce de suplementos para quem treina. Protótipo do Gustavo.",
+  "packageManager": "pnpm@10.33.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup": "node scripts/ensure-env.mjs",
+    "dev": "node scripts/ensure-env.mjs && pnpm --filter @pulso/web dev",
+    "dev:web": "node scripts/ensure-env.mjs && pnpm --filter @pulso/web dev",
+    "dev:api": "node scripts/ensure-env.mjs && pnpm --filter @pulso/api dev",
+    "dev:all": "node scripts/ensure-env.mjs && turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "test:e2e": "pnpm --filter @pulso/web test:e2e",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d && node scripts/wait-for-postgres.mjs && pnpm db:migrate && pnpm db:seed",
+    "db:migrate": "pnpm --filter @pulso/db migrate",
+    "db:seed": "pnpm --filter @pulso/db seed",
+    "start": "pnpm --filter @pulso/web start",
+    "start:api": "pnpm --filter @pulso/api start"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.6"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "unrs-resolver", "sharp"]
+  }
+}

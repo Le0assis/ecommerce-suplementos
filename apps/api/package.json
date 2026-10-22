@@ -1,0 +1,28 @@
+{
+  "name": "@pulso/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.6",
+    "@pulso/data": "workspace:*",
+    "@pulso/db": "workspace:*",
+    "@pulso/domain": "workspace:*",
+    "hono": "^4.10.1",
+    "ioredis": "^5.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
