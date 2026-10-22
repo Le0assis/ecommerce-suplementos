@@ -62,4 +62,18 @@ describe("API", () => {
     expect(body.quote.pixCents).toBeGreaterThan(0);
     expect(body.quote.totalCents).toBeGreaterThan(0);
   });
+
+  it("abre cobrança sandbox de pix no Mercado Pago", async () => {
+    const response = await app.request("/v1/payments/sandbox", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ method: "pix", amountCents: 15990, orderCode: "PLSAND" }),
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.sandbox).toBe(true);
+    expect(body.gateway).toBe("mercadopago");
+    expect(body.externalId).toBe("mp_sandbox_PLSAND");
+    expect(body.status).toBe("pending");
+  });
 });

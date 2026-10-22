@@ -1,4 +1,4 @@
-import type { PaymentMethod, Quote, ShippingMethod } from "@pulso/domain";
+import type { PaymentGateway, PaymentMethod, Quote, ShippingMethod } from "@pulso/domain";
 
 export interface CartLine {
   lineId: string;
@@ -44,6 +44,9 @@ export interface OrderRecord {
     cardLast4?: string;
     installments?: number;
     installmentAmountCents?: number;
+    gateway?: PaymentGateway;
+    externalId?: string;
+    sandboxMessage?: string;
   };
   shipping: {
     method: ShippingMethod;

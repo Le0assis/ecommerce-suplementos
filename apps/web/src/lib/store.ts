@@ -2,11 +2,10 @@
 
 import { coupons } from "@pulso/data";
 import {
-  fakeBoletoLine,
-  fakePixPayload,
   findCoupon,
   orderCode,
   quoteCart,
+  sandboxCharge,
   WELCOME_POINTS,
   type CatalogPatch,
   type PaymentMethod,
@@ -390,19 +389,22 @@ export function buildSimulatedPayment(input: {
   installmentAmountCents?: number;
   cardLast4?: string;
 }): OrderRecord["payment"] {
-  if (input.method === "pix") {
-    return { method: "pix", status: "pendente", pixPayload: fakePixPayload(input.code, input.totalCents) };
-  }
-  if (input.method === "boleto") {
-    return { method: "boleto", status: "pendente", boletoLine: fakeBoletoLine(input.code) };
+  const charge = sandboxCharge({ method: input.method, amountCents: input.totalCents, orderCode: input.code });
+  if ("error" in charge) {
+    return { method: input.method, status: "recusado", sandboxMessage: charge.error };
   }
   return {
-    method: "card",
-    status: "aprovado",
-    cardBrand: "visa",
-    cardLast4: input.cardLast4 ?? "4242",
+    method: input.method,
+    status: charge.status === "approved" ? "aprovado" : "pendente",
+    pixPayload: charge.pixCopyPaste,
+    boletoLine: charge.boletoLine,
+    cardBrand: input.method === "card" ? "visa" : undefined,
+    cardLast4: input.method === "card" ? (input.cardLast4 ?? "4242") : undefined,
     installments: input.installments ?? 1,
     installmentAmountCents: input.installmentAmountCents,
+    gateway: charge.gateway,
+    externalId: charge.externalId,
+    sandboxMessage: charge.message,
   };
 }
 

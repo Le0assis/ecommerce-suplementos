@@ -58,7 +58,7 @@ Validação junta todos os erros (`validateCheckout`): e-mail, CPF, CEP, telefon
 
 Pedido Pix/boleto nasce `pagamento_pendente` e os pontos esperam o avanço de status. Cartão aprovado na simulação já credita. Cancelar pendente devolve os pontos usados.
 
-Onde: `checkout-view.tsx`. Confirmação: `/pedido/confirmado?codigo=`.
+Onde: `checkout-view.tsx`. A confirmação em `/pedido/confirmado?codigo=` mostra a mensagem do sandbox e o `externalId`. A função pura é `sandboxCharge` em `packages/domain/src/sandbox-payment.ts`. A API expõe `POST /v1/payments/sandbox`. A vitrine chama a função direto, para o pedido no navegador e a API não divergirem.
 
 ## Conta
 

@@ -6,6 +6,7 @@ import { formatBRL, parseBRLToCents } from "./money";
 import { findCoupon, quoteCart } from "./quote";
 import { quizResult } from "./quiz";
 import { dropPhase } from "./drops";
+import { defaultGateway, sandboxCharge } from "./sandbox-payment";
 import { saoPauloDateKey, scratchPrize } from "./scratch";
 import { lookupCep, resolveShippingCents, shippingRates } from "./shipping";
 import type { Coupon } from "./types";
@@ -182,6 +183,30 @@ describe("drops", () => {
     expect(dropPhase("2026-11-08T23:59:00-03:00", now)).toBe("no-ar");
     expect(dropPhase("2026-10-01T00:00:00-03:00", now)).toBe("encerrado");
     expect(dropPhase("amanha", now)).toBe("data-invalida");
+  });
+});
+
+describe("sandbox de pagamento", () => {
+  it("manda pix ao Mercado Pago e cartão à Pagar.me, sem cobrar", () => {
+    expect(defaultGateway("pix")).toBe("mercadopago");
+    expect(defaultGateway("boleto")).toBe("mercadopago");
+    expect(defaultGateway("card")).toBe("pagarme");
+    const pix = sandboxCharge({ method: "pix", amountCents: 10000, orderCode: "PLTESTE" });
+    expect("error" in pix).toBe(false);
+    if (!("error" in pix)) {
+      expect(pix.sandbox).toBe(true);
+      expect(pix.gateway).toBe("mercadopago");
+      expect(pix.status).toBe("pending");
+      expect(pix.externalId).toBe("mp_sandbox_PLTESTE");
+      expect(pix.pixCopyPaste).toContain("PLTESTE");
+    }
+    const card = sandboxCharge({ method: "card", amountCents: 5000, orderCode: "PLCARD" });
+    if (!("error" in card)) {
+      expect(card.gateway).toBe("pagarme");
+      expect(card.status).toBe("approved");
+      expect(card.externalId).toBe("pm_sandbox_PLCARD");
+    }
+    expect(sandboxCharge({ method: "pix", amountCents: 0, orderCode: "PL" })).toEqual({ error: "Valor inválido para o sandbox." });
   });
 });
 

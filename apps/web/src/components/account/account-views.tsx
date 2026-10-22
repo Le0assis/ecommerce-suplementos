@@ -247,7 +247,8 @@ export function OrderResult() {
     <div className="mx-auto max-w-xl px-4 py-10">
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-lime">Pedido {order.code}</p>
       <h1 className="font-display text-6xl leading-none">{order.status === "pagamento_pendente" ? "Falta o pagamento simulado" : "Tá pago na simulação"}</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Nenhum valor foi cobrado. Mercado Pago e Pagar.me entram na fase seguinte.</p>
+      <p className="mt-2 text-sm text-muted-foreground">{order.payment.sandboxMessage ?? "Nenhum valor foi cobrado. Sandbox Mercado Pago / Pagar.me."}</p>
+      {order.payment.externalId ? <p className="mt-1 text-xs text-muted-foreground">Cobrança {order.payment.externalId}</p> : null}
       {order.payment.pixPayload ? <CopyBlock title="Pix copia e cola (demo)" value={order.payment.pixPayload} /> : null}
       {order.payment.boletoLine ? <CopyBlock title="Linha digitável (demo)" value={order.payment.boletoLine} /> : null}
       <p className="mt-4 font-display text-4xl">{formatBRL(order.quote.totalCents)}</p>

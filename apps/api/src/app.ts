@@ -5,10 +5,12 @@ import {
   proteinPlan,
   quizResult,
   quoteCart,
+  sandboxCharge,
   shippingRates,
   validateCheckout,
   type CheckoutInput,
   type GoalId,
+  type PaymentGateway,
   type PaymentMethod,
   type QuizAnswers,
   type QuoteLine,
@@ -127,6 +129,23 @@ app.post("/v1/quiz", async (c) => {
   const body = (await c.req.json().catch(() => null)) as QuizAnswers | null;
   if (!body?.goal || !body.caffeine || !body.flavor || !body.budget) return c.json({ error: "Respostas incompletas." }, 400);
   return c.json(quizResult(body));
+});
+
+app.post("/v1/payments/sandbox", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.orderCode !== "string" || typeof body.method !== "string") {
+    return c.json({ error: "Informe método e código do pedido." }, 400);
+  }
+  const forced = process.env.PAYMENT_GATEWAY;
+  const gateway = forced === "mercadopago" || forced === "pagarme" ? (forced as PaymentGateway) : undefined;
+  const charge = sandboxCharge({
+    gateway,
+    method: body.method as PaymentMethod,
+    amountCents: Number(body.amountCents),
+    orderCode: body.orderCode,
+  });
+  if ("error" in charge) return c.json(charge, 400);
+  return c.json(charge);
 });
 
 app.post("/v1/checkout/simulate", async (c) => {

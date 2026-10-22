@@ -8,14 +8,14 @@ A documentação para quem vai evoluir o código está em [docs/](docs/README.md
 
 ## Plano de entrega
 
-O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 2, em cima da etapa 1.
+O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 3, em cima das etapas 1 e 2.
 
 | Etapa | O que você encontra | Nesta linha |
 | --- | --- | --- |
 | 1. Fundação | Visual escuro com lima, título em caixa alta, home com atleta, catálogo, busca, página de produto com sabor e rótulo | Fechada |
 | 2. Descoberta | Quiz, calculadora, kit, drops com contagem, atletas e cupons | Fechada |
-| 3. Compra | Carrinho, frete por CEP, Pix, boleto, parcela sandbox, conta, rastreio, favoritos | Próxima |
-| 4. Recorrência e jogo | Assinatura, pontos, raspadinha, indicação | Depois |
+| 3. Compra | Carrinho, frete por CEP, Pix, boleto, parcela sandbox, conta, rastreio, favoritos | Fechada |
+| 4. Recorrência e jogo | Assinatura, pontos, raspadinha, indicação | Próxima |
 | 5. Conteúdo | Avaliações, blog, feed, vídeo, CMS | Depois |
 | 6. Operação | Admin, SEO, analytics, acessibilidade, LGPD, testes de ponta a ponta, deploy | Depois |
 
@@ -246,6 +246,7 @@ Abra o `.env` num editor de texto. Cada linha `NOME=valor` é uma variável. Lin
 | `API_DATA_SOURCE` | `mock` | `mock`: a API responde com o catálogo em memória. `postgres`: a API lê a coluna `products.payload`. Aí você precisa do Docker, da migração e do seed. |
 | `DATABASE_URL` | `postgres://pulso:pulso@127.0.0.1:5432/pulso` | Conexão do Postgres local. Usuário `pulso`, senha `pulso`, banco `pulso`, porta `5432`. Só vale para esta máquina. |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Cache opcional da API (chave `catalog:products`, 60 segundos). Se apagar a linha, a API não tenta Redis. |
+| `PAYMENT_GATEWAY` | `auto` | Sandbox. `auto` manda Pix e boleto ao Mercado Pago e cartão à Pagar.me. `mercadopago` ou `pagarme` força o gateway. Não coloque token real. A confirmação mostra um id `mp_sandbox_` ou `pm_sandbox_`. |
 
 O arquivo `.env` está no `.gitignore`. Não faça commit dele.
 
