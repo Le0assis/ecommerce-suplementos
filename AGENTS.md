@@ -8,7 +8,7 @@ PULSO é um protótipo de e-commerce de suplementos (pt-BR, BRL) do Gustavo. A v
 
 A entrega aprovada está em seis etapas empilhadas. O mapa e as referências de mercado (Ghost, Alani Nu, RAW, Gorilla Mind, Gymshark, RYSE, PRIME, Dark Lab, Integralmedica, Transparent Labs, Optimum Nutrition, Growth, Bucked Up) ficam em [docs/REQUISITOS-TECNICOS.md](docs/REQUISITOS-TECNICOS.md). Não copie essas marcas para a UI.
 
-Etapa desta branch: **1 — fundação** (design system, home com atleta, catálogo, PDP com sabor e rótulo).
+Etapa desta branch: **2 — descoberta** (quiz, calculadora, kit, drops com `dropPhase`, atletas e cupons), empilhada na etapa 1.
 
 ## Onde mexer
 

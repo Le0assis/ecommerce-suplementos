@@ -5,6 +5,7 @@ import { levelFor, nextLevel } from "./loyalty";
 import { formatBRL, parseBRLToCents } from "./money";
 import { findCoupon, quoteCart } from "./quote";
 import { quizResult } from "./quiz";
+import { dropPhase } from "./drops";
 import { saoPauloDateKey, scratchPrize } from "./scratch";
 import { lookupCep, resolveShippingCents, shippingRates } from "./shipping";
 import type { Coupon } from "./types";
@@ -174,6 +175,15 @@ describe("níveis, quiz, calculadora e raspadinha", () => {
 function SCRATCH_WEIGHT(): number {
   return [30, 15, 15, 20, 20].reduce((sum, value) => sum + value, 0);
 }
+
+describe("drops", () => {
+  it("separa edição no ar, encerrada e data inválida", () => {
+    const now = new Date("2026-10-22T12:00:00-03:00").getTime();
+    expect(dropPhase("2026-11-08T23:59:00-03:00", now)).toBe("no-ar");
+    expect(dropPhase("2026-10-01T00:00:00-03:00", now)).toBe("encerrado");
+    expect(dropPhase("amanha", now)).toBe("data-invalida");
+  });
+});
 
 describe("checkout", () => {
   it("recusa pedido sem idade e sem cartão válido", () => {

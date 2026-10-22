@@ -8,13 +8,13 @@ A documentação para quem vai evoluir o código está em [docs/](docs/README.md
 
 ## Plano de entrega
 
-O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 1.
+O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 2, em cima da etapa 1.
 
 | Etapa | O que você encontra | Nesta linha |
 | --- | --- | --- |
 | 1. Fundação | Visual escuro com lima, título em caixa alta, home com atleta, catálogo, busca, página de produto com sabor e rótulo | Fechada |
-| 2. Descoberta | Quiz, calculadora, kit, drops, atletas e cupons | Próxima |
-| 3. Compra | Carrinho, frete por CEP, Pix, boleto, parcela sandbox, conta, rastreio, favoritos | Depois |
+| 2. Descoberta | Quiz, calculadora, kit, drops com contagem, atletas e cupons | Fechada |
+| 3. Compra | Carrinho, frete por CEP, Pix, boleto, parcela sandbox, conta, rastreio, favoritos | Próxima |
 | 4. Recorrência e jogo | Assinatura, pontos, raspadinha, indicação | Depois |
 | 5. Conteúdo | Avaliações, blog, feed, vídeo, CMS | Depois |
 | 6. Operação | Admin, SEO, analytics, acessibilidade, LGPD, testes de ponta a ponta, deploy | Depois |

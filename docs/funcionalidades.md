@@ -30,7 +30,7 @@ Sabor esgotado desabilita comprar. Assinatura aplica o percentual da ficha.
 
 Quatro respostas. Cafeína `zero` troca `caos-pre-treino` e o termogênico por `foco-pre-sem-cafeina`. Orçamento baixo devolve dois itens mais creatina.
 
-Onde: `QuizView` em `experiences.tsx`, regra `packages/domain/src/quiz.ts`. A API repete em `POST /v1/quiz`.
+Onde: `QuizView` em `experiences.tsx`, regra `packages/domain/src/quiz.ts`. A API repete em `POST /v1/quiz`. O teste `discovery.test.ts` garante que os slugs devolvidos existem no catálogo, inclusive quando a cafeína zero troca o Caos pelo Foco.
 
 ## Calculadora `/calculadora`
 
@@ -74,7 +74,7 @@ Código do pedido. Demo: `PLDEMOANA`, objeto `PL123456789BR`.
 
 ## Drops `/drops`
 
-Countdown e lista. Newsletter desta página fica no estado local (não dispara e-mail).
+Countdown e lista. A fase sai de `dropPhase` (`no-ar`, `encerrado`, `data-invalida`) em `packages/domain/src/drops.ts`. O relógio só lê a hora no cliente. Newsletter desta página fica no estado local (não dispara e-mail). O Drop 05 é teaser (`upcomingDrop.teaser`).
 
 ## Atletas `/atletas` e `/atletas/[slug]`
 

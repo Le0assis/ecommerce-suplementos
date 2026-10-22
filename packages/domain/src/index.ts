@@ -8,3 +8,4 @@ export * from "./quote";
 export * from "./calculators";
 export * from "./quiz";
 export * from "./scratch";
+export * from "./drops";

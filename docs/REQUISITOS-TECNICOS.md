@@ -276,7 +276,7 @@ O Gustavo aprovou entregar em seis etapas, cada uma com código, teste, README, 
 | 5. Conteúdo | Avaliações com foto, blog, feed social/UGC, seções de vídeo, CMS de leitura | RF11, RF13, RF14 |
 | 6. Operação | Admin (produto, sabor, estoque, pedido, cupom, drop, conteúdo), SEO, analytics, performance, acessibilidade, LGPD, E2E, guia de deploy | RF20, RNF02, RNF03, RNF04, RNF07, RNF08 |
 
-Estado desta linha: etapa 1 fechada nesta branch. As etapas 2 a 6 seguem empilhadas.
+Estado desta linha: etapas 1 e 2 fechadas nesta branch. A contagem do drop usa `dropPhase`. As etapas 3 a 6 seguem empilhadas.
 
 ## 9. Horizonte depois das 6 etapas
 
