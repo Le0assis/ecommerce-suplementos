@@ -1,15 +1,18 @@
 "use client";
 
-import { coupons } from "@pulso/data";
+import { applyCouponPatches, coupons } from "@pulso/data";
+import type { ContentPatch } from "@pulso/data";
 import {
-  findCoupon,
   applyReferralReward,
+  enqueueEvent,
+  findCoupon,
   matchReferral,
   orderCode,
   quoteCart,
   referralCodeFrom,
   sandboxCharge,
   WELCOME_POINTS,
+  type AnalyticsEvent,
   type CatalogPatch,
   type PaymentMethod,
   type ShippingMethod,
@@ -34,6 +37,9 @@ interface PulsoState {
   wishlist: Record<string, string[]>;
   guestOrders: OrderRecord[];
   patches: Record<string, CatalogPatch>;
+  couponPatches: Record<string, { active?: boolean }>;
+  contentPatches: Record<string, ContentPatch>;
+  analytics: AnalyticsEvent[];
   scratch: Record<string, ScratchRecord>;
   lgpdAccepted: boolean;
   newsletter: string[];
@@ -59,6 +65,10 @@ interface PulsoState {
   cancelOrder: (code: string) => void;
   setSubscriptionStatus: (id: string, status: SubscriptionRecord["status"]) => void;
   savePatch: (slug: string, patch: CatalogPatch) => void;
+  saveCouponPatch: (code: string, active: boolean) => void;
+  saveContentPatch: (id: string, patch: ContentPatch) => void;
+  recordEvent: (event: AnalyticsEvent) => void;
+  deleteAccount: () => void;
   acceptLgpd: () => void;
   saveScratch: (record: ScratchRecord) => void;
   addPoints: (delta: number, label: string) => void;
@@ -112,6 +122,9 @@ export const usePulso = create<PulsoState>()(
       wishlist: { guest: [] },
       guestOrders: [],
       patches: {},
+      couponPatches: {},
+      contentPatches: {},
+      analytics: [],
       scratch: {},
       lgpdAccepted: false,
       newsletter: [],
@@ -144,7 +157,7 @@ export const usePulso = create<PulsoState>()(
       removeLine: (lineId) => set((state) => ({ cart: state.cart.filter((item) => item.lineId !== lineId) })),
       clearCart: () => set({ cart: [], couponCode: null }),
       applyCoupon: (code) => {
-        const found = findCoupon(code, coupons);
+        const found = findCoupon(code, applyCouponPatches(coupons, get().couponPatches));
         if (!found.coupon) return found.error ?? "Cupom inválido.";
         set({ couponCode: found.coupon.code });
         get().toast(`Cupom ${found.coupon.code} aplicado.`);
@@ -349,7 +362,11 @@ export const usePulso = create<PulsoState>()(
             subscriptions: user.subscriptions.map((item) => (item.id === id ? { ...item, status } : item)),
           })),
         })),
-      savePatch: (slug, patch) => set((state) => ({ patches: { ...state.patches, [slug]: { ...state.patches[slug], ...patch } } })),
+      savePatch: (slug, patch) => set((state) => ({ patches: { ...state.patches, [slug]: { ...state.patches[slug], ...patch, stockByFlavor: { ...state.patches[slug]?.stockByFlavor, ...patch.stockByFlavor } } } })),
+      saveCouponPatch: (code, active) => set((state) => ({ couponPatches: { ...state.couponPatches, [code]: { active } } })),
+      saveContentPatch: (id, patch) => set((state) => ({ contentPatches: { ...state.contentPatches, [id]: { ...state.contentPatches[id], ...patch } } })),
+      recordEvent: (event) => set((state) => ({ analytics: enqueueEvent(state.analytics, event, state.lgpdAccepted) })),
+      deleteAccount: () => set((state) => ({ users: state.users.filter((user) => user.id !== state.currentUserId), currentUserId: null })),
       acceptLgpd: () => set({ lgpdAccepted: true }),
       saveScratch: (record) =>
         set((state) => ({ scratch: { ...state.scratch, [wishlistKey(state.currentUserId)]: record } })),
@@ -377,6 +394,9 @@ export const usePulso = create<PulsoState>()(
         wishlist: state.wishlist,
         guestOrders: state.guestOrders,
         patches: state.patches,
+        couponPatches: state.couponPatches,
+        contentPatches: state.contentPatches,
+        analytics: state.analytics,
         scratch: state.scratch,
         lgpdAccepted: state.lgpdAccepted,
         newsletter: state.newsletter,
@@ -387,6 +407,9 @@ export const usePulso = create<PulsoState>()(
           ...current,
           ...stored,
           users: ensureDemo(stored.users ?? current.users),
+          couponPatches: stored.couponPatches ?? {},
+          contentPatches: stored.contentPatches ?? {},
+          analytics: stored.analytics ?? [],
           toasts: [],
           cartOpen: false,
           hydrated: true,

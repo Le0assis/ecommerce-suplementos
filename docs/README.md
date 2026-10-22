@@ -14,7 +14,8 @@ Para instalar e rodar do zero, comece pelo [README da raiz](../README.md). Esta 
 | [contratos-api.md](contratos-api.md) | Rotas HTTP da API |
 | [design-system.md](design-system.md) | Cor, tipo, componente, movimento |
 | [convencoes.md](convencoes.md) | Como escrever código neste repo |
-| [como-rodar.md](como-rodar.md) | Atalho de comandos e notas de deploy |
+| [como-rodar.md](como-rodar.md) | Atalho de comandos |
+| [deploy.md](deploy.md) | Publicar a demonstração |
 | [roadmap-e-status.md](roadmap-e-status.md) | O que já funciona e o que ainda é fachada |
 | [guias/](guias/adicionar-produto.md) | Receitas: produto, sabor, kit, página, componente, pagamento |
 | [adr/](adr/001-monorepo-typescript.md) | Decisões registradas |

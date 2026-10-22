@@ -5,7 +5,7 @@ import { siteConfig } from "@/lib/config";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = siteConfig.siteUrl;
-  const staticPaths = ["", "/loja", "/quiz", "/calculadora", "/kits", "/drops", "/atletas", "/blog", "/social", "/sobre", "/ajuda", "/entrega", "/trocas", "/privacidade", "/rotulos", "/raspadinha"];
+  const staticPaths = ["", "/loja", "/quiz", "/calculadora", "/kits", "/drops", "/atletas", "/blog", "/social", "/conteudo", "/sobre", "/ajuda", "/entrega", "/trocas", "/privacidade", "/rotulos", "/raspadinha"];
   return [
     ...staticPaths.map((path) => ({ url: `${base}${path || "/"}`, changeFrequency: "weekly" as const, priority: path === "" ? 1 : 0.7 })),
     ...products.map((product) => ({ url: `${base}/loja/${product.slug}`, changeFrequency: "weekly" as const, priority: 0.8 })),

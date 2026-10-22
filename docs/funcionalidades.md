@@ -98,7 +98,11 @@ Spots em `packages/data/src/videos.ts`. O player troca de quadro e mostra a tran
 
 ## Admin `/admin`
 
-Senha `NEXT_PUBLIC_ADMIN_PASSWORD`. Patch de preço, nome e `hidden` no `localStorage`. A vitrine pública esconde `hidden`. O admin lista `allProducts`.
+Senha `NEXT_PUBLIC_ADMIN_PASSWORD`. Além de preço, nome e visibilidade, dá para ajustar estoque por sabor, data de fim do drop, ligar cupom e renomear ou esconder conteúdo. A lista de pedidos e a fila de analytics aparecem no mesmo painel. Tudo fica no `localStorage`.
+
+## Privacidade na conta
+
+“Baixar meus dados” usa `accountExport` e tira a senha do JSON. “Apagar conta neste aparelho” remove o usuário da store. A conta demo volta no próximo carregamento, porque o código a semeia de novo. Eventos de página só entram na fila depois do “Pode salvar” do banner (`enqueueEvent`).
 
 ## SEO e erro
 

@@ -32,7 +32,7 @@ pnpm --filter @pulso/web build
 
 CI: `.github/workflows/ci.yml` em push e pull request. Node 22, pnpm 10.33.4, lockfile congelado, `DATA_SOURCE=mock`. Não sobe Postgres.
 
-`pnpm test:e2e` avisa que o Playwright ainda não está instalado.
+`pnpm test:e2e` usa Playwright. Instale o Chromium com `pnpm --filter @pulso/web exec playwright install chromium`. Publicar a demo: [deploy.md](deploy.md).
 
 ## Produção local
 

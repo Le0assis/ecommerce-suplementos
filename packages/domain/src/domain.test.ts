@@ -6,6 +6,7 @@ import { formatBRL, parseBRLToCents } from "./money";
 import { findCoupon, quoteCart } from "./quote";
 import { quizResult } from "./quiz";
 import { dropPhase } from "./drops";
+import { accountExport, enqueueEvent } from "./analytics";
 import { applyReferralReward, matchReferral, referralCodeFrom, REFERRER_POINTS, REFERRED_POINTS } from "./referral";
 import { defaultGateway, sandboxCharge } from "./sandbox-payment";
 import { saoPauloDateKey, scratchPrize } from "./scratch";
@@ -230,6 +231,19 @@ describe("indicação", () => {
     expect(once.find((account) => account.id === "user-nova")?.referralRewarded).toBe(true);
     const twice = applyReferralReward(once, "user-nova");
     expect(twice.find((account) => account.id === "user-ana")?.pointsBalance).toBe(10 + REFERRER_POINTS);
+  });
+});
+
+describe("privacidade e analytics", () => {
+  it("não grava evento sem consentimento e omite a senha na exportação", () => {
+    expect(enqueueEvent([], { name: "page_view", path: "/" }, false)).toEqual([]);
+    const queue = enqueueEvent([], { name: "page_view", path: "/loja" }, true);
+    expect(queue).toEqual([{ name: "page_view", path: "/loja" }]);
+    expect(enqueueEvent(queue, { name: "   " }, true)).toEqual(queue);
+    const exported = accountExport({ email: "ana@pulso.dev", password: "pulso123", name: "Ana" });
+    expect(exported.password).toBe("omitido");
+    expect(exported.email).toBe("ana@pulso.dev");
+    expect(JSON.stringify(exported)).not.toContain("pulso123");
   });
 });
 

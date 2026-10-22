@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminPanels } from "@/components/account/admin-panels";
 import { Pack } from "@/components/brand/pack";
 import { ProductCard } from "@/components/product/product-card";
 import { useStoreData } from "@/components/store-data";
@@ -8,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { siteConfig } from "@/lib/config";
 import { useCurrentUser, usePulso, useWishlist } from "@/lib/store";
 import type { SavedAddress } from "@/lib/types";
-import { formatBRL, formatCep, levelFor, nextLevel, parseBRLToCents, referralCodeFrom, REFERRED_POINTS, REFERRER_POINTS } from "@pulso/domain";
+import { accountExport, formatBRL, formatCep, levelFor, nextLevel, parseBRLToCents, referralCodeFrom, REFERRED_POINTS, REFERRER_POINTS } from "@pulso/domain";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -66,6 +67,7 @@ function Gate({ children }: { children: React.ReactNode }) {
 export function AccountHome() {
   const user = useCurrentUser();
   const logout = usePulso((state) => state.logout);
+  const remove = usePulso((state) => state.deleteAccount);
   return (
     <Gate>
       {user ? (
@@ -80,7 +82,25 @@ export function AccountHome() {
             <NavCard href="/conta/enderecos" title="Endereços" text={`${user.addresses.length} salvos`} />
             <NavCard href="/conta/indicar" title="Indicar" text="150 pontos quando a pessoa compra" />
           </div>
-          <Button variant="outline" className="mt-6 rounded-full" onClick={logout}>Sair</Button>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <Button variant="outline" className="rounded-full" onClick={logout}>Sair</Button>
+            <Button
+              variant="outline"
+              className="rounded-full"
+              onClick={() => {
+                const blob = new Blob([JSON.stringify(accountExport(user), null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = "pulso-meus-dados.json";
+                link.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              Baixar meus dados
+            </Button>
+            <Button variant="outline" className="rounded-full" onClick={remove}>Apagar conta neste aparelho</Button>
+          </div>
         </div>
       ) : null}
     </Gate>
@@ -355,6 +375,7 @@ export function AdminView() {
           </tbody>
         </table>
       </div>
+      <AdminPanels />
     </div>
   );
 }

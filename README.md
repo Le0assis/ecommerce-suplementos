@@ -8,7 +8,9 @@ A documentação para quem vai evoluir o código está em [docs/](docs/README.md
 
 ## Plano de entrega
 
-O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 5, em cima das etapas 1 a 4.
+O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 6, em cima das etapas 1 a 5.
+
+Operação: `/admin` (senha `pulso-admin`) edita preço, estoque por sabor, fim de drop, cupom, conteúdo e mostra pedidos e eventos locais. Na conta, “Baixar meus dados” gera um JSON sem a senha. “Apagar conta neste aparelho” tira o usuário deste navegador. O guia de publicação está em [docs/deploy.md](docs/deploy.md).
 
 Conteúdo: `/conteudo` lista o que está publicado. Na home, a faixa “No ar” troca de quadro e mostra a transcrição do spot. A foto de avaliação abre num diálogo e é um bloco de cor, com texto alternativo.
 
@@ -21,7 +23,7 @@ Indicação: entre com a Ana e abra `/conta/indicar`. O código dela é `ANALUZR
 | 3. Compra | Carrinho, frete por CEP, Pix, boleto, parcela sandbox, conta, rastreio, favoritos | Fechada |
 | 4. Recorrência e jogo | Assinatura, pontos, raspadinha, indicação | Fechada |
 | 5. Conteúdo | Avaliações, blog, feed, vídeo, CMS | Fechada |
-| 6. Operação | Admin, SEO, analytics, acessibilidade, LGPD, testes de ponta a ponta, deploy | Próxima |
+| 6. Operação | Admin, SEO, analytics, acessibilidade, LGPD, testes de ponta a ponta, deploy | Fechada |
 
 O protótipo anterior já deixava a maior parte das telas navegáveis. Cada etapa acrescenta regra testada e documentação daquela faixa.
 
@@ -416,7 +418,7 @@ pnpm build
 | `pnpm test` | Vitest: 14 testes de domínio, 2 de catálogo, 1 de schema SQL, 3 da API |
 | `pnpm build` | Build de produção do Next e checagem de tipos dos pacotes |
 | `pnpm --filter @pulso/domain test` | Só as regras de preço, Pix, frete, CPF e cupom |
-| `pnpm test:e2e` | **Ainda não roda.** O Playwright não está instalado. O comando explica isso e sai com erro |
+| `pnpm test:e2e` | Playwright abre a home e a página do Caos. Antes, uma vez: `pnpm --filter @pulso/web exec playwright install chromium` |
 
 O CI (`.github/workflows/ci.yml`) usa pnpm 10.33.4, Node 22, `pnpm install --frozen-lockfile`, lint, typecheck, test e build com `DATA_SOURCE=mock`.
 

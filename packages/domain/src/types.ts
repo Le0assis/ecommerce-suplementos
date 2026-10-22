@@ -175,4 +175,6 @@ export interface CatalogPatch {
   hidden?: boolean;
   priceCents?: number;
   name?: string;
+  stockByFlavor?: Record<string, number>;
+  dropEndsAt?: string;
 }

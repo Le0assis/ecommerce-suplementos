@@ -8,7 +8,7 @@ PULSO é um protótipo de e-commerce de suplementos (pt-BR, BRL) do Gustavo. A v
 
 A entrega aprovada está em seis etapas empilhadas. O mapa e as referências de mercado (Ghost, Alani Nu, RAW, Gorilla Mind, Gymshark, RYSE, PRIME, Dark Lab, Integralmedica, Transparent Labs, Optimum Nutrition, Growth, Bucked Up) ficam em [docs/REQUISITOS-TECNICOS.md](docs/REQUISITOS-TECNICOS.md). Não copie essas marcas para a UI.
 
-Etapa desta branch: **5 — conteúdo**. Avaliações abrem a foto num diálogo. Spots em quadro estão na home e em `/social`. O CMS de leitura é `cmsCatalog` + `/conteudo`. Patch de título e `hidden` não apaga o original.
+Etapa desta branch: **6 — operação**, ponta da pilha. Admin edita estoque, drop, cupom e conteúdo. Analytics só entra na fila depois do aceite LGPD (`enqueueEvent`). Exportação de conta omite a senha (`accountExport`). E2E: `apps/web/e2e/home.spec.ts`. Deploy: [docs/deploy.md](docs/deploy.md).
 
 ## Onde mexer
 
@@ -40,7 +40,7 @@ Na raiz: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm --filter @pulso/web b
 
 O site de desenvolvimento sobe com `pnpm dev` na porta `WEB_PORT` (padrão 43123). Não use 3000.
 
-`pnpm test:e2e` ainda não tem Playwright.
+`pnpm test:e2e` roda o Playwright em `apps/web/e2e`. Instale o Chromium uma vez com `pnpm --filter @pulso/web exec playwright install chromium`. O CI não abre browser.
 
 ## Documentos por assunto
 

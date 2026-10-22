@@ -22,7 +22,7 @@ Atualizado na etapa 1 (fundação). As referências de mercado e a tabela das 6 
 | Pagamento | UI completa, cobrança falsa, marcada na confirmação |
 | Raspadinha | Uma por dia no navegador. Prêmio não persiste no servidor |
 | Framer Motion | Dependência instalada, movimento feito em CSS |
-| Playwright | Script `pnpm test:e2e` explica que não está instalado. Fora do CI |
+| Playwright | `pnpm test:e2e` abre a home e o Caos. Fora do CI, porque o browser não vem no workflow |
 
 ## Próximo corte sugerido
 

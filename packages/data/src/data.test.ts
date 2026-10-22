@@ -17,5 +17,10 @@ describe("catálogo", () => {
     expect(filterProducts(patched).some((product) => product.slug === "omega-3")).toBe(false);
     expect(filterProducts(patched, { includeHidden: true }).find((product) => product.slug === "omega-3")?.variants[0]?.priceCents).toBe(1000);
     expect(searchProducts(products, "creatína").some((product) => product.slug === "base-creatina")).toBe(true);
+    const stock = applyCatalogPatches(products, { "caos-pre-treino": { stockByFlavor: { limao: 0 }, dropEndsAt: "2026-12-01T00:00:00-03:00" } });
+    const caos = stock.find((product) => product.slug === "caos-pre-treino");
+    expect(caos?.flavors.find((flavor) => flavor.id === "limao")?.stock).toBe(0);
+    expect(caos?.variants.find((variant) => variant.flavorId === "limao")?.stock).toBe(0);
+    expect(caos?.drop?.endsAt).toBe("2026-12-01T00:00:00-03:00");
   });
 });

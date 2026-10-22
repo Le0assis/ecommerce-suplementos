@@ -206,7 +206,7 @@ Alvo: logs estruturados, tracing e métrica de checkout. Hoje existe `GET /healt
 
 ### RNF08 — Testes
 
-Regras de dinheiro têm teste unitário. Contrato da API tem teste sem banco. E2E de navegador (Playwright) está no alvo e ainda não está instalado.
+Regras de dinheiro têm teste unitário. Contrato da API tem teste sem banco. O Playwright cobre a home e a abertura do Caos (`pnpm test:e2e`). O CI não instala browser.
 
 ## 4. Arquitetura
 
@@ -276,7 +276,7 @@ O Gustavo aprovou entregar em seis etapas, cada uma com código, teste, README, 
 | 5. Conteúdo | Avaliações com foto, blog, feed social/UGC, seções de vídeo, CMS de leitura | RF11, RF13, RF14 |
 | 6. Operação | Admin (produto, sabor, estoque, pedido, cupom, drop, conteúdo), SEO, analytics, performance, acessibilidade, LGPD, E2E, guia de deploy | RF20, RNF02, RNF03, RNF04, RNF07, RNF08 |
 
-Estado desta linha: etapas 1 a 5 fechadas nesta branch. Conteúdo publicado passa por `cmsCatalog` e `applyContentPatches`. Spots em quadro ficam na home, no social e em `/conteudo`. A etapa 6 segue empilhada.
+Estado desta linha: as seis etapas estão fechadas. Admin, analytics com consentimento, exportação LGPD, Playwright e o guia de deploy entram nesta ponta. O horizonte da seção 9 continua valendo para cobrança real e banco.
 
 ## 9. Horizonte depois das 6 etapas
 

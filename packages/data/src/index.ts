@@ -54,5 +54,5 @@ export type { VideoSpot } from "./videos";
 export { applyContentPatches, cmsCatalog } from "./cms";
 export type { CmsEntry, ContentPatch } from "./cms";
 export { coupons } from "./coupons";
-export { applyCatalogPatches, filterProducts, minPriceCents, searchProducts, sortProducts } from "./query";
+export { applyCatalogPatches, applyCouponPatches, filterProducts, minPriceCents, searchProducts, sortProducts } from "./query";
 export type { ProductQuery, ProductSort } from "./query";
