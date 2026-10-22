@@ -6,6 +6,8 @@ import { ProductCard } from "@/components/product/product-card";
 import { useStoreData } from "@/components/store-data";
 import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/lib/config";
+import { VideoSpot } from "@/components/content/video-spot";
+import { videos } from "@pulso/data";
 import { GOALS, formatBRL } from "@pulso/domain";
 import Link from "next/link";
 import { useState } from "react";
@@ -137,6 +139,13 @@ export function HomeView() {
               />
             </Link>
           ))}
+        </div>
+      </section>
+
+      <section className="mx-auto mt-14 max-w-6xl px-4">
+        <h2 className="font-display text-6xl leading-none">No ar</h2>
+        <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          {videos.map((spot) => <VideoSpot key={spot.id} spot={spot} />)}
         </div>
       </section>
 

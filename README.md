@@ -8,7 +8,9 @@ A documentação para quem vai evoluir o código está em [docs/](docs/README.md
 
 ## Plano de entrega
 
-O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 4, em cima das etapas 1 a 3.
+O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 5, em cima das etapas 1 a 4.
+
+Conteúdo: `/conteudo` lista o que está publicado. Na home, a faixa “No ar” troca de quadro e mostra a transcrição do spot. A foto de avaliação abre num diálogo e é um bloco de cor, com texto alternativo.
 
 Indicação: entre com a Ana e abra `/conta/indicar`. O código dela é `ANALUZRANA`. No cadastro, quem cola esse código ganha 80 pontos, e a Ana ganha 150, quando o primeiro pedido é pago.
 
@@ -18,8 +20,8 @@ Indicação: entre com a Ana e abra `/conta/indicar`. O código dela é `ANALUZR
 | 2. Descoberta | Quiz, calculadora, kit, drops com contagem, atletas e cupons | Fechada |
 | 3. Compra | Carrinho, frete por CEP, Pix, boleto, parcela sandbox, conta, rastreio, favoritos | Fechada |
 | 4. Recorrência e jogo | Assinatura, pontos, raspadinha, indicação | Fechada |
-| 5. Conteúdo | Avaliações, blog, feed, vídeo, CMS | Próxima |
-| 6. Operação | Admin, SEO, analytics, acessibilidade, LGPD, testes de ponta a ponta, deploy | Depois |
+| 5. Conteúdo | Avaliações, blog, feed, vídeo, CMS | Fechada |
+| 6. Operação | Admin, SEO, analytics, acessibilidade, LGPD, testes de ponta a ponta, deploy | Próxima |
 
 O protótipo anterior já deixava a maior parte das telas navegáveis. Cada etapa acrescenta regra testada e documentação daquela faixa.
 

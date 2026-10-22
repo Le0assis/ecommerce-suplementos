@@ -1,5 +1,6 @@
+import { ReviewList } from "@/components/content/review-list";
 import { BuyBox } from "@/components/product/buy-box";
-import { ProductCard, Stars } from "@/components/product/product-card";
+import { ProductCard } from "@/components/product/product-card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { getProduct, getReviews, products } from "@pulso/data";
 import { notFound } from "next/navigation";
@@ -69,22 +70,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         <AccordionItem value="reviews">
           <AccordionTrigger>Avaliações ({reviews.length})</AccordionTrigger>
           <AccordionContent>
-            {product.reviewCount ? <Stars rating={product.rating} /> : null}
-            <ul className="mt-4 space-y-4">
-              {reviews.map((review) => (
-                <li key={review.id} className="border-t border-white/10 pt-3">
-                  <p className="text-lime">{"★".repeat(review.rating)} <span className="text-foreground">{review.title}</span></p>
-                  <p className="text-xs text-muted-foreground">{review.author} {review.handle} {review.verified ? "· compra verificada" : ""}</p>
-                  <p className="mt-1 text-sm">{review.body}</p>
-                  <div className="mt-2 flex gap-2">
-                    {review.photos.map((photo) => (
-                      <div key={photo.alt} className="grid h-16 w-16 place-items-center rounded-xl p-1 text-center text-[10px] text-primary-foreground" style={{ background: photo.hex }}>{photo.alt}</div>
-                    ))}
-                  </div>
-                </li>
-              ))}
-              {reviews.length === 0 ? <li>Ainda sem review. O rótulo já está aberto pra leitura.</li> : null}
-            </ul>
+            <ReviewList reviews={reviews} rating={product.rating} reviewCount={product.reviewCount} />
           </AccordionContent>
         </AccordionItem>
       </Accordion>

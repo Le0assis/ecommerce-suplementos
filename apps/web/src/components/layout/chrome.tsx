@@ -161,7 +161,7 @@ export function SiteFooter() {
         </div>
         <FooterCol title="Loja" links={[["/loja", "Catálogo"], ["/drops", "Drops"], ["/kits", "Montar kit"], ["/quiz", "Quiz de objetivo"], ["/calculadora", "Proteína e creatina"]]} />
         <FooterCol title="Conta" links={[["/conta", "Meu pulso"], ["/conta/pedidos", "Pedidos"], ["/conta/pontos", "Pontos"], ["/favoritos", "Favoritos"], ["/rastreio", "Rastreio"]]} />
-        <FooterCol title="Casa" links={[["/sobre", "Sobre"], ["/blog", "Treino e rótulo"], ["/ajuda", "Ajuda"], ["/entrega", "Entrega e CEP"], ["/trocas", "Trocas"], ["/privacidade", "Privacidade"], ["/rotulos", "Rótulos e ANVISA"]]} />
+        <FooterCol title="Casa" links={[["/sobre", "Sobre"], ["/blog", "Treino e rótulo"], ["/conteudo", "CMS"], ["/ajuda", "Ajuda"], ["/entrega", "Entrega e CEP"], ["/trocas", "Trocas"], ["/privacidade", "Privacidade"], ["/rotulos", "Rótulos e ANVISA"]]} />
       </div>
       <p className="border-t border-white/10 px-4 py-4 text-center text-xs text-muted-foreground">Suplemento alimentar não é medicamento. Protótipo com dados fictícios · © 2026 PULSO</p>
     </footer>

@@ -88,6 +88,10 @@ O código sai de `referralCodeFrom` (nome + fim do id). No cadastro, o campo opc
 
 Uma por dia, chave de data em `America/Sao_Paulo` (`saoPauloDateKey`). Prêmio estável por hash. Canvas `destination-out` e botão “Revelar sem raspar”.
 
+## Vídeo e CMS
+
+Spots em `packages/data/src/videos.ts`. O player troca de quadro e mostra a transcrição. Não há arquivo de vídeo de outra marca. `/conteudo` lista posts, UGC e spots via `cmsCatalog`. `applyContentPatches` esconde ou renomeia sem alterar o original.
+
 ## Blog e institucionais
 
 `/blog`, `/blog/[slug]`, `/social`, `/sobre`, `/privacidade`, `/entrega`, `/trocas`, `/rotulos`, `/ajuda`. Textos em `info-page.tsx` e `content.ts`.
