@@ -455,6 +455,9 @@ O Docker não está aberto, ou o nome do serviço não é `postgres`. Abra o Doc
 **`permission denied` no Docker (Linux).**  
 Seu usuário não está no grupo `docker`. Rode `sudo usermod -aG docker "$USER"`, saia e entre de novo. Não use `sudo pnpm` no dia a dia.
 
+**Botão não responde, quiz parado em "1 / 5" ou login vai para `/entrar?`.**  
+O JavaScript de desenvolvimento não carregou. O Next 16 bloqueia chunk quando o site abre em `127.0.0.1` e o processo escuta em `0.0.0.0`. A config `allowedDevOrigins` em `apps/web/next.config.ts` libera esse host. Pare o `pnpm dev` e suba de novo. No console, um 403 em `/_next/static` é esse caso.
+
 **Página em branco ou estilo sem Tailwind depois de mudar CSS.**  
 Pare o servidor, apague o cache e suba de novo:
 

@@ -6,7 +6,7 @@ O passo a passo para quem está instalando a primeira vez, com Windows, Linux e 
 
 ```bash
 pnpm install          # só quando o lockfile mudar
-pnpm dev              # site em http://127.0.0.1:43123
+pnpm dev              # site em http://127.0.0.1:43123 (allowedDevOrigins libera esse host)
 pnpm dev:api          # API em http://127.0.0.1:8787
 pnpm dev:all          # os dois
 ```

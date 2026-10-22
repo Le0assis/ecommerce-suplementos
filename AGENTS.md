@@ -30,6 +30,7 @@ Etapa desta branch: **6 — operação**, ponta da pilha. Admin edita estoque, d
 - Não invente claim de saúde, registro ANVISA real nem CRN. Os rótulos usam `NI-DEMO-…` e dizem que não é medicamento.
 - A senha de `/admin` é `NEXT_PUBLIC_ADMIN_PASSWORD`. Ela é insegura de propósito. Não “conserte” isso mandando a senha só para o servidor sem um fluxo de auth de verdade.
 - Next.js 16 com Cache Components. `params` e `searchParams` são Promise. Não chame `new Date()`, `Date.now()` ou `Math.random()` durante o render de Client Component: o build de prerender quebra. Relógio de countdown usa `useSyncExternalStore` com snapshot do servidor `null`.
+- O `localStorage` da sacola só grava depois do rehydrate (`persistWrites` em `apps/web/src/lib/store.ts`). Um `set` antes disso, como o `page_view`, apagaria a sacola no refresh. Analytics espera `hydrated`.
 - shadcn/ui (estilo new-york) em `apps/web/src/components/ui`. Não recrie Button, Input, Dialog, Sheet. Instale dependência da raiz com `pnpm --filter @pulso/web add …`. O CLI do shadcn dentro de `apps/web` não enxerga o workspace.
 - pnpm 10.33.4 e Node 22. Pacotes com postinstall precisam estar em `pnpm.onlyBuiltDependencies`.
 - O `AGENTS.md` de `apps/web` é do Next.js. Não apague. Leia `apps/web/node_modules/next/dist/docs/` antes de mudar convenção do App Router.
@@ -38,7 +39,7 @@ Etapa desta branch: **6 — operação**, ponta da pilha. Admin edita estoque, d
 
 Na raiz: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm --filter @pulso/web build`.
 
-O site de desenvolvimento sobe com `pnpm dev` na porta `WEB_PORT` (padrão 43123). Não use 3000.
+O site de desenvolvimento sobe com `pnpm dev` na porta `WEB_PORT` (padrão 43123), hostname `0.0.0.0`. Não use 3000. `allowedDevOrigins` inclui `127.0.0.1`: sem isso o Next 16 devolve 403 nos chunks e a página fica sem hidratação.
 
 `pnpm test:e2e` roda o Playwright em `apps/web/e2e`. Instale o Chromium uma vez com `pnpm --filter @pulso/web exec playwright install chromium`. O CI não abre browser.
 

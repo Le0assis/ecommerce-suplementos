@@ -7,13 +7,14 @@ import { useEffect, useRef } from "react";
 export function AnalyticsListener() {
   const pathname = usePathname();
   const record = usePulso((state) => state.recordEvent);
+  const hydrated = usePulso((state) => state.hydrated);
   const seen = useRef("");
 
   useEffect(() => {
-    if (seen.current === pathname) return;
+    if (!hydrated || seen.current === pathname) return;
     seen.current = pathname;
     record({ name: "page_view", path: pathname });
-  }, [pathname, record]);
+  }, [pathname, record, hydrated]);
 
   return null;
 }

@@ -75,6 +75,8 @@ interface PulsoState {
   joinNewsletter: (email: string) => void;
 }
 
+let persistWrites = false;
+
 function uid(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -384,7 +386,14 @@ export const usePulso = create<PulsoState>()(
     }),
     {
       name: "pulso-store",
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => ({
+        getItem: (name) => localStorage.getItem(name),
+        setItem: (name, value) => {
+          if (!persistWrites) return;
+          localStorage.setItem(name, value);
+        },
+        removeItem: (name) => localStorage.removeItem(name),
+      })),
       skipHydration: true,
       partialize: (state) => ({
         users: state.users,
@@ -416,6 +425,7 @@ export const usePulso = create<PulsoState>()(
         };
       },
       onRehydrateStorage: () => (state) => {
+        persistWrites = true;
         state?.setHydrated(true);
       },
     },
