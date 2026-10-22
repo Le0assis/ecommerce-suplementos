@@ -4,7 +4,22 @@ Loja de suplementos para quem treina. Marca fictícia do Gustavo, feita para o p
 
 Este arquivo é o caminho do zero até a loja aberta no navegador. Se você nunca programou, leia na ordem. Cada passo diz o que instalar, o comando e o que deve aparecer.
 
-A documentação para quem vai evoluir o código está em [docs/](docs/README.md). O mapa para agentes de IA está em [AGENTS.md](AGENTS.md).
+A documentação para quem vai evoluir o código está em [docs/](docs/README.md). O mapa para agentes de IA está em [AGENTS.md](AGENTS.md). As referências de mercado e o plano em 6 etapas estão em [docs/REQUISITOS-TECNICOS.md](docs/REQUISITOS-TECNICOS.md).
+
+## Plano de entrega
+
+O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 1.
+
+| Etapa | O que você encontra | Nesta linha |
+| --- | --- | --- |
+| 1. Fundação | Visual escuro com lima, título em caixa alta, home com atleta, catálogo, busca, página de produto com sabor e rótulo | Fechada |
+| 2. Descoberta | Quiz, calculadora, kit, drops, atletas e cupons | Próxima |
+| 3. Compra | Carrinho, frete por CEP, Pix, boleto, parcela sandbox, conta, rastreio, favoritos | Depois |
+| 4. Recorrência e jogo | Assinatura, pontos, raspadinha, indicação | Depois |
+| 5. Conteúdo | Avaliações, blog, feed, vídeo, CMS | Depois |
+| 6. Operação | Admin, SEO, analytics, acessibilidade, LGPD, testes de ponta a ponta, deploy | Depois |
+
+O protótipo anterior já deixava a maior parte das telas navegáveis. Cada etapa acrescenta regra testada e documentação daquela faixa.
 
 ## O que você vai ver no final
 

@@ -4,7 +4,7 @@ Para instalar e rodar do zero, comece pelo [README da raiz](../README.md). Esta 
 
 | Documento | Para quê |
 | --- | --- |
-| [REQUISITOS-TECNICOS.md](REQUISITOS-TECNICOS.md) | O que a loja precisa fazer, qualidade, arquitetura, time e fases |
+| [REQUISITOS-TECNICOS.md](REQUISITOS-TECNICOS.md) | Requisitos, referências de mercado consolidadas e as 6 etapas aprovadas |
 | [visao-geral.md](visao-geral.md) | Marca, público, o que é real e o que é protótipo |
 | [arquitetura.md](arquitetura.md) | Como site, API, domínio e banco se falam |
 | [stack.md](stack.md) | Tecnologias escolhidas, por quê, e as alternativas |

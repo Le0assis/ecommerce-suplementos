@@ -6,7 +6,41 @@ Este documento descreve o produto alvo e marca, em cada requisito, o que o prot�
 
 ## 1. Contexto
 
-A PULSO vende suplemento alimentar: pré-treino, whey, creatina, intra, termogênico, vitamina, hipercalórico, barra e kit. A referência visual de mercado (Ghost, Alani Nu, RAW, Gorilla Mind, Gymshark, RYSE, PRIME, Dark Lab, Integralmedica, Transparent Labs, Optimum Nutrition, Growth, Bucked Up) orienta o tom. A loja não copia marca, embalagem nem foto de atleta real.
+A PULSO vende suplemento alimentar: pré-treino, whey, creatina, intra, termogênico, vitamina, hipercalórico, barra e kit. As referências abaixo orientam o tom. A loja não copia marca, embalagem, foto de atleta real nem texto de campanha.
+
+## 1.1 Referências de mercado (consolidadas)
+
+O que se aproveita é o padrão. O que fica de fora é o ativo da outra marca.
+
+| Referência | O que observar | O que a PULSO faz com isso |
+| --- | --- | --- |
+| Ghost | Streetwear preto e branco, collab como produto | Fundo preto, wordmark condensado, collab com atleta fictício (Luna) em página própria e no pote |
+| Alani Nu | Neon e pastel, sabor como herói, vídeo | Lima `#d6ff3c` e rosa `#ff3d8a`, seletor de sabor na frente, spot em quadro (etapa 5) no lugar de filme de campanha alheio |
+| RAW / CBum | Escuro cinematográfico, collab de influenciador | Pôster SVG do atleta na primeira dobra, sem foto de celebridade |
+| Gorilla Mind | Laranja e preto, raspadinha | Raspadinha diária. A cor de urgência da PULSO é rosa, não laranja, para não imitar a paleta deles |
+| Gymshark | Editorial escuro, tipografia grande | Bebas Neue em caixa alta, frase curta, grelha de objetivo |
+| RYSE | Cor sazonal por drop | Cada drop pode carregar um `hex` de sabor. A lima continua sendo a única cor de ação |
+| PRIME | Influenciador à frente da marca | `/atletas` com cupom próprio. Elenco fictício, diverso, com mulheres e homens |
+| Dark Lab | Melhor referência BR: escuro, vermelho, influenciadoras, Pix 10% | Pix 10% sem cupom. Influenciadora na primeira dobra (Luna Vaz). Vermelho deles vira rosa nosso |
+| Integralmedica | Loja BR completa: boleto, parcela, CEP, conta, rastreio | Checkout com esses meios, frete por CEP, conta, pedido e rastreio |
+| Transparent Labs | Quiz, avaliação e gamificação | `/quiz`, avaliações na PDP, pontos e raspadinha |
+| Optimum Nutrition | Calculadora de proteína | `/calculadora` de proteína e creatina, sem promessa clínica |
+| Growth | Pontos e cashback | 5 pontos por real, resgate em centavos, níveis Rookie → Lenda |
+| Bucked Up | Barra de frete grátis com meta clara | Barra no carrinho. PAC grátis em R$ 299, piso menor em Bruto e Lenda |
+
+### Padrões de público jovem
+
+- Fundo escuro e uma paleta neon/candy (lima de ação, rosa de drop).
+- Título condensado em caixa alta.
+- Headline curta, com atitude, em pt-BR misturado com palavra de academia em inglês (drop, shape, stack, pix).
+- Rosto de atleta ou influenciador na primeira dobra.
+- Drops, collabs e sabor limitado com contagem.
+- Gamificação: raspadinha, pontos, cashback, desconto de Pix.
+- Redes sociais sempre visíveis no rodapé e no header.
+
+### O que não entra no código da loja
+
+Nome, logotipo, foto, embalagem e claim das marcas da tabela. Elas só aparecem neste documento e nos ADRs. Registro ANVISA, CRN e cobrança real também não são inventados.
 
 Premissas de negócio já codificadas:
 
@@ -200,7 +234,7 @@ O alvo de produção, quando o volume justificar, é um commerce headless (Medus
 | Estilo | Tailwind CSS | 4 |
 | Primitivos | shadcn/ui new-york sobre Radix | ver `apps/web/package.json` |
 | Estado do cliente | Zustand persist | 5 |
-| Movimento | CSS (marquee, reduced-motion). Framer Motion está instalado e pouco usado. GSAP fica como alternativa futura, não instalado | — |
+| Movimento | CSS (`rise-in`, marquee, `prefers-reduced-motion`) e Framer Motion só em hover (`Lift`), com `initial={false}` para não divergir do HTML | — |
 | API | Hono + `@hono/node-server` | 4.x |
 | Banco | PostgreSQL | 16 |
 | Cache | Redis | 7 |
@@ -229,21 +263,36 @@ Papéis para quando o time crescer. Uma pessoa pode acumular no protótipo.
 
 **QA.** Casos de domínio (Pix não incide em frete, kit versus cupom, teto de pontos, CPF, Luhn, CEP inválido) e, na fase seguinte, Playwright nos fluxos de compra, conta e admin. Conferência de rótulo: todo produto novo tem alergênico, porção e advertência.
 
-## 8. Roadmap em fases
+## 8. Plano de entrega aprovado (6 etapas)
 
-**Fase 0 — este repositório.** Vitrine completa, regras testadas, API de leitura e simulação, SQL e Docker, documentação.
+O Gustavo aprovou entregar em seis etapas, cada uma com código, teste, README, `docs/` e `AGENTS.md`, numa pilha de pull requests. A vitrine protótipo já existia antes dessa pilha. Cada etapa fecha o buraco daquela faixa e deixa o documento neste estado.
 
-**Fase 1 — vitrine na API.** As páginas passam a usar `loadStorefront`. Pedido e cliente gravam no Postgres. Admin escreve no banco, não no `localStorage`.
+| Etapa | Escopo | Requisitos |
+| --- | --- | --- |
+| 1. Fundação | Design system jovem (escuro, neon, caixa alta, movimento), layout, home com atleta e drop, navegação, catálogo por objetivo e categoria, busca, PDP com sabor na frente e rótulo | RF01, RF02, RNF01, RNF05 |
+| 2. Descoberta | Quiz de objetivo, calculadora de proteína e dose, montador de kit, drops com contagem, páginas de influenciador e cupons | RF04, RF05, RF06, RF09, RF10 |
+| 3. Compra | Carrinho, barra de frete, CEP, Pix, boleto, parcela em sandbox Mercado Pago e Pagar.me, conta, pedido, rastreio, favoritos | RF12, RF15, RF16, RF17, RF18, RF19 |
+| 4. Recorrência e jogo | Assinatura, pontos, cashback, níveis, raspadinha, indicação | RF03, RF07, RF08 e indicação |
+| 5. Conteúdo | Avaliações com foto, blog, feed social/UGC, seções de vídeo, CMS de leitura | RF11, RF13, RF14 |
+| 6. Operação | Admin (produto, sabor, estoque, pedido, cupom, drop, conteúdo), SEO, analytics, performance, acessibilidade, LGPD, E2E, guia de deploy | RF20, RNF02, RNF03, RNF04, RNF07, RNF08 |
 
-**Fase 2 — commerce e busca.** Medusa (ou Saleor) assume carrinho, estoque e pedido. Meilisearch (ou Algolia) assume a busca. O domínio de preço continua a fonte da regra de Pix e nível, ou vira plugin explícito.
+Estado desta linha: etapa 1 fechada nesta branch. As etapas 2 a 6 seguem empilhadas.
 
-**Fase 3 — dinheiro e frete de verdade.** Mercado Pago e/ou Pagar.me, ViaCEP, cotação de transportadora, webhook com idempotência. some a palavra “simulado” da UI só quando isso existir.
+## 9. Horizonte depois das 6 etapas
 
-**Fase 4 — conteúdo e recorrência.** CMS (Payload no próprio Postgres, ou Sanity), assinatura com cobrança real, e-mail transacional.
+Isto não substitui as etapas acima. É o que vem quando a loja deixar de ser protótipo.
 
-**Fase 5 — operação.** LGPD operacional (exportar e apagar conta), observabilidade, auditoria de acessibilidade, registro ANVISA real antes de qualquer venda.
+**Vitrine na API.** As páginas passam a usar `loadStorefront`. Pedido e cliente gravam no Postgres.
 
-## 9. Fora deste corte
+**Commerce e busca.** Medusa (ou Saleor) assume carrinho e estoque. Meilisearch (ou Algolia) assume a busca.
+
+**Dinheiro e frete de verdade.** Mercado Pago e/ou Pagar.me com webhook, ViaCEP, cotação de transportadora. A palavra “simulado” sai da UI só nesse momento.
+
+**CMS hospedado.** Payload no Postgres, ou Sanity se o marketing editar fora do deploy. A assinatura passa a cobrar de verdade.
+
+**Operação legal.** LGPD com exportação e exclusão no servidor, observabilidade, auditoria de acessibilidade, registro ANVISA real antes de qualquer venda.
+
+## 10. Fora deste corte
 
 - Cobrança real, antifraude e nota fiscal.
 - Estoque multi-depósito e ERP.

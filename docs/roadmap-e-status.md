@@ -1,6 +1,6 @@
 # Roadmap e status
 
-Atualizado para o corte que está neste repositório.
+Atualizado na etapa 1 (fundação). As referências de mercado e a tabela das 6 etapas estão em [REQUISITOS-TECNICOS.md](REQUISITOS-TECNICOS.md).
 
 ## Pronto
 

@@ -46,11 +46,13 @@ Estado vazio, carregando e erro:
 
 ## Movimento
 
-Faixa da home: keyframes `marquee` no CSS. `prefers-reduced-motion: reduce` desliga o deslocamento.
+Faixa da home: keyframes `pulso-marquee`. O título da primeira dobra usa `.rise-in`. O palco de sabor usa `.flavor-stage` para trocar a cor sem pulo. `prefers-reduced-motion: reduce` zera duração de animação e transição.
+
+`Lift` (`apps/web/src/components/motion/lift.tsx`) é o único uso de Framer Motion: sobe 6px no hover, com `initial={false}` para o HTML do servidor e o do cliente nascerem iguais. GSAP não está instalado.
 
 Countdown não usa `setState` em efeito. `useSyncExternalStore` devolve `null` no servidor (`--d --h --m`) e o relógio no cliente. Isso evita hydration mismatch e o erro de prerender do Next 16 com `Date.now()`.
 
-Framer Motion está instalado. Não adicionar animação de biblioteca num componente que já funciona em CSS. GSAP não está instalado.
+GSAP não está instalado. Movimento novo entra primeiro em CSS. Framer Motion fica restrito ao `Lift`.
 
 ## Tom de voz
 

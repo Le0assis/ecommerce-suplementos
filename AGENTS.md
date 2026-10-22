@@ -6,6 +6,10 @@ Leia isto antes de mudar código. A documentação em português está em [docs/
 
 PULSO é um protótipo de e-commerce de suplementos (pt-BR, BRL) do Gustavo. A vitrine é completa e usa dados fictícios. A API, o SQL e o Docker existem, mas pedido, pagamento, CEP e CMS **não** estão persistidos em produção. Não descreva Pix, boleto ou cartão como cobrança real.
 
+A entrega aprovada está em seis etapas empilhadas. O mapa e as referências de mercado (Ghost, Alani Nu, RAW, Gorilla Mind, Gymshark, RYSE, PRIME, Dark Lab, Integralmedica, Transparent Labs, Optimum Nutrition, Growth, Bucked Up) ficam em [docs/REQUISITOS-TECNICOS.md](docs/REQUISITOS-TECNICOS.md). Não copie essas marcas para a UI.
+
+Etapa desta branch: **1 — fundação** (design system, home com atleta, catálogo, PDP com sabor e rótulo).
+
 ## Onde mexer
 
 | Tarefa | Onde |

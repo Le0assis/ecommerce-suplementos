@@ -10,6 +10,7 @@ import { GOALS, formatBRL } from "@pulso/domain";
 import Link from "next/link";
 import { useState } from "react";
 import { Countdown } from "@/components/gamification/countdown";
+import { Lift } from "@/components/motion/lift";
 
 const marquee = ["PIX 10% OFF", "SABOR ALTO", "FRETE NO CEP", "DROP 04", "CREATINA TODO DIA", "SEM DESCULPA DE RÓTULO", "COLLAB LUNA"];
 
@@ -25,7 +26,7 @@ export function HomeView() {
       <section className="mx-auto grid max-w-6xl items-center gap-8 px-4 pb-8 pt-8 lg:grid-cols-[1.1fr_.9fr] lg:pt-14">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-lime">Drop 04 · collab no ar · Gustavo apresenta</p>
-          <h1 className="mt-3 font-display text-[clamp(4.6rem,14vw,8.5rem)] leading-[0.82]">Sabor alto. Treino mais alto.</h1>
+          <h1 className="rise-in mt-3 font-display text-[clamp(4.6rem,14vw,8.5rem)] leading-[0.82]">Sabor alto. Treino mais alto.</h1>
           <p className="mt-4 max-w-xl text-lg text-muted-foreground">Pré, whey e creatina com cara de rua. Pix com {siteConfig.pixDiscountPercent}% off, frete grátis a partir de {formatBRL(siteConfig.freeShippingCents)} e uma raspadinha que pode zerar o Correios.</p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Button className="h-14 rounded-full px-8 text-base uppercase tracking-[0.16em]" asChild><Link href="/loja/caos-pre-treino">Quero o Caos</Link></Button>
@@ -35,9 +36,11 @@ export function HomeView() {
         <div className="grid grid-cols-[1.1fr_.9fr] items-end gap-3">
           <AthletePoster name="Luna Vaz" handle="@lunavaz" city="São Paulo" accent="#ff5cae" variant="luna" className="min-h-[420px]" />
           {flavor && caos ? (
-            <Link href={`/loja/caos-pre-treino?sabor=${flavor.id}`} className="block">
-              <Pack line={caos.line} flavor={flavor.name} hex={flavor.hex} badge="Drop 04" />
-            </Link>
+            <Lift>
+              <Link href={`/loja/caos-pre-treino?sabor=${flavor.id}`} className="block">
+                <Pack line={caos.line} flavor={flavor.name} hex={flavor.hex} badge="Drop 04" />
+              </Link>
+            </Lift>
           ) : null}
         </div>
       </section>
@@ -75,7 +78,7 @@ export function HomeView() {
 
       {caos && flavor ? (
         <section className="mx-auto mt-14 grid max-w-6xl items-center gap-6 px-4 lg:grid-cols-2">
-          <div className="rounded-[2rem] p-6" style={{ background: flavor.hex, color: "#101402" }}>
+          <div className="flavor-stage rounded-[2rem] p-6" style={{ background: flavor.hex, color: "#101402" }}>
             <p className="text-xs font-bold uppercase tracking-[0.18em]">O sabor é o produto</p>
             <h2 className="font-display text-7xl leading-[0.85]">{flavor.name}</h2>
             <p className="mt-2 max-w-md text-base">{flavor.tagline}</p>

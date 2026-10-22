@@ -84,6 +84,19 @@ body {
   letter-spacing: 0.02em;
 }
 
+.rise-in {
+  animation: pulso-rise 0.55s ease-out both;
+}
+
+.flavor-stage {
+  transition: background-color 240ms ease;
+}
+
+@keyframes pulso-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
 .marquee-track {
   display: flex;
   width: max-content;
