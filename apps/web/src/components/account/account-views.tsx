@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { siteConfig } from "@/lib/config";
 import { useCurrentUser, usePulso, useWishlist } from "@/lib/store";
 import type { SavedAddress } from "@/lib/types";
-import { formatBRL, formatCep, levelFor, nextLevel, parseBRLToCents } from "@pulso/domain";
+import { formatBRL, formatCep, levelFor, nextLevel, parseBRLToCents, referralCodeFrom, REFERRED_POINTS, REFERRER_POINTS } from "@pulso/domain";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -18,7 +18,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const register = usePulso((state) => state.register);
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", email: mode === "login" ? "ana@pulso.dev" : "", password: mode === "login" ? "pulso123" : "", marketing: false });
+  const [form, setForm] = useState({ name: "", email: mode === "login" ? "ana@pulso.dev" : "", password: mode === "login" ? "pulso123" : "", marketing: false, referral: "" });
 
   return (
     <div className="mx-auto max-w-md px-4 py-12">
@@ -30,7 +30,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           event.preventDefault();
           const message = mode === "login"
             ? login(form.email, form.password)
-            : register({ name: form.name, email: form.email, password: form.password, marketingOptIn: form.marketing });
+            : register({ name: form.name, email: form.email, password: form.password, marketingOptIn: form.marketing, referralCode: form.referral });
           setError(message);
           if (!message) router.push("/conta");
         }}
@@ -38,6 +38,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         {mode === "register" ? <Input aria-label="Nome" placeholder="Nome" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /> : null}
         <Input aria-label="E-mail" type="email" placeholder="E-mail" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
         <Input aria-label="Senha" type="password" placeholder="Senha" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required />
+        {mode === "register" ? <Input aria-label="Código de indicação" placeholder="Código de quem te chamou (opcional)" value={form.referral} onChange={(event) => setForm({ ...form, referral: event.target.value })} /> : null}
         {mode === "register" ? <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.marketing} onChange={(event) => setForm({ ...form, marketing: event.target.checked })} className="accent-lime" />Quero novidade de drop por e-mail (fica só neste aparelho).</label> : null}
         {error ? <p className="text-sm text-pink">{error}</p> : null}
         <Button className="w-full rounded-full" type="submit">{mode === "login" ? "Entrar" : "Criar e ganhar 100 pontos"}</Button>
@@ -77,6 +78,7 @@ export function AccountHome() {
             <NavCard href="/conta/pontos" title="Pontos" text={`${user.pointsBalance} pra usar`} />
             <NavCard href="/conta/assinaturas" title="Assinaturas" text={`${user.subscriptions.length} recorrência(s)`} />
             <NavCard href="/conta/enderecos" title="Endereços" text={`${user.addresses.length} salvos`} />
+            <NavCard href="/conta/indicar" title="Indicar" text="150 pontos quando a pessoa compra" />
           </div>
           <Button variant="outline" className="mt-6 rounded-full" onClick={logout}>Sair</Button>
         </div>
@@ -101,6 +103,21 @@ function LevelBar({ lifetime, balance }: { lifetime: number; balance: number }) 
 
 function NavCard({ href, title, text }: { href: string; title: string; text: string }) {
   return <Link href={href} className="rounded-[1.4rem] border border-white/10 p-4 hover:border-lime"><p className="font-display text-4xl leading-none">{title}</p><p className="text-sm text-muted-foreground">{text}</p></Link>;
+}
+
+export function ReferralView() {
+  const user = useCurrentUser();
+  return (
+    <Gate>
+      {user ? (
+        <div className="mx-auto max-w-xl px-4 py-10">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-lime">Indica a crew</p>
+          <h1 className="font-display text-7xl leading-none">{user.referralCode ?? referralCodeFrom(user.name, user.id)}</h1>
+          <p className="mt-3 text-sm text-muted-foreground">Quem cria a conta com esse código e paga o primeiro pedido ganha {REFERRED_POINTS} pontos. Você ganha {REFERRER_POINTS} nesse momento. Uma vez por pessoa. O código da Ana é {referralCodeFrom("Ana Luz", "user-ana")}.</p>
+        </div>
+      ) : null}
+    </Gate>
+  );
 }
 
 export function OrdersView() {

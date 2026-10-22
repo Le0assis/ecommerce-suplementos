@@ -3,8 +3,11 @@
 import { coupons } from "@pulso/data";
 import {
   findCoupon,
+  applyReferralReward,
+  matchReferral,
   orderCode,
   quoteCart,
+  referralCodeFrom,
   sandboxCharge,
   WELCOME_POINTS,
   type CatalogPatch,
@@ -46,7 +49,7 @@ interface PulsoState {
   applyCoupon: (code: string) => string | null;
   clearCoupon: () => void;
   toggleWishlist: (slug: string) => void;
-  register: (input: { name: string; email: string; password: string; marketingOptIn: boolean }) => string | null;
+  register: (input: { name: string; email: string; password: string; marketingOptIn: boolean; referralCode?: string }) => string | null;
   login: (email: string, password: string) => string | null;
   logout: () => void;
   saveAddress: (address: SavedAddress) => void;
@@ -73,6 +76,23 @@ function wishlistKey(userId: string | null): string {
 function withUser(users: AccountUser[], id: string | null, update: (user: AccountUser) => AccountUser): AccountUser[] {
   if (!id) return users;
   return users.map((user) => (user.id === id ? update(user) : user));
+}
+
+function rewardReferral(users: AccountUser[], buyerId: string, at: string): AccountUser[] {
+  const next = applyReferralReward(users, buyerId);
+  if (next === users) return users;
+  return next.map((user) => {
+    const previous = users.find((item) => item.id === user.id);
+    if (!previous || previous.pointsBalance === user.pointsBalance) return user;
+    const delta = user.pointsBalance - previous.pointsBalance;
+    return {
+      ...user,
+      pointsHistory: [
+        { id: uid("ph"), at, label: user.id === buyerId ? "Bônus de indicação" : "Indicação convertida", delta },
+        ...user.pointsHistory,
+      ],
+    };
+  });
 }
 
 function ensureDemo(users: AccountUser[]): AccountUser[] {
@@ -138,12 +158,23 @@ export const usePulso = create<PulsoState>()(
           const next = current.includes(slug) ? current.filter((item) => item !== slug) : [...current, slug];
           return { wishlist: { ...state.wishlist, [key]: next } };
         }),
-      register: ({ name, email, password, marketingOptIn }) => {
+      register: ({ name, email, password, marketingOptIn, referralCode }) => {
         const normalized = email.trim().toLowerCase();
         if (get().users.some((user) => user.email === normalized)) return "Esse e-mail já tem conta.";
         if (password.length < 6) return "Senha com pelo menos 6 caracteres.";
+        const id = uid("user");
+        let referredBy: string | undefined;
+        if (referralCode?.trim()) {
+          const match = matchReferral(
+            referralCode,
+            get().users.map((user) => ({ code: user.referralCode ?? referralCodeFrom(user.name, user.id), userId: user.id })),
+            id,
+          );
+          if ("error" in match) return match.error;
+          referredBy = match.referrerId;
+        }
         const user: AccountUser = {
-          id: uid("user"),
+          id,
           name: name.trim(),
           email: normalized,
           password,
@@ -157,6 +188,9 @@ export const usePulso = create<PulsoState>()(
           orders: [],
           subscriptions: [],
           pointsHistory: [{ id: uid("ph"), at: new Date().toISOString(), label: "Boas-vindas", delta: WELCOME_POINTS }],
+          referralCode: referralCodeFrom(name, id),
+          referredBy,
+          referralRewarded: false,
         };
         set((state) => ({ users: [...state.users, user], currentUserId: user.id }));
         get().toast(`Conta criada. +${WELCOME_POINTS} pontos.`);
@@ -215,10 +249,7 @@ export const usePulso = create<PulsoState>()(
           const credit = order.pointsCredited ? order.quote.pointsEarned : 0;
           const spent = order.quote.pointsUsed;
           if (!user) return { guestOrders: [order, ...state.guestOrders], cart: [], couponCode: null };
-          return {
-            cart: [],
-            couponCode: null,
-            users: withUser(state.users, user.id, (current) => ({
+          let users = withUser(state.users, user.id, (current) => ({
               ...current,
               cpf: order.cpf || current.cpf,
               orders: [order, ...current.orders],
@@ -233,8 +264,9 @@ export const usePulso = create<PulsoState>()(
                 ...(credit ? [{ id: uid("ph"), at: order.createdAt, label: `Pedido ${order.code}`, delta: credit }] : []),
                 ...current.pointsHistory,
               ],
-            })),
-          };
+            }));
+          if (order.pointsCredited) users = rewardReferral(users, user.id, order.createdAt);
+          return { cart: [], couponCode: null, users };
         }),
       advanceOrder: (code) =>
         set((state) => {
@@ -273,15 +305,19 @@ export const usePulso = create<PulsoState>()(
           const after = findOrder({ ...state, users, guestOrders }, code);
           let nextUsers = users;
           if (before && after && !before.pointsCredited && after.pointsCredited && state.currentUserId) {
-            nextUsers = withUser(users, state.currentUserId, (user) => ({
-              ...user,
-              pointsBalance: user.pointsBalance + after.quote.pointsEarned,
-              pointsLifetime: user.pointsLifetime + after.quote.pointsEarned,
-              pointsHistory: [
-                { id: uid("ph"), at: new Date().toISOString(), label: `Pedido ${after.code}`, delta: after.quote.pointsEarned },
-                ...user.pointsHistory,
-              ],
-            }));
+            nextUsers = rewardReferral(
+              withUser(users, state.currentUserId, (user) => ({
+                ...user,
+                pointsBalance: user.pointsBalance + after.quote.pointsEarned,
+                pointsLifetime: user.pointsLifetime + after.quote.pointsEarned,
+                pointsHistory: [
+                  { id: uid("ph"), at: new Date().toISOString(), label: `Pedido ${after.code}`, delta: after.quote.pointsEarned },
+                  ...user.pointsHistory,
+                ],
+              })),
+              state.currentUserId,
+              new Date().toISOString(),
+            );
           }
           return { users: nextUsers, guestOrders };
         }),

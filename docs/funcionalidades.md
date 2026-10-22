@@ -80,6 +80,10 @@ Countdown e lista. A fase sai de `dropPhase` (`no-ar`, `encerrado`, `data-invali
 
 Página de atleta é Server Component com `generateStaticParams`. Cupom da pessoa pode ser aplicado dali.
 
+## Indicação `/conta/indicar`
+
+O código sai de `referralCodeFrom` (nome + fim do id). No cadastro, o campo opcional chama `matchReferral`. O bônus só cai quando o primeiro pedido dessa pessoa é pago (`pointsCredited`), via `applyReferralReward`. A Ana usa `ANALUZRANA`.
+
 ## Raspadinha `/raspadinha`
 
 Uma por dia, chave de data em `America/Sao_Paulo` (`saoPauloDateKey`). Prêmio estável por hash. Canvas `destination-out` e botão “Revelar sem raspar”.

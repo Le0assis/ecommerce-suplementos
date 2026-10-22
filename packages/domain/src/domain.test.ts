@@ -6,6 +6,7 @@ import { formatBRL, parseBRLToCents } from "./money";
 import { findCoupon, quoteCart } from "./quote";
 import { quizResult } from "./quiz";
 import { dropPhase } from "./drops";
+import { applyReferralReward, matchReferral, referralCodeFrom, REFERRER_POINTS, REFERRED_POINTS } from "./referral";
 import { defaultGateway, sandboxCharge } from "./sandbox-payment";
 import { saoPauloDateKey, scratchPrize } from "./scratch";
 import { lookupCep, resolveShippingCents, shippingRates } from "./shipping";
@@ -207,6 +208,28 @@ describe("sandbox de pagamento", () => {
       expect(card.externalId).toBe("pm_sandbox_PLCARD");
     }
     expect(sandboxCharge({ method: "pix", amountCents: 0, orderCode: "PL" })).toEqual({ error: "Valor inválido para o sandbox." });
+  });
+});
+
+describe("indicação", () => {
+  it("gera código estável e credita os dois lados uma vez", () => {
+    expect(referralCodeFrom("Ana Luz", "user-ana")).toBe("ANALUZRANA");
+    const directory = [{ code: "ANALUZRANA", userId: "user-ana" }];
+    expect(matchReferral("analuzrana", directory, "user-nova")).toEqual({ referrerId: "user-ana" });
+    expect(matchReferral("analuzrana", directory, "user-ana")).toEqual({ error: "Você não indica a si." });
+    expect("error" in matchReferral("nao-tem", directory, "user-nova")).toBe(true);
+    const once = applyReferralReward(
+      [
+        { id: "user-ana", pointsBalance: 10, pointsLifetime: 10 },
+        { id: "user-nova", pointsBalance: 100, pointsLifetime: 100, referredBy: "user-ana", referralRewarded: false },
+      ],
+      "user-nova",
+    );
+    expect(once.find((account) => account.id === "user-ana")?.pointsBalance).toBe(10 + REFERRER_POINTS);
+    expect(once.find((account) => account.id === "user-nova")?.pointsBalance).toBe(100 + REFERRED_POINTS);
+    expect(once.find((account) => account.id === "user-nova")?.referralRewarded).toBe(true);
+    const twice = applyReferralReward(once, "user-nova");
+    expect(twice.find((account) => account.id === "user-ana")?.pointsBalance).toBe(10 + REFERRER_POINTS);
   });
 });
 

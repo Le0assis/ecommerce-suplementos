@@ -8,15 +8,17 @@ A documentação para quem vai evoluir o código está em [docs/](docs/README.md
 
 ## Plano de entrega
 
-O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 3, em cima das etapas 1 e 2.
+O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 4, em cima das etapas 1 a 3.
+
+Indicação: entre com a Ana e abra `/conta/indicar`. O código dela é `ANALUZRANA`. No cadastro, quem cola esse código ganha 80 pontos, e a Ana ganha 150, quando o primeiro pedido é pago.
 
 | Etapa | O que você encontra | Nesta linha |
 | --- | --- | --- |
 | 1. Fundação | Visual escuro com lima, título em caixa alta, home com atleta, catálogo, busca, página de produto com sabor e rótulo | Fechada |
 | 2. Descoberta | Quiz, calculadora, kit, drops com contagem, atletas e cupons | Fechada |
 | 3. Compra | Carrinho, frete por CEP, Pix, boleto, parcela sandbox, conta, rastreio, favoritos | Fechada |
-| 4. Recorrência e jogo | Assinatura, pontos, raspadinha, indicação | Próxima |
-| 5. Conteúdo | Avaliações, blog, feed, vídeo, CMS | Depois |
+| 4. Recorrência e jogo | Assinatura, pontos, raspadinha, indicação | Fechada |
+| 5. Conteúdo | Avaliações, blog, feed, vídeo, CMS | Próxima |
 | 6. Operação | Admin, SEO, analytics, acessibilidade, LGPD, testes de ponta a ponta, deploy | Depois |
 
 O protótipo anterior já deixava a maior parte das telas navegáveis. Cada etapa acrescenta regra testada e documentação daquela faixa.

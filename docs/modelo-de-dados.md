@@ -46,7 +46,7 @@ Ordem do orçamento em `quoteCart`:
 | `bruto` | Bruto | 2000 | 1,25 | R$ 199 |
 | `lenda` | Lenda | 6000 | 1,5 | R$ 149 |
 
-5 pontos por real. 1 ponto = 1 centavo. Boas-vindas: 100.
+5 pontos por real. 1 ponto = 1 centavo. Boas-vindas: 100. Indicação: 150 para quem indica e 80 para quem foi indicado, uma vez, no primeiro pedido pago.
 
 ## CEP
 

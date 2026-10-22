@@ -97,6 +97,9 @@ export interface AccountUser {
   orders: OrderRecord[];
   subscriptions: SubscriptionRecord[];
   pointsHistory: PointsEvent[];
+  referralCode?: string;
+  referredBy?: string | null;
+  referralRewarded?: boolean;
 }
 
 export interface ScratchRecord {
