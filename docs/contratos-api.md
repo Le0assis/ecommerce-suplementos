@@ -104,3 +104,7 @@ Cinco senhas erradas no mesmo e-mail travam `admin_users.locked_until` por 15 mi
 `GET /v1/admin/audit-log` é só do `dono`.
 
 A conta dono não é semeada. Use `pnpm --filter @pulso/db create-owner`, com a senha em `ADMIN_OWNER_PASSWORD_FILE`, fora do repositório.
+
+O editor também grava categorias, objetivos, kits, promoções, quiz, raspadinha, banners, UGC e `video_spots`. `DELETE` nessas listas arquiva (`active` false ou `hidden` true) quando a coluna existe. Categoria, objetivo e pergunta de quiz não têm essa coluna: a API recusa o `DELETE` com 409. O único apagar de verdade continua sendo o cupom com `uses = 0`.
+
+Atendimento lista e altera pedidos (status e rastreio), avaliações e pontos do cliente. O saldo não fica negativo. Fidelidade (`GET/PATCH /v1/admin/settings/loyalty` e `GET /v1/settings/loyalty`) é só do dono. O `quoteCart` da loja ainda usa as constantes de `@pulso/domain`.

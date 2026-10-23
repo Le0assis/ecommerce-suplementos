@@ -1,6 +1,7 @@
 import { coupons, getInfluencer, getPost, getReviews, influencers, posts, ugc } from "@pulso/data";
 import { couponBlockReason, getAdminCoupon, readPublicCoupons, type AdminCoupon } from "@pulso/db/catalog";
 import { getPool } from "@pulso/db/pool";
+import { listBanners, listUgc, listVideos, readLoyalty, readPublicReviews, ugcPublic } from "@pulso/db/resources";
 import { fromPgPool, type Sql } from "@pulso/db/sql";
 import {
   creatinePlan,
@@ -95,7 +96,8 @@ app.get("/v1/products/:slug", async (c) => {
   const loaded = await loadProducts(options.sql);
   const product = loaded.products.find((item) => item.slug === c.req.param("slug"));
   if (!product) return c.json({ error: "Produto não encontrado." }, 404);
-  return c.json({ source: loaded.source, product, reviews: getReviews(product.slug) });
+  const reviews = options.sql ? await readPublicReviews(options.sql, product.slug) : getReviews(product.slug);
+  return c.json({ source: loaded.source, product, reviews });
 });
 
   app.get("/v1/search", async (c) => {
@@ -120,7 +122,24 @@ app.get("/v1/posts/:slug", (c) => {
   if (!post) return c.json({ error: "Texto não encontrado." }, 404);
   return c.json({ post });
 });
-app.get("/v1/ugc", (c) => c.json({ ugc }));
+  app.get("/v1/ugc", async (c) => {
+    if (!options.sql) return c.json({ ugc });
+    return c.json({ ugc: ugcPublic(await listUgc(options.sql, false)) });
+  });
+  app.get("/v1/videos", async (c) => {
+    if (!options.sql) return c.json({ videos: [] });
+    const videos = await listVideos(options.sql, false);
+    return c.json({ videos });
+  });
+  app.get("/v1/banners", async (c) => {
+    if (!options.sql) return c.json({ banners: [] });
+    const banners = (await listBanners(options.sql)).filter((banner) => banner.active);
+    return c.json({ banners });
+  });
+  app.get("/v1/settings/loyalty", async (c) => {
+    if (!options.sql) return c.json({ item: null, source: "domain" });
+    return c.json({ item: await readLoyalty(options.sql), source: "postgres" });
+  });
   app.get("/v1/coupons", async (c) => {
     const list = await couponSource(options.sql);
     return c.json({ coupons: list.filter((coupon) => coupon.active).map(({ code, label, kind, percent }) => ({ code, label, kind, percent })) });

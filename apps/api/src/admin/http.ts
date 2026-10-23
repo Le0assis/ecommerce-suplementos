@@ -72,6 +72,19 @@ async function loadActor(sql: Sql, claims: SessionClaims): Promise<Actor | null>
   return { id: row.id, email: row.email, name: row.name, role: row.role };
 }
 
+export async function guard<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof CatalogError) throw new HttpError(error.status as ContentfulStatusCode, error.message);
+    const code = typeof error === "object" && error && "code" in error ? String((error as { code: unknown }).code) : "";
+    if (code === "23503") throw new HttpError(400, "O vínculo não existe.");
+    if (code === "23505") throw new HttpError(409, "Já existe um registro com esse identificador.");
+    if (code === "23514") throw new HttpError(400, "Os dados não passam na regra do banco.");
+    throw error;
+  }
+}
+
 export function raiseCatalog(error: unknown): never {
   if (error instanceof CatalogError) throw new HttpError(error.status as ContentfulStatusCode, error.message);
   throw error;

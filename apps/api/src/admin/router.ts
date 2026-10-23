@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { mountAuth } from "./auth-routes";
 import { mountCoupons } from "./coupon-routes";
 import { applyAdminCors, HttpError, parseInput, readJson, requireActor } from "./http";
+import { mountOps } from "./ops-routes";
 import { mountProducts } from "./product-routes";
 import { uploadSchema } from "./schemas";
 import { cookieSecureFromEnv, sessionSecret } from "./session";
@@ -64,6 +65,7 @@ export function mountAdmin(app: Hono, options: AdminAppOptions = {}): void {
   mountAuth(admin, runtime);
   mountProducts(admin, runtime);
   mountCoupons(admin, runtime);
+  mountOps(admin, runtime);
 
   admin.post("/uploads", async (c) => {
     const ctx = runtime();

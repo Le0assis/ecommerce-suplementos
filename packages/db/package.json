@@ -10,6 +10,7 @@
     "./sql": "./src/sql.ts",
     "./audit": "./src/audit.ts",
     "./catalog": "./src/catalog.ts",
+    "./resources": "./src/resources.ts",
     "./password": "./src/password.ts"
   },
   "scripts": {

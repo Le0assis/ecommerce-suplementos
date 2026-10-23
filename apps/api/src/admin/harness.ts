@@ -74,7 +74,11 @@ export function createAdminApp(sql: SqlClient, signUpload?: UploadSigner) {
 export async function resetTables(sql: SqlClient): Promise<void> {
   resetLoginLimits();
   await sql.query("update admin_users set failed_attempts = 0, locked_until = null");
-  await sql.query("truncate products, coupons, audit_log, orders, customers, influencers restart identity cascade");
+  await sql.query(
+    `truncate products, coupons, audit_log, orders, customers, influencers, promotions, quiz_questions,
+            scratch_prizes, banners, ugc_posts, video_spots, reviews, loyalty_settings, subscriptions
+     restart identity cascade`,
+  );
 }
 
 export async function login(app: ReturnType<typeof createAdminApp>, email: string, password: string, ip = "203.0.113.10") {
