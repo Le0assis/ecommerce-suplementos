@@ -156,7 +156,7 @@ function fromCatalog(db: AdminDb | null): DropSeed[] {
   return live;
 }
 
-function fromApi(drops: Partial<DropSeed>[], source: string): DropSeed[] {
+function fromApi(drops: Partial<DropSeed>[]): DropSeed[] {
   return drops.flatMap((drop) => {
     if (!drop.id || !drop.edition) return [];
     const status = drop.status === "em_breve" || drop.status === "encerrado" || drop.status === "no_ar" ? drop.status : "no_ar";
@@ -175,7 +175,7 @@ function fromApi(drops: Partial<DropSeed>[], source: string): DropSeed[] {
       heroImageUrl: drop.heroImageUrl ?? null,
       story: drop.story ?? "",
       status,
-      trustUnits: source === "postgres",
+      trustUnits: true,
     }];
   });
 }
@@ -195,7 +195,7 @@ async function fetchApi(): Promise<{ drops: DropSeed[]; source: string } | null>
     if (!response.ok) return null;
     const body = (await response.json()) as { source?: string; drops?: Partial<DropSeed>[] };
     if (!Array.isArray(body.drops)) return null;
-    return { drops: fromApi(body.drops, body.source ?? ""), source: body.source ?? "" };
+    return { drops: fromApi(body.drops), source: body.source ?? "" };
   } catch {
     return null;
   }

@@ -4,14 +4,19 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, test } from "vitest";
 import { seedAdminDb } from "@/server/admin-seed";
-import { listPublicAthletes, resolveArticle, resolveCollab } from "@/server/public-content";
+import { listPublicAthletes, loadPublicArticle, loadPublicAthletes, loadPublicCollab, loadPublicPosts, resolveArticle, resolveCollab } from "@/server/public-content";
 
 const dirs: string[] = [];
 const previous = process.env.ADMIN_MOCK_PATH;
+const previousApi = process.env.API_URL;
+const previousFetch = globalThis.fetch;
 
 afterEach(() => {
   if (previous === undefined) delete process.env.ADMIN_MOCK_PATH;
   else process.env.ADMIN_MOCK_PATH = previous;
+  if (previousApi === undefined) delete process.env.API_URL;
+  else process.env.API_URL = previousApi;
+  globalThis.fetch = previousFetch;
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -113,4 +118,101 @@ test("post publicado no adaptador troca o parágrafo por bloco e liga o autor", 
   assert.equal(article.blocks[0]?.type, "titulo");
   assert.equal(article.authorBio, "Textos da bancada.");
   assert.equal(article.authorHref, "/atletas/luna-vaz");
+});
+
+test("a vitrine lê influencer e post da API e ignora o arquivo", async () => {
+  const file = useFile("admin-mock.json");
+  const db = seedAdminDb();
+  const post = db.posts.find((item) => item.slug === "pre-sem-passar-mal");
+  assert.ok(post);
+  post.blocks = [{ id: "t1", type: "titulo", text: "Só no arquivo" }];
+  post.status = "publicado";
+  post.publishedAt = "2026-09-12T12:00:00-03:00";
+  const base = db.influencers[0];
+  assert.ok(base);
+  db.influencers.push({
+    ...base,
+    id: "so-arquivo",
+    slug: "so-arquivo",
+    name: "Só Arquivo",
+    handle: "@arquivo",
+    active: true,
+  });
+  writeFileSync(file, JSON.stringify(db));
+  process.env.API_URL = "http://pulso.test";
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("/v1/influencers/nova-api")) {
+      return Response.json({
+        source: "mock",
+        influencer: {
+          slug: "nova-api",
+          name: "Nova API",
+          handle: "@nova",
+          city: "Recife",
+          story: "Veio da API.",
+          quotes: [],
+          images: [{ id: "f", url: null, alt: "Retrato", instagramPostUrl: "javascript:alert(1)" }],
+          accent: "#d6ff3c",
+        },
+      });
+    }
+    if (url.endsWith("/v1/influencers")) {
+      return Response.json({
+        source: "mock",
+        influencers: [{ slug: "nova-api", name: "Nova API", handle: "@nova", city: "Recife", accent: "#d6ff3c" }],
+      });
+    }
+    if (url.includes("/v1/posts/texto-api")) {
+      return Response.json({
+        source: "mock",
+        post: { slug: "texto-api", title: "Texto da API", excerpt: "Curto", category: "Collab", author: "Redação", blocks: [{ id: "p1", type: "paragrafo", text: "Parágrafo da API." }] },
+      });
+    }
+    if (url.includes("/v1/posts/pre-sem-passar-mal") || url.includes("/v1/influencers/so-arquivo")) {
+      return new Response(JSON.stringify({ error: "não" }), { status: 404 });
+    }
+    if (url.includes("/v1/posts")) {
+      return Response.json({
+        source: "mock",
+        posts: [{ slug: "texto-api", title: "Texto da API", excerpt: "Curto", category: "Collab", readMinutes: 2, publishedAt: "2026-10-01" }],
+      });
+    }
+    return new Response("no", { status: 404 });
+  };
+
+  const cards = await loadPublicAthletes();
+  assert.equal(cards.some((card) => card.slug === "nova-api"), true);
+  assert.equal(cards.some((card) => card.slug === "so-arquivo"), false);
+  assert.equal(cards.some((card) => card.slug === "luna-vaz"), false);
+  const page = await loadPublicCollab("nova-api");
+  assert.equal(page?.story, "Veio da API.");
+  assert.equal(page?.images[0]?.href, null);
+  assert.equal(page?.instagramUrl, "https://instagram.com/nova");
+  const posts = await loadPublicPosts();
+  assert.equal(posts[0]?.path, "/blog/texto-api");
+  const article = await loadPublicArticle("texto-api");
+  assert.equal(article?.blocks[0]?.type, "paragrafo");
+  assert.equal(await loadPublicArticle("pre-sem-passar-mal"), null);
+  assert.equal(await loadPublicCollab("so-arquivo"), null);
+});
+
+test("sem API a vitrine volta ao catálogo e não ao arquivo", async () => {
+  const file = useFile("admin-mock.json");
+  const db = seedAdminDb();
+  const post = db.posts.find((item) => item.slug === "pre-sem-passar-mal");
+  const base = db.influencers[0];
+  assert.ok(post && base);
+  post.blocks = [{ id: "t1", type: "titulo", text: "Só no arquivo" }];
+  post.status = "publicado";
+  post.publishedAt = "2026-09-12T12:00:00-03:00";
+  db.influencers.push({ ...base, id: "so-arquivo", slug: "so-arquivo", name: "Só Arquivo", handle: "@arquivo", active: true });
+  writeFileSync(file, JSON.stringify(db));
+  process.env.API_URL = "http://127.0.0.1:9";
+  const cards = await loadPublicAthletes();
+  assert.equal(cards.some((card) => card.slug === "so-arquivo"), false);
+  assert.equal(cards.some((card) => card.slug === "luna-vaz"), true);
+  const article = await loadPublicArticle("pre-sem-passar-mal");
+  assert.equal(article?.blocks[0]?.type, "paragrafo");
+  assert.equal(await loadPublicCollab("so-arquivo"), null);
 });

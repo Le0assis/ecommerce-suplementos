@@ -2,10 +2,10 @@
 
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
-import { ADMIN_NAV, canAccess, ROLE_LABEL, type AdminSessionView } from "@/lib/admin-types";
+import { ADMIN_NAV, canAccess, resourceForAdminPath, ROLE_LABEL, type AdminSessionView } from "@/lib/admin-types";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 const SessionContext = createContext<AdminSessionView | null>(null);
 
@@ -20,6 +20,16 @@ export function AdminShell({ session, children }: { session: AdminSessionView; c
   const router = useRouter();
   const [leaving, setLeaving] = useState(false);
   const items = ADMIN_NAV.filter((item) => canAccess(session.user.role, item.resource));
+  const allowed = canAccess(session.user.role, resourceForAdminPath(pathname));
+
+  useEffect(() => {
+    function leave() {
+      router.push("/admin/login");
+      router.refresh();
+    }
+    window.addEventListener("pulso-admin-session-end", leave);
+    return () => window.removeEventListener("pulso-admin-session-end", leave);
+  }, [router]);
 
   async function logout() {
     setLeaving(true);
@@ -66,7 +76,9 @@ export function AdminShell({ session, children }: { session: AdminSessionView; c
             Defina `ADMIN_SESSION_SECRET` no servidor antes de publicar. O cookie está assinado com o segredo de desenvolvimento.
           </p>
         ) : null}
-        <div className="px-4 py-6 md:px-6">{children}</div>
+        <div className="px-4 py-6 md:px-6">
+          {allowed ? children : <p className="text-sm text-muted-foreground">Seu papel não faz isso.</p>}
+        </div>
       </div>
     </div>
     </SessionContext.Provider>

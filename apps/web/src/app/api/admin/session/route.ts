@@ -58,14 +58,14 @@ export async function POST(request: Request) {
   const blocked = peekBlocked(key);
   if (blocked.blocked) {
     return NextResponse.json(
-      { error: "Muitas tentativas. Espere um pouco e tente de novo." },
+      { error: "Muitas tentativas. Espere um pouco e tente de novo.", retryAfter: blocked.retryAfter },
       { status: 429, headers: { "retry-after": String(blocked.retryAfter) } },
     );
   }
   const body = (await request.json().catch(() => null)) as { email?: unknown; password?: unknown } | null;
   const password = typeof body?.password === "string" ? body.password : "";
-  const email = typeof body?.email === "string" && body.email.includes("@") ? body.email.trim().toLowerCase() : "dono@pulso.local";
-  if (!password) return NextResponse.json({ error: "Informe a senha." }, { status: 400 });
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  if (!email.includes("@") || !password) return NextResponse.json({ error: "Informe e-mail e senha." }, { status: 400 });
 
   const remote = await loginAgainstApi(email, password);
   if (!remote) {
@@ -73,7 +73,11 @@ export async function POST(request: Request) {
   }
   if (!remote.ok) {
     if (remote.status === 401 || remote.status === 403) registerFailure(key);
-    return NextResponse.json({ error: remote.error }, { status: remote.status });
+    const headers = remote.retryAfter ? { "retry-after": remote.retryAfter } : undefined;
+    return NextResponse.json(
+      { error: remote.error, ...(remote.retryAfter ? { retryAfter: Number(remote.retryAfter) || remote.retryAfter } : {}) },
+      { status: remote.status, headers },
+    );
   }
 
   const payload: SessionPayload = {

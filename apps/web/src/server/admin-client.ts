@@ -66,33 +66,40 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
   return { data: json };
 }
 
+/** O atraso progressivo do login chega a 8 s. O corte fica acima disso. */
+export const LOGIN_API_TIMEOUT_MS = 15_000;
+
 export async function loginAgainstApi(email: string, password: string): Promise<
   | { ok: true; token: string; user: AdminPublicUser }
-  | { ok: false; status: number; error: string }
+  | { ok: false; status: number; error: string; retryAfter: string | null }
   | null
 > {
-  if (Date.now() < apiDownUntil) return null;
   try {
     const response = await fetch(`${apiBase()}/v1/admin/login`, {
       method: "POST",
       headers: { accept: "application/json", "content-type": "application/json" },
       body: JSON.stringify({ email, password }),
       cache: "no-store",
-      signal: AbortSignal.timeout(600),
+      signal: AbortSignal.timeout(LOGIN_API_TIMEOUT_MS),
     });
     if (response.status === 404) return null;
     const json = await readJson(response);
     if (!response.ok) {
-      return { ok: false, status: response.status, error: typeof json.error === "string" ? json.error : "Não foi possível entrar." };
+      const retryAfter = response.headers.get("retry-after");
+      return {
+        ok: false,
+        status: response.status,
+        error: typeof json.error === "string" ? json.error : "Não foi possível entrar.",
+        retryAfter,
+      };
     }
     const user = json.user as AdminPublicUser | undefined;
     const token = tokenFromApiCookie(response) ?? (typeof json.token === "string" ? json.token : null);
     if (!token || !user || !ROLES.includes(user.role)) {
-      return { ok: false, status: 502, error: "A API de login respondeu sem sessão utilizável." };
+      return { ok: false, status: 502, error: "A API de login respondeu sem sessão utilizável.", retryAfter: null };
     }
     return { ok: true, token, user };
   } catch {
-    apiDownUntil = Date.now() + 30_000;
     return null;
   }
 }

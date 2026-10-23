@@ -4,6 +4,7 @@ import { AthletePoster } from "@/components/brand/athlete";
 import { ApplyCoupon } from "@/components/commerce/apply-coupon";
 import { ProductCard } from "@/components/product/product-card";
 import { Button } from "@/components/ui/button";
+import { safeBannerHref } from "@/lib/safe-href";
 import type { Product } from "@pulso/domain";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -60,6 +61,7 @@ export function CollabView({
 }) {
   const shownQuotes = quotes.slice(0, 4);
   const portrait = images[0];
+  const profile = safeBannerHref(instagramUrl);
   const gallery = portrait?.url ? images.slice(1) : images;
   const copy = story.trim() || bio;
 
@@ -79,9 +81,11 @@ export function CollabView({
           <h1 className="font-display text-6xl leading-[0.85] md:text-7xl">{name}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{handle} · {city}</p>
           <p className="mt-4 max-w-xl text-base leading-7">{copy}</p>
-          <Button asChild className="mt-4 hidden rounded-full md:inline-flex">
-            <a href={instagramUrl} target="_blank" rel="noreferrer">Seguir no Instagram</a>
-          </Button>
+          {profile ? (
+            <Button asChild className="mt-4 hidden rounded-full md:inline-flex">
+              <a href={profile} target="_blank" rel="noreferrer">Seguir no Instagram</a>
+            </Button>
+          ) : null}
         </div>
       </div>
       {shownQuotes.length ? <QuoteRotator quotes={shownQuotes} accent={accent} /> : null}
@@ -95,20 +99,28 @@ export function CollabView({
         <section className="mt-10">
           <h2 className="font-display text-4xl leading-none">No blog</h2>
           <ul className="mt-4 space-y-3">
-            {posts.map((post) => (
-              <li key={post.slug}>
-                <Link href={`/blog/${post.slug}`} className="block rounded-[1.2rem] border border-white/10 p-4 hover:border-lime">
+            {posts.map((post) => {
+              const href = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(post.slug) ? `/blog/${post.slug}` : null;
+              const body = (
+                <>
                   <span className="font-display text-3xl leading-none">{post.title}</span>
                   <span className="mt-1 block text-sm text-muted-foreground">{post.excerpt}</span>
-                </Link>
-              </li>
-            ))}
+                </>
+              );
+              return (
+                <li key={post.slug}>
+                  {href ? <Link href={href} className="block rounded-[1.2rem] border border-white/10 p-4 hover:border-lime">{body}</Link> : <div className="rounded-[1.2rem] border border-white/10 p-4">{body}</div>}
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}
-      <a href={instagramUrl} target="_blank" rel="noreferrer" className="fixed inset-x-4 bottom-4 z-20 grid h-12 place-items-center rounded-full bg-lime font-semibold text-primary-foreground md:hidden">
-        Seguir no Instagram
-      </a>
+      {profile ? (
+        <a href={profile} target="_blank" rel="noreferrer" className="fixed inset-x-4 bottom-4 z-20 grid h-12 place-items-center rounded-full bg-lime font-semibold text-primary-foreground md:hidden">
+          Seguir no Instagram
+        </a>
+      ) : null}
     </div>
   );
 }
@@ -150,17 +162,16 @@ function PhotoCarousel({ images, fallbackHref }: { images: CollabImage[]; fallba
   const [index, setIndex] = useState(0);
   const current = images[index] ?? images[0];
   if (!current) return null;
-  const href = current.href || fallbackHref;
+  const href = safeBannerHref(current.href) ?? safeBannerHref(fallbackHref);
+  const frame = current.url ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={current.url} alt={current.alt} className="h-72 w-full object-cover md:h-96" />
+  ) : (
+    <div className="grid h-72 place-items-center md:h-96" style={{ backgroundColor: current.hex }} role="img" aria-label={current.alt} />
+  );
   return (
     <section className="mt-8" aria-label="Fotos">
-      <a href={href} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[1.6rem] border border-white/10">
-        {current.url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={current.url} alt={current.alt} className="h-72 w-full object-cover md:h-96" />
-        ) : (
-          <div className="grid h-72 place-items-center md:h-96" style={{ backgroundColor: current.hex }} role="img" aria-label={current.alt} />
-        )}
-      </a>
+      {href ? <a href={href} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[1.6rem] border border-white/10">{frame}</a> : <div className="overflow-hidden rounded-[1.6rem] border border-white/10">{frame}</div>}
       {current.caption ? <p className="mt-2 text-sm text-muted-foreground">{current.caption}</p> : null}
       {images.length > 1 ? (
         <div className="mt-3 flex gap-2">

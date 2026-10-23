@@ -91,7 +91,7 @@ function WaitlistForm({ dropId, count }: { dropId: string; count: number }) {
       return;
     }
     if (erase) {
-      setNotice("A saída da lista ainda pede um link no e-mail. Nada foi apagado.");
+      setNotice("Pedido recebido.");
       return;
     }
     if (!body.already) setPeople((value) => value + 1);
@@ -111,7 +111,7 @@ function WaitlistForm({ dropId, count }: { dropId: string; count: number }) {
       </label>
       {error ? <p className="text-sm text-pink" role="alert">{error}</p> : null}
       {notice ? <p className="text-sm text-lime" role="status">{notice}</p> : null}
-      <button type="button" className="text-sm text-muted-foreground underline" disabled={pending || !email} onClick={() => void submit(true)}>Tirar meu e-mail da lista</button>
+      <button type="button" className="text-sm text-muted-foreground underline" disabled={pending || !email} onClick={() => void submit(true)}>Pedir saída da lista</button>
     </form>
   );
 }

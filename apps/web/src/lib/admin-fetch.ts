@@ -1,5 +1,11 @@
 import type { AdminDataSource } from "@/lib/admin-types";
 
+const ENDED_SESSION = new Set(["Sessão inválida ou vencida.", "Sessão expirada.", "Faça login para continuar."]);
+
+export function isEndedAdminSession(message: string): boolean {
+  return ENDED_SESSION.has(message);
+}
+
 export class AdminApiError extends Error {
   readonly status: number;
 
@@ -24,7 +30,13 @@ export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T
     throw new AdminApiError(0, "Sem resposta do painel.");
   }
   const body = (await response.json().catch(() => null)) as { error?: string } | null;
-  if (!response.ok) throw new AdminApiError(response.status, body?.error ?? "Não deu para concluir.");
+  if (!response.ok) {
+    const message = body?.error ?? "Não deu para concluir.";
+    if (isEndedAdminSession(message) && typeof window !== "undefined") {
+      window.dispatchEvent(new Event("pulso-admin-session-end"));
+    }
+    throw new AdminApiError(response.status, message);
+  }
   return body as T;
 }
 

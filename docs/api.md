@@ -145,7 +145,7 @@ Com `API_DATA_SOURCE=postgres` e banco, a leitura é a tabela. Sem banco, a resp
 
 `body` continua sendo só os parágrafos. `blocks` traz `paragrafo`, `titulo`, `imagem`, `citacao_lateral` e `produto`. `GET /v1/posts/:slug` devolve `{ "source", "post" }` ou `404` `{ "error": "Texto não encontrado." }`.
 
-A vitrine ainda lê o adaptador (`apps/web/.data/admin-mock.json`) e, se ele não tiver o slug, o catálogo. Quando `source` da API é `postgres`, `/atletas`, `/atletas/:slug` e `/blog/:slug` preferem essa resposta. Influencer ativo que só existe no adaptador também ganha `/atletas/<slug>`. `generateStaticParams` lista o catálogo; o slug novo abre no pedido, dentro do `Suspense`.
+`/atletas`, `/atletas/:slug`, `/blog` e `/blog/:slug` leem `GET /v1/influencers` e `GET /v1/posts` quando a API responde, seja `source` `postgres` ou `mock`. O arquivo do adaptador não alimenta essas páginas. Se a API não responder, a página volta ao catálogo `@pulso/data`. Um `404` da API não abre a ficha do arquivo. `generateStaticParams` lista o catálogo; o slug novo abre no pedido, dentro do `Suspense`. Influencer criado no admin só ganha página pública quando a API o devolve.
 
 ## Drops públicos
 

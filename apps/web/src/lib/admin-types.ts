@@ -486,6 +486,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { href: "/admin/vitrine", label: "Vitrine", resource: "banners" },
 ];
 
+export function resourceForAdminPath(pathname: string): AdminResource | null {
+  const match = ADMIN_NAV
+    .filter((item) => item.href !== "/admin")
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+  return match?.resource ?? null;
+}
+
 export const PRODUCT_STATUSES: { id: ProductStatus; label: string }[] = [
   { id: "rascunho", label: "Rascunho" },
   { id: "ativo", label: "Ativo" },
