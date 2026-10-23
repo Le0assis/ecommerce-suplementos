@@ -248,6 +248,17 @@ describe("promoções, quiz, ajustes e papéis", () => {
     expect(kit.status).toBe(201);
     const item = (await kit.json()).item as { id: string; isKit: boolean };
     expect(item.isKit).toBe(true);
+    const patched = await app.request(`/v1/admin/kits/${item.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ name: "Stack novo", discountPercent: 10, kitItems: [{ productId: "caos-teste", quantity: 2 }] }),
+    });
+    expect(patched.status).toBe(200);
+    const updated = (await patched.json()).item as { id: string; slug: string; name: string; kitItems: { quantity: number }[] };
+    expect(updated.id).toBe(item.id);
+    expect(updated.slug).toBe(item.id);
+    expect(updated.name).toBe("Stack novo");
+    expect(updated.kitItems[0]?.quantity).toBe(2);
     const opened = await app.request(`/v1/admin/kits/${item.id}`, { headers });
     expect(opened.status).toBe(200);
     const removed = await app.request(`/v1/admin/kits/${item.id}`, { method: "DELETE", headers });

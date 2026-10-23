@@ -42,7 +42,14 @@ export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T
   }
   const body = (await response.json().catch(() => null)) as { error?: string; fields?: Record<string, string> } | null;
   if (!response.ok) {
-    const message = adminErrorMessage(body);
+    const fallback = response.status === 403
+      ? "Seu papel não faz isso."
+      : response.status === 404
+        ? "Não encontrado."
+        : response.status === 409
+          ? "Já existe um registro com esse identificador."
+          : "Não deu para concluir.";
+    const message = adminErrorMessage(body, fallback);
     if (isEndedAdminSession(message) && typeof window !== "undefined") {
       window.dispatchEvent(new Event("pulso-admin-session-end"));
     }

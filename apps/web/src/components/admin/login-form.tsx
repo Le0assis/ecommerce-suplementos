@@ -6,14 +6,6 @@ import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
-function retryLabel(raw: number | string | null | undefined): string | null {
-  if (raw === null || raw === undefined || raw === "") return null;
-  const seconds = Number(raw);
-  if (!Number.isFinite(seconds) || seconds <= 0) return null;
-  if (seconds >= 60) return `Tente de novo em ${Math.ceil(seconds / 60)} min.`;
-  return `Tente de novo em ${Math.ceil(seconds)} s.`;
-}
-
 export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -39,13 +31,10 @@ export function LoginForm() {
       setError("A API de admin está fora do ar.");
       return;
     }
-    const body = (await response.json().catch(() => ({}))) as { error?: string; retryAfter?: number | string };
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
     setPending(false);
     if (!response.ok) {
-      const raw = body.retryAfter ?? response.headers.get("retry-after");
-      const wait = retryLabel(raw);
-      const message = body.error ?? "Não foi possível entrar.";
-      setError(wait ? `${message} ${wait}` : message);
+      setError(body.error ?? "Não foi possível entrar.");
       return;
     }
     router.push("/admin");

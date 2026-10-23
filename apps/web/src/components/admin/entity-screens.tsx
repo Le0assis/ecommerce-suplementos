@@ -52,6 +52,7 @@ export function KitsScreen() {
   const [name, setName] = useState("");
   const [discount, setDiscount] = useState(12);
   const [rows, setRows] = useState<{ productId: string; quantity: number }[]>([{ productId: "", quantity: 1 }]);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -85,17 +86,41 @@ export function KitsScreen() {
     };
   }, []);
 
+  function kitDiscount(kit: AdminProduct): number {
+    const variant = kit.variants[0];
+    if (!variant?.compareAtCents || variant.compareAtCents <= variant.priceCents) return 0;
+    return Math.min(12, Math.max(0, Math.round((1 - variant.priceCents / variant.compareAtCents) * 100)));
+  }
+
+  function edit(kit: AdminProduct) {
+    setEditingId(kit.id);
+    setName(kit.name);
+    setDiscount(kitDiscount(kit));
+    setRows(kit.kitItems.length ? kit.kitItems.map((item) => ({ productId: item.productId, quantity: item.quantity })) : [{ productId: "", quantity: 1 }]);
+    setNotice(null);
+    setError(null);
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setName("");
+    setDiscount(12);
+    setRows([{ productId: "", quantity: 1 }]);
+  }
+
   async function save() {
     setError(null);
     setNotice(null);
+    const body = { name, discountPercent: discount, kitItems: rows.filter((row) => row.productId) };
     try {
-      await adminFetch<AdminOne<AdminProduct>>("kits", {
-        method: "POST",
-        body: JSON.stringify({ name, discountPercent: discount, kitItems: rows.filter((row) => row.productId) }),
-      });
-      setName("");
-      setRows([{ productId: "", quantity: 1 }]);
-      setNotice("Kit criado como rascunho. O preço sai da soma dos produtos, com o desconto por cima.");
+      if (editingId) {
+        await adminFetch<AdminOne<AdminProduct>>(`kits/${encodeURIComponent(editingId)}`, { method: "PATCH", body: JSON.stringify(body) });
+        setNotice("Kit atualizado.");
+      } else {
+        await adminFetch<AdminOne<AdminProduct>>("kits", { method: "POST", body: JSON.stringify(body) });
+        setNotice("Kit criado como rascunho. O preço sai da soma dos produtos, com o desconto por cima.");
+      }
+      resetForm();
       await reload();
     } catch (caught) {
       setError(caught instanceof AdminApiError ? caught.message : "Não deu para montar o kit.");
@@ -142,7 +167,8 @@ export function KitsScreen() {
         ))}
         <div className="flex gap-2">
           <Button type="button" variant="outline" className="rounded-full" onClick={() => setRows([...rows, { productId: "", quantity: 1 }])}>Adicionar produto</Button>
-          <Button type="button" className="rounded-full" onClick={() => void save()}>Criar kit</Button>
+          <Button type="button" className="rounded-full" onClick={() => void save()}>{editingId ? "Salvar kit" : "Criar kit"}</Button>
+          {editingId ? <Button type="button" variant="outline" className="rounded-full" onClick={resetForm}>Cancelar</Button> : null}
         </div>
       </Section>
       <ul className="space-y-2">
@@ -153,6 +179,7 @@ export function KitsScreen() {
               <p className="text-xs text-muted-foreground">{kit.kitItems.map((item) => `${item.quantity}× ${item.productId}`).join(" · ") || "Sem itens"}</p>
             </div>
             <div className="flex gap-2">
+              <Button size="sm" variant="outline" type="button" onClick={() => edit(kit)}>Editar</Button>
               <Button asChild size="sm" variant="outline"><Link href={`/admin/produtos/${kit.id}`}>Editar ficha</Link></Button>
               <Button size="sm" variant="outline" type="button" onClick={() => void archive(kit.id)}>Arquivar</Button>
             </div>
@@ -215,8 +242,8 @@ export function InfluencerListScreen() {
         description="Fotos, história, frases, Instagram, cupom e produtos. Desativar não apaga a página."
         resource="influencers"
         newHref="/admin/influencers/novo"
-        editHref={(item) => `/admin/influencers/${item.id}`}
-        rowKey={(item) => item.id}
+        editHref={(item) => `/admin/influencers/${item.slug}`}
+        rowKey={(item) => item.slug}
         removeLabel="Desativar"
         columns={[
           { header: "Nome", cell: (item) => item.name },
@@ -248,8 +275,8 @@ export function BlogScreen() {
         description="O editor abre título, blocos, autor e SEO. Arquivar não apaga o post."
         resource="posts"
         newHref="/admin/blog/novo"
-        editHref={(item) => `/admin/blog/${item.id}`}
-        rowKey={(item) => item.id}
+        editHref={(item) => `/admin/blog/${item.slug}`}
+        rowKey={(item) => item.slug}
         removeLabel="Arquivar"
         columns={[
           { header: "Título", cell: (item) => item.title },
@@ -529,6 +556,7 @@ export function SocialScreen() {
         title="Vídeos"
         description="Três cores de quadro e a transcrição que a faixa da home lê."
         resource="videos"
+        rowKey={(item) => item.id || item.slug}
         write="post"
         blank={() => ({ id: "", slug: "", title: "", caption: "", duration: "0:15", frames: ["#d6ff3c", "#101402", "#ff3d8a"], transcript: ["Suplemento alimentar. Não é medicamento."], position: 0, hidden: false })}
         columns={[

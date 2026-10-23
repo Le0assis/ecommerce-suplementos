@@ -104,7 +104,7 @@ O site não conta falha de login. `POST /api/admin/session` repassa o status, o 
 
 O CRUD do painel não grava `apps/web/.data/admin-mock.json`. Se a API não responde, a tela mostra o erro e não diz que salvou. `/api/admin/data` é o outro proxy do admin: cada chamada acrescenta o IP do cliente no fim de `X-Forwarded-For` e repassa o status da API. Rota ainda inexistente vira erro (`A API não tem GET /v1/admin/...`), sem cair no mock.
 
-O painel abre e grava influencer, autor, post e banner em `/v1/admin/<recurso>/:id`. Categoria e objetivo usam o slug no `PATCH` e no `DELETE`.
+O painel usa o identificador da tabela: produto e kit pelo `id` (o slug), cupom pelo `code`, categoria e objetivo pelo `slug`, influencer e post pelo `slug`, vídeo pelo `id` ou pelo `slug`, e o restante pelo `id`. `409` é duplicata, `404` é registro ou rota ausente, `403` é papel errado. A tela mostra essa mensagem.
 
 ## Rotas do admin
 
@@ -123,9 +123,9 @@ O identificador da URL é o da coluna abaixo. Onde o painel chama o campo de `id
 | Cupons | `code` (a resposta usa esse valor em `id`) | `GET /coupons` | `GET /coupons/:code` | `POST /coupons` | `PATCH /coupons/:code` | `DELETE /coupons/:code` | editor |
 | Categorias | `slug` | `GET /categories` | `GET /categories/:slug` | `POST /categories` | `PATCH /categories/:slug` | `DELETE /categories/:slug` | editor |
 | Objetivos | `slug` | `GET /goals` e `GET /categories?kind=objetivo` | `GET /goals/:slug` ou `GET /categories/:slug` | `POST /goals` ou `POST /categories` com `kind: "objetivo"` | `PATCH` nos dois caminhos | `DELETE` nos dois caminhos | editor |
-| Influencers | `id` | `GET /influencers` | `GET /influencers/:id` | `POST /influencers` | `PATCH /influencers/:id` | `DELETE /influencers/:id` desativa | editor |
+| Influencers | `slug` (igual a `id`) | `GET /influencers` | `GET /influencers/:slug` | `POST /influencers` | `PATCH /influencers/:slug` | `DELETE /influencers/:slug` desativa | editor |
 | Autores | `id` | `GET /authors` | `GET /authors/:id` | `POST /authors` | `PATCH /authors/:id` | `DELETE /authors/:id` | editor |
-| Posts | `id` | `GET /posts` | `GET /posts/:id` | `POST /posts` | `PATCH /posts/:id` | `DELETE /posts/:id` arquiva | editor |
+| Posts | `slug` (igual a `id`) | `GET /posts` | `GET /posts/:slug` | `POST /posts` | `PATCH /posts/:slug` | `DELETE /posts/:slug` arquiva | editor |
 | Promoções | `id` | `GET /promotions` | `GET /promotions/:id` | `POST /promotions` | `PATCH /promotions/:id` | `DELETE /promotions/:id` desativa | editor |
 | Drops | `id` | `GET /drops` | `GET /drops/:id` | `POST /drops` | `PATCH /drops/:id` | `DELETE /drops/:id` encerra | editor |
 | Lista de espera | `id` do drop ou e-mail | `GET /drops/:id/waitlist` | — | — | — | `POST /drops/waitlist/anonymize` e `POST /drops/waitlist/erase` | editor |
@@ -143,7 +143,7 @@ O identificador da URL é o da coluna abaixo. Onde o painel chama o campo de `id
 
 `GET /categories` devolve categorias e objetivos juntos. Cada item traz `id`, `slug` e `kind` (`categoria` ou `objetivo`). `?kind=categoria` ou `?kind=objetivo` filtra. O `POST` aceita `slug` ou `id` no JSON; os dois são o slug. `PATCH` e `DELETE /categories/:slug` acham a linha na tabela `categories` ou em `goals`. O slug não muda: outro valor responde `409` `{ "error": "O slug não muda." }`. Apagar uma categoria em uso responde `409`.
 
-`POST /kits` aceita o corpo completo de produto, com `isKit: true`, ou o formulário curto do painel: `{ "name", "discountPercent", "kitItems": [{ "productId", "quantity" }] }`. O desconto do kit fica entre 0% e 12%.
+`POST /kits` e `PATCH /kits/:id` aceitam o corpo completo de produto, com `isKit: true`, ou o formulário curto do painel: `{ "name", "discountPercent", "kitItems": [{ "productId", "quantity" }] }`. No `PATCH` curto o slug não muda. O desconto do kit fica entre 0% e 12%. `DELETE /kits/:id` arquiva.
 
 Pedido, cliente e avaliação não nascem no admin. A avaliação se aprova, responde ou oculta. O cliente ajusta pontos e o status da assinatura. O pedido muda status e rastreio. `GET /orders/:id` inclui `lines`. `GET /customers` inclui `subscriptions`.
 

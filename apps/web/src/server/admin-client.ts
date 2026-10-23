@@ -146,6 +146,7 @@ const RESOURCE: Record<string, AdminResource> = {
   customers: "customers",
   settings: "loyalty",
   uploads: "uploads",
+  audit: "audit",
 };
 
 

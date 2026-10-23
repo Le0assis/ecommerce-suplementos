@@ -842,9 +842,11 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
     const actor = await requireActor(c, ctx, "kits");
     const current = await getAdminProduct(ctx.sql, c.req.param("id"));
     if (!current?.isKit) throw new HttpError(404, "Kit não encontrado.");
-    const body = parseInput(productSchema, await readJson(c));
+    const json = await readJson(c);
+    const hasSlug = typeof json === "object" && json !== null && "slug" in json && typeof (json as { slug?: unknown }).slug === "string";
+    const body = hasSlug ? parseInput(productSchema, json) : { ...(await kitFromShort(ctx, json)), slug: current.slug };
     if (body.slug !== current.slug) throw new HttpError(409, "O slug não muda.");
-    lockedId(current.id, body.id);
+    if (hasSlug) lockedId(current.id, (json as { id?: string }).id);
     let saved: AdminProduct;
     try {
       saved = await saveAdminProduct(ctx.sql, toStoredProduct({ ...body, isKit: true }, current.id));

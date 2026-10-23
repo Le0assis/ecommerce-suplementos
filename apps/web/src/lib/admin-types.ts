@@ -36,7 +36,8 @@ export type AdminResource =
   | "customers"
   | "loyalty"
   | "uploads"
-  | "waitlist";
+  | "waitlist"
+  | "audit";
 
 export interface AdminPublicUser {
   id: string;
@@ -495,6 +496,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { href: "/admin/pedidos", label: "Pedidos", resource: "orders" },
   { href: "/admin/clientes", label: "Clientes", resource: "customers" },
   { href: "/admin/vitrine", label: "Vitrine", resource: "banners" },
+  { href: "/admin/auditoria", label: "Auditoria", resource: "audit" },
 ];
 
 export function resourceForAdminPath(pathname: string): AdminResource | null {

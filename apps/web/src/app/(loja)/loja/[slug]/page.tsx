@@ -21,16 +21,16 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return { title: loaded ? `${loaded.name} ${loaded.line}` : "Produto", description: loaded?.tagline };
 }
 
-export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+export default function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   return (
     <Suspense fallback={<p className="px-4 py-8">Abrindo o sabor…</p>}>
-      <LiveProduct slug={slug} />
+      <LiveProduct params={params} />
     </Suspense>
   );
 }
 
-async function LiveProduct({ slug }: { slug: string }) {
+async function LiveProduct({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
   await connection();
   const loaded = await loadPublicProduct(slug);
   if (!loaded) notFound();

@@ -50,8 +50,9 @@ export function CouponScreen() {
     setError(null);
     setNotice(null);
     try {
-      if (draft.id && coupons.some((coupon) => coupon.id === draft.id)) {
-        await adminFetch<AdminOne<AdminCoupon>>(`coupons/${draft.id}`, { method: "PATCH", body: JSON.stringify(draft) });
+      const code = draft.code.trim().toUpperCase();
+      if (code && coupons.some((coupon) => coupon.code.toUpperCase() === code || coupon.id.toUpperCase() === code)) {
+        await adminFetch<AdminOne<AdminCoupon>>(`coupons/${encodeURIComponent(code)}`, { method: "PATCH", body: JSON.stringify({ ...draft, code }) });
         setNotice("Cupom atualizado.");
       } else {
         await adminFetch<AdminOne<AdminCoupon>>("coupons", { method: "POST", body: JSON.stringify(draft) });
@@ -67,7 +68,7 @@ export function CouponScreen() {
   async function remove(coupon: AdminCoupon) {
     setError(null);
     try {
-      await adminFetch(`coupons/${coupon.id}`, { method: "DELETE" });
+      await adminFetch(`coupons/${encodeURIComponent(coupon.code || coupon.id)}`, { method: "DELETE" });
       setConfirmId(null);
       setNotice(`${coupon.code} apagado.`);
       await reload();

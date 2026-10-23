@@ -172,6 +172,8 @@ test("editor não vê pedido nem fidelidade; atendimento vê pedido", async () =
     const search = new URLSearchParams();
     const file = path.join(dir, "admin-mock.json");
     assert.equal((await handleAdminData(session("editor"), "GET", ["orders"], search, undefined)).status, 403);
+    assert.equal((await handleAdminData(session("editor"), "GET", ["audit"], search, undefined)).status, 403);
+    assert.equal((await handleAdminData(session("atendimento"), "GET", ["audit"], search, undefined)).status, 403);
     assert.equal((await handleAdminData(session("editor"), "GET", ["settings", "loyalty"], search, undefined)).status, 403);
     assert.equal((await handleAdminData(session("editor"), "GET", ["drops", "drop-05", "waitlist"], search, undefined)).status, 403);
     const quiz = await handleAdminData(session("editor"), "GET", ["quiz"], search, undefined);

@@ -1,5 +1,4 @@
 import type { AdminDb } from "@/server/admin-seed";
-import { peekAdminDb } from "@/server/admin-store";
 import { dropViewState, stockOf, type DropViewState } from "@/lib/drop-view";
 import { influencers, products, upcomingDrop } from "@pulso/data";
 import { unstable_rethrow } from "next/navigation";
@@ -203,8 +202,7 @@ async function fetchApi(): Promise<{ drops: DropSeed[]; source: string } | null>
 }
 
 export async function loadPublicDrops(now = Date.now()): Promise<PublicDropView[]> {
-  const db = peekAdminDb();
   const api = await fetchApi();
-  const seeds = api?.drops.length ? api.drops : fromCatalog(db);
-  return assembleDrops(now, seeds, {}, api?.source === "postgres" ? null : db);
+  const seeds = api?.drops.length ? api.drops : fromCatalog(null);
+  return assembleDrops(now, seeds, {}, null);
 }
