@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
@@ -109,6 +110,56 @@ test("kit, drop, post, avaliação e pontos seguem as regras", () => {
   }
   const banner = dispatchRecords(db, "POST", ["banners"], search, { title: "Capa segura", slot: "destaque", href: "https://pulso.dev/drop" });
   assert.equal((banner?.body.item as { href: string }).href, "https://pulso.dev/drop");
+});
+
+test("o proxy do admin manda o IP e um 404 sem rota não cai no mock", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "pulso-admin-proxy-"));
+  const previous = process.env.ADMIN_MOCK_PATH;
+  const previousApi = process.env.API_URL;
+  const file = path.join(dir, "admin-mock.json");
+  const seen: string[] = [];
+  const server = createServer((req, res) => {
+    seen.push(String(req.headers["x-forwarded-for"] ?? ""));
+    const url = req.url ?? "";
+    if (url.includes("/v1/admin/posts/some-texto")) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "Texto não encontrado." }));
+      return;
+    }
+    if (url.includes("/v1/admin/posts/")) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      res.end("404 Not Found");
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ items: [] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  process.env.ADMIN_MOCK_PATH = file;
+  process.env.API_URL = `http://127.0.0.1:${port}`;
+  const actor: SessionPayload = { ...session("dono"), src: "api", apiToken: "token-de-teste" };
+  try {
+    const list = await handleAdminData(actor, "GET", ["posts"], new URLSearchParams(), undefined, "198.51.100.4, 203.0.113.9");
+    assert.equal(list.status, 200);
+    assert.equal(seen[0], "198.51.100.4, 203.0.113.9");
+    const missing = await handleAdminData(actor, "GET", ["posts", "sem-rota"], new URLSearchParams(), undefined, "203.0.113.9");
+    assert.equal(missing.status, 404);
+    assert.equal(missing.body.error, "A API não tem GET /v1/admin/posts/sem-rota.");
+    assert.equal(missing.body.source, "api");
+    const gone = await handleAdminData(actor, "GET", ["posts", "some-texto"], new URLSearchParams(), undefined, "203.0.113.9");
+    assert.equal(gone.status, 404);
+    assert.equal(gone.body.error, "Texto não encontrado.");
+    assert.equal(existsSync(file), false);
+  } finally {
+    if (previous === undefined) delete process.env.ADMIN_MOCK_PATH;
+    else process.env.ADMIN_MOCK_PATH = previous;
+    if (previousApi === undefined) delete process.env.API_URL;
+    else process.env.API_URL = previousApi;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("editor não vê pedido nem fidelidade; atendimento vê pedido", async () => {

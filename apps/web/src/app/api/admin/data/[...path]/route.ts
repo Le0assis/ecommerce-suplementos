@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleAdminData } from "@/server/admin-client";
 import { currentSession } from "@/server/admin-current";
+import { forwardedForApi } from "@/server/forwarded-for";
 
 async function handle(request: Request, context: { params: Promise<{ path: string[] }> }) {
   const session = await currentSession();
@@ -22,7 +23,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
     }
   }
   const url = new URL(request.url);
-  const result = await handleAdminData(session, request.method, path, url.searchParams, body);
+  const result = await handleAdminData(session, request.method, path, url.searchParams, body, forwardedForApi(request));
   return NextResponse.json(result.body, { status: result.status, headers: { "cache-control": "no-store" } });
 }
 

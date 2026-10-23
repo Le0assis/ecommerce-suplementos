@@ -81,24 +81,44 @@ export async function loginAgainstApi(email: string, password: string, forwarded
   }
 }
 
-async function callApi(session: SessionPayload, method: string, segments: string[], search: URLSearchParams, body: unknown): Promise<AdminHandlerResult> {
+const GENERIC_MISS = new Set(["Not Found", "404 Not Found", "404", "Method Not Allowed"]);
+
+function routeMissing(status: number, json: Record<string, unknown>): boolean {
+  if (status !== 404 && status !== 405) return false;
+  const error = typeof json.error === "string" ? json.error.trim() : "";
+  return !error || GENERIC_MISS.has(error);
+}
+
+async function callApi(
+  session: SessionPayload,
+  method: string,
+  segments: string[],
+  search: URLSearchParams,
+  body: unknown,
+  forwardedFor?: string,
+): Promise<AdminHandlerResult> {
   if (session.src !== "api" || !session.apiToken) {
     return { status: 401, body: { error: "Sessão inválida ou vencida." } };
   }
   const query = search.toString();
+  const path = `/v1/admin/${segments.join("/")}`;
   try {
-    const response = await fetch(`${apiBase()}/v1/admin/${segments.join("/")}${query ? `?${query}` : ""}`, {
+    const response = await fetch(`${apiBase()}${path}${query ? `?${query}` : ""}`, {
       method,
       headers: {
         accept: "application/json",
         authorization: `Bearer ${session.apiToken}`,
         ...(body !== undefined ? { "content-type": "application/json" } : {}),
+        ...(forwardedFor ? { "x-forwarded-for": forwardedFor } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       cache: "no-store",
       signal: AbortSignal.timeout(8_000),
     });
     const json = await readJson(response);
+    if (routeMissing(response.status, json)) {
+      return { status: response.status, body: { error: `A API não tem ${method} ${path}.`, source: "api" } };
+    }
     return { status: response.status, body: withSource(json, "api") };
   } catch {
     return { status: 503, body: { error: "A API de admin está fora do ar.", source: "api" } };
@@ -133,12 +153,19 @@ function isWaitlistAdmin(segments: string[]): boolean {
   return segments[0] === "drops" && segments.includes("waitlist");
 }
 
-export async function handleAdminData(session: SessionPayload, method: string, segments: string[], search: URLSearchParams, body: unknown): Promise<AdminHandlerResult> {
+export async function handleAdminData(
+  session: SessionPayload,
+  method: string,
+  segments: string[],
+  search: URLSearchParams,
+  body: unknown,
+  forwardedFor?: string,
+): Promise<AdminHandlerResult> {
   const resource = RESOURCE[segments[0] ?? ""];
   if (!resource) return { status: 404, body: { error: "Rota admin não encontrada." } };
   if (isWaitlistAdmin(segments) && session.role !== "dono") {
     return { status: 403, body: { error: "Seu papel não faz isso." } };
   }
   if (!canAccess(session.role, resource)) return { status: 403, body: { error: "Seu papel não faz isso." } };
-  return callApi(session, method, segments, search, body);
+  return callApi(session, method, segments, search, body, forwardedFor);
 }

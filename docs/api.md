@@ -102,7 +102,9 @@ Sem token no JSON.
 
 O site não conta falha de login. `POST /api/admin/session` repassa o status, o JSON e o `Retry-After` da API. `401` chega como `{ "error": "E-mail ou senha não confere." }`. `429` chega como `{ "error": "Muitas tentativas de login. Espera alguns minutos." }` com o `Retry-After` da API.
 
-O CRUD do painel não grava `apps/web/.data/admin-mock.json`. Se a API não responde, a tela mostra o erro e não diz que salvou.
+O CRUD do painel não grava `apps/web/.data/admin-mock.json`. Se a API não responde, a tela mostra o erro e não diz que salvou. `/api/admin/data` é o outro proxy do admin: cada chamada acrescenta o IP do cliente no fim de `X-Forwarded-For` e repassa o status da API. Rota ainda inexistente vira erro (`A API não tem GET /v1/admin/...`), sem cair no mock.
+
+O painel abre e grava influencer, autor, post e banner em `/v1/admin/<recurso>/:id`. Categoria e objetivo usam o slug no `PATCH` e no `DELETE`.
 
 ## Rotas do admin
 
@@ -121,9 +123,9 @@ O identificador da URL é o da coluna abaixo. Onde o painel chama o campo de `id
 | Cupons | `code` (a resposta usa esse valor em `id`) | `GET /coupons` | `GET /coupons/:code` | `POST /coupons` | `PATCH /coupons/:code` | `DELETE /coupons/:code` | editor |
 | Categorias | `slug` | `GET /categories` | `GET /categories/:slug` | `POST /categories` | `PATCH /categories/:slug` | `DELETE /categories/:slug` | editor |
 | Objetivos | `slug` | `GET /goals` e `GET /categories?kind=objetivo` | `GET /goals/:slug` ou `GET /categories/:slug` | `POST /goals` ou `POST /categories` com `kind: "objetivo"` | `PATCH` nos dois caminhos | `DELETE` nos dois caminhos | editor |
-| Influencers | `slug` (igual a `id`) | `GET /influencers` | `GET /influencers/:slug` | `POST /influencers` | `PATCH /influencers/:slug` | `DELETE /influencers/:slug` desativa | editor |
+| Influencers | `id` | `GET /influencers` | `GET /influencers/:id` | `POST /influencers` | `PATCH /influencers/:id` | `DELETE /influencers/:id` desativa | editor |
 | Autores | `id` | `GET /authors` | `GET /authors/:id` | `POST /authors` | `PATCH /authors/:id` | `DELETE /authors/:id` | editor |
-| Posts | `slug` (igual a `id`) | `GET /posts` | `GET /posts/:slug` | `POST /posts` | `PATCH /posts/:slug` | `DELETE /posts/:slug` arquiva | editor |
+| Posts | `id` | `GET /posts` | `GET /posts/:id` | `POST /posts` | `PATCH /posts/:id` | `DELETE /posts/:id` arquiva | editor |
 | Promoções | `id` | `GET /promotions` | `GET /promotions/:id` | `POST /promotions` | `PATCH /promotions/:id` | `DELETE /promotions/:id` desativa | editor |
 | Drops | `id` | `GET /drops` | `GET /drops/:id` | `POST /drops` | `PATCH /drops/:id` | `DELETE /drops/:id` encerra | editor |
 | Lista de espera | `id` do drop ou e-mail | `GET /drops/:id/waitlist` | — | — | — | `POST /drops/waitlist/anonymize` e `POST /drops/waitlist/erase` | editor |

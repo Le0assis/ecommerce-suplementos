@@ -216,6 +216,7 @@ export function InfluencerListScreen() {
         resource="influencers"
         newHref="/admin/influencers/novo"
         editHref={(item) => `/admin/influencers/${item.id}`}
+        rowKey={(item) => item.id}
         removeLabel="Desativar"
         columns={[
           { header: "Nome", cell: (item) => item.name },
@@ -248,6 +249,7 @@ export function BlogScreen() {
         resource="posts"
         newHref="/admin/blog/novo"
         editHref={(item) => `/admin/blog/${item.id}`}
+        rowKey={(item) => item.id}
         removeLabel="Arquivar"
         columns={[
           { header: "Título", cell: (item) => item.title },
@@ -261,6 +263,7 @@ export function BlogScreen() {
         description="Um autor pode ser alguém de fora ou um influencer da collab."
         resource="authors"
         write="post"
+        rowKey={(item) => item.id}
         blank={() => ({ id: "", name: "", photoUrl: null, bio: "", influencerId: null })}
         fields={authorFields}
         columns={[
@@ -761,6 +764,7 @@ export function BannersScreen() {
         title="Vitrine"
         description="Hero, faixa e destaques. A home lê GET /v1/banners. Criar é POST. Editar é PATCH /banners/:id."
         resource="banners"
+        rowKey={(item) => item.id}
         write="post"
         validate={(draft) => bannerHrefError(draft.href)}
         blank={(): AdminBanner => ({ id: "", slot: "destaque", title: "", subtitle: "", href: "/", imageUrl: null, accent: "#d6ff3c", position: 0, active: true, startsAt: null, endsAt: null })}

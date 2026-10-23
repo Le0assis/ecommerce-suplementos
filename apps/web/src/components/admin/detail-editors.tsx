@@ -130,9 +130,13 @@ export function InfluencerEditor({ influencerId }: { influencerId: string }) {
     try {
       const saved = isNew || !person.id
         ? await adminFetch<AdminOne<AdminInfluencer>>("influencers", { method: "POST", body: JSON.stringify(payload) })
-        : await adminFetch<AdminOne<AdminInfluencer>>(`influencers/${encodeURIComponent(influencerId)}`, { method: "PATCH", body: JSON.stringify(payload) });
+        : await adminFetch<AdminOne<AdminInfluencer>>(`influencers/${encodeURIComponent(person.id)}`, { method: "PATCH", body: JSON.stringify(payload) });
       if (isNew || !person.id) {
-        router.push(`/admin/influencers/${saved.item.id || saved.item.slug}`);
+        if (!saved.item.id) {
+          setError("A API não devolveu o id do influencer.");
+          return;
+        }
+        router.push(`/admin/influencers/${saved.item.id}`);
         router.refresh();
         return;
       }
@@ -279,9 +283,13 @@ export function PostEditor({ postId }: { postId: string }) {
     try {
       const saved = isNew || !post.id
         ? await adminFetch<AdminOne<AdminPost>>("posts", { method: "POST", body: JSON.stringify(payload) })
-        : await adminFetch<AdminOne<AdminPost>>(`posts/${encodeURIComponent(postId)}`, { method: "PATCH", body: JSON.stringify(payload) });
+        : await adminFetch<AdminOne<AdminPost>>(`posts/${encodeURIComponent(post.id)}`, { method: "PATCH", body: JSON.stringify(payload) });
       if (isNew || !post.id) {
-        router.push(`/admin/blog/${saved.item.id || saved.item.slug}`);
+        if (!saved.item.id) {
+          setError("A API não devolveu o id do post.");
+          return;
+        }
+        router.push(`/admin/blog/${saved.item.id}`);
         router.refresh();
         return;
       }

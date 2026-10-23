@@ -181,7 +181,18 @@ export function CollectionScreen<T extends object>({
                   <div className="flex flex-wrap gap-2">
                     {editHref ? <Button asChild size="sm" variant="outline"><Link href={editHref(item)}>Editar</Link></Button> : null}
                     {!editHref && (fields || renderEditor) ? (
-                      <Button size="sm" variant="outline" type="button" onClick={() => { setDraft(item); setEditingKey(rowId(item, rowKey)); setNotice(null); setError(null); }}>Editar</Button>
+                      <Button size="sm" variant="outline" type="button" onClick={() => {
+                        const key = rowId(item, rowKey);
+                        if (!key) {
+                          setNotice(null);
+                          setError("Sem identificador para editar.");
+                          return;
+                        }
+                        setDraft(item);
+                        setEditingKey(key);
+                        setNotice(null);
+                        setError(null);
+                      }}>Editar</Button>
                     ) : null}
                     {removeLabel ? (
                       confirmId === rowId(item, rowKey) ? (
