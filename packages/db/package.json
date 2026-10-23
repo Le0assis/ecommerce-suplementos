@@ -14,10 +14,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "migrate": "tsx src/migrate.ts",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "create-owner": "tsx src/create-owner.ts"
   },
   "dependencies": {
     "@pulso/data": "workspace:*",
+    "@pulso/domain": "workspace:*",
     "dotenv": "^17.2.3",
     "pg": "^8.16.3"
   },

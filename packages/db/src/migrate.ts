@@ -1,15 +1,30 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "./env";
 import { closePool, getPool } from "./pool";
 
+export function migrationFiles(directory: string): string[] {
+  return readdirSync(directory)
+    .filter((name) => /^\d+.+\.sql$/.test(name))
+    .sort();
+}
+
 export async function migrate(): Promise<void> {
   loadEnv();
   const here = dirname(fileURLToPath(import.meta.url));
-  const sql = readFileSync(resolve(here, "../sql/001_init.sql"), "utf8");
+  const directory = resolve(here, "../sql");
+  const files = migrationFiles(directory);
   const pool = getPool();
-  await pool.query(sql);
+  for (const file of files) {
+    const sql = readFileSync(resolve(directory, file), "utf8");
+    try {
+      await pool.query(sql);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${file}: ${message}`);
+    }
+  }
 }
 
 if (process.argv[1] && process.argv[1].includes("migrate")) {
