@@ -41,6 +41,7 @@ interface DropSeed {
   story: string;
   status: "em_breve" | "no_ar" | "encerrado";
   trustUnits: boolean;
+  waitlistCount?: number;
 }
 
 function shortText(value: string): string {
@@ -68,8 +69,8 @@ function decorate(seed: DropSeed, now: number, counts: Record<string, number>, d
   const flavor = seed.flavorId ? product?.flavors.find((item) => item.id === seed.flavorId) : undefined;
   const swatch = flavor ?? product?.flavors.find((item) => item.limited) ?? product?.flavors[0];
   const influencer = product?.influencerSlug ? influencers.find((item) => item.slug === product.influencerSlug) : undefined;
-  const stock = adminStock(db, seed.productId, seed.flavorId) ?? catalogStock(seed.productId, seed.flavorId);
-  const unitsLeft = seed.trustUnits ? seed.unitsLeft : (stock ?? seed.unitsLeft);
+  const flavorMin = adminStock(db, seed.productId, seed.flavorId) ?? catalogStock(seed.productId, seed.flavorId);
+  const unitsLeft = seed.trustUnits ? seed.unitsLeft : (seed.unitsLeft ?? flavorMin);
   const unitsTotal = seed.unitsTotal !== null && (unitsLeft === null || seed.unitsTotal >= unitsLeft) ? seed.unitsTotal : null;
   const state = dropViewState({ status: seed.status, startsAt: seed.startsAt, endsAt: seed.endsAt, unitsLeft }, now);
   const story = seed.story.trim() || flavor?.tagline || "";
@@ -91,7 +92,7 @@ function decorate(seed: DropSeed, now: number, counts: Record<string, number>, d
     ingredients: product ? shortText(product.label.ingredients) : "",
     influencerName: influencer?.name ?? null,
     state,
-    waitlistCount: counts[seed.id] ?? 0,
+    waitlistCount: seed.waitlistCount ?? counts[seed.id] ?? 0,
     buyHref: state === "no_ar" && product ? `/loja/${product.slug}${flavor ? `?sabor=${flavor.id}` : ""}` : null,
   };
 }
@@ -128,7 +129,7 @@ function fromCatalog(db: AdminDb | null): DropSeed[] {
       startsAt: null,
       endsAt: product.drop.endsAt,
       unitsTotal: null,
-      unitsLeft: null,
+      unitsLeft: flavor ? null : product.drop.unitsLeft,
       teaser: "",
       heroImageUrl: null,
       story: "",
@@ -169,6 +170,7 @@ function fromApi(drops: Partial<DropSeed>[], source: string): DropSeed[] {
       endsAt: drop.endsAt ?? null,
       unitsTotal: typeof drop.unitsTotal === "number" ? drop.unitsTotal : null,
       unitsLeft: typeof drop.unitsLeft === "number" ? drop.unitsLeft : null,
+      waitlistCount: typeof drop.waitlistCount === "number" ? drop.waitlistCount : undefined,
       teaser: drop.teaser ?? "",
       heroImageUrl: drop.heroImageUrl ?? null,
       story: drop.story ?? "",

@@ -59,6 +59,8 @@ describe("autores, blocos e fotos do influencer", () => {
     expect(influencer.status).toBe(201);
     const card = await app.request("/v1/influencers/luna-teste");
     const body = await card.json();
+    expect(body.source).toBe("postgres");
+    expect(body.influencer.path).toBe("/atletas/luna-teste");
     expect(body.influencer.images[0]).toMatchObject({ url: null, fallbackHex: "#ff5cae", alt: "Retrato em cor rosa" });
     expect(body.influencer.quotes[0].body).toBe("Sabor antes do shape.");
     expect(body.influencer.story).toContain("história");
@@ -98,8 +100,11 @@ describe("autores, blocos e fotos do influencer", () => {
     const draftRow = await sql.query<{ published_at: string | null }>("select published_at from posts where slug = 'rascunho-sem-data'");
     expect(draftRow.rows[0]?.published_at).toBeNull();
     const listed = await app.request("/v1/posts?influencer=luna-teste");
-    const posts = (await listed.json()).posts;
+    const listedBody = await listed.json();
+    expect(listedBody.source).toBe("postgres");
+    const posts = listedBody.posts;
     expect(posts).toHaveLength(1);
+    expect(posts[0].path).toBe("/blog/collab-luna-teste");
     expect(posts[0].body).toEqual(["Suplemento alimentar não é medicamento."]);
     expect(posts[0].blocks).toHaveLength(2);
     const archived = await app.request("/v1/admin/posts/collab-luna-teste", { method: "DELETE", headers });

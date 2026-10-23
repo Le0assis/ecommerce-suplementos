@@ -1,6 +1,6 @@
 import { ArticleBlocks } from "@/components/content/article-blocks";
 import { AuthorCard } from "@/components/content/author-card";
-import { resolveArticle, type PublicArticle } from "@/server/public-content";
+import { loadPublicArticle, type PublicArticle } from "@/server/public-content";
 import { getPost, posts, products } from "@pulso/data";
 import Link from "next/link";
 import { connection } from "next/server";
@@ -56,7 +56,7 @@ export function Article({ article }: { article: PublicArticle }) {
 
 async function LiveArticle({ slug }: { slug: string }) {
   await connection();
-  const article = resolveArticle(slug);
+  const article = await loadPublicArticle(slug);
   if (!article) notFound();
   return <Article article={article} />;
 }

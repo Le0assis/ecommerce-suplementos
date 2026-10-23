@@ -13,10 +13,19 @@ import Link from "next/link";
 import { useState } from "react";
 import { Countdown } from "@/components/gamification/countdown";
 import { Lift } from "@/components/motion/lift";
+import { scarcityOf } from "@/lib/drop-view";
+
+export interface HomeDropCard {
+  edition: string;
+  name: string;
+  endsAt: string | null;
+  unitsLeft: number | null;
+  unitsTotal: number | null;
+}
 
 const marquee = ["PIX 10% OFF", "SABOR ALTO", "FRETE NO CEP", "DROP 04", "CREATINA TODO DIA", "SEM DESCULPA DE RÓTULO", "COLLAB LUNA"];
 
-export function HomeView() {
+export function HomeView({ dropCard }: { dropCard: HomeDropCard | null }) {
   const { products, influencers, posts, ugc, reviews } = useStoreData();
   const caos = products.find((product) => product.slug === "caos-pre-treino");
   const [flavorId, setFlavorId] = useState(caos?.flavors[0]?.id ?? "");
@@ -111,14 +120,17 @@ export function HomeView() {
         </Link>
       </section>
 
-      {caos?.drop ? (
+      {dropCard ? (
         <section className="mx-auto mt-14 max-w-6xl px-4">
           <div className="flex flex-col justify-between gap-4 rounded-[1.8rem] border border-white/10 bg-black p-6 sm:flex-row sm:items-center">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-pink">{caos.drop.edition}</p>
-              <h2 className="font-display text-5xl leading-none">Melancia Ácida acaba</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-pink">{dropCard.edition}</p>
+              <h2 className="font-display text-5xl leading-none">{dropCard.name} acaba</h2>
+              {scarcityOf(dropCard.unitsLeft, dropCard.unitsTotal) ? (
+                <p className="mt-2 text-sm text-muted-foreground">{scarcityOf(dropCard.unitsLeft, dropCard.unitsTotal)?.text}</p>
+              ) : null}
             </div>
-            <Countdown endsAt={caos.drop.endsAt} />
+            {dropCard.endsAt ? <Countdown endsAt={dropCard.endsAt} /> : null}
             <Button asChild className="rounded-full"><Link href="/drops">Ver drops</Link></Button>
           </div>
         </section>

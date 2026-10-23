@@ -55,17 +55,12 @@ export function AdminShell({ session, children }: { session: AdminSessionView; c
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3 md:px-6">
           <div>
             <p className="text-sm">{session.user.email}</p>
-            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{ROLE_LABEL[session.user.role]} · {session.source === "api" ? "API" : "adaptador local"}</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{ROLE_LABEL[session.user.role]} · API</p>
           </div>
           <Button type="button" variant="outline" className="rounded-full" onClick={() => void logout()} disabled={leaving}>
             Sair
           </Button>
         </header>
-        {session.source === "adapter" ? (
-          <p className="border-b border-white/10 px-4 py-2 text-xs text-muted-foreground md:px-6">
-            A API ainda não publicou `/v1/admin`. As mudanças ficam no adaptador do servidor, fora do Git, até o backend assumir.
-          </p>
-        ) : null}
         {session.devSecret ? (
           <p className="border-b border-white/10 px-4 py-2 text-xs text-pink md:px-6">
             Defina `ADMIN_SESSION_SECRET` no servidor antes de publicar. O cookie está assinado com o segredo de desenvolvimento.

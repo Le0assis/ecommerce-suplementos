@@ -12,6 +12,7 @@ Para instalar e rodar do zero, comece pelo [README da raiz](../README.md). Esta 
 | [funcionalidades.md](funcionalidades.md) | Cada fluxo: o que é, onde está, como estender |
 | [modelo-de-dados.md](modelo-de-dados.md) | Tipos TypeScript e tabelas SQL |
 | [contratos-api.md](contratos-api.md) | Rotas HTTP da API |
+| [api.md](api.md) | Login do admin (cookie, papéis, revogação) e as rotas públicas novas |
 | [design-system.md](design-system.md) | Cor, tipo, componente, movimento |
 | [convencoes.md](convencoes.md) | Como escrever código neste repo |
 | [como-rodar.md](como-rodar.md) | Atalho de comandos |

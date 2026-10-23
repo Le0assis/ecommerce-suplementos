@@ -42,6 +42,14 @@ function limited(key: string): boolean {
   return current.count > 60;
 }
 
+function publicInfluencer<T extends { slug: string }>(influencer: T): T & { path: string } {
+  return { ...influencer, path: `/atletas/${influencer.slug}` };
+}
+
+function publicPost<T extends { slug: string }>(post: T): T & { path: string } {
+  return { ...post, path: `/blog/${post.slug}` };
+}
+
 async function couponSource(sql?: Sql): Promise<Coupon[]> {
   if (sql) return readPublicCoupons(sql);
   if (process.env.API_DATA_SOURCE === "postgres" && process.env.DATABASE_URL) return readPublicCoupons(fromPgPool(getPool()));
@@ -127,36 +135,36 @@ app.get("/v1/products/:slug", async (c) => {
 
   app.get("/v1/influencers", async (c) => {
     const sql = dataSql();
-    if (!sql) return c.json({ influencers });
+    if (!sql) return c.json({ source: "mock", influencers: influencers.map(publicInfluencer) });
     const rows = await listInfluencers(sql, false);
-    return c.json({ influencers: rows.map(toPublicInfluencer) });
+    return c.json({ source: "postgres", influencers: rows.map((row) => publicInfluencer(toPublicInfluencer(row))) });
   });
   app.get("/v1/influencers/:slug", async (c) => {
     const sql = dataSql();
     if (!sql) {
       const influencer = getInfluencer(c.req.param("slug"));
       if (!influencer) return c.json({ error: "Atleta não encontrado." }, 404);
-      return c.json({ influencer });
+      return c.json({ source: "mock", influencer: publicInfluencer(influencer) });
     }
     const row = (await listInfluencers(sql, false)).find((item) => item.slug === c.req.param("slug"));
     if (!row) return c.json({ error: "Atleta não encontrado." }, 404);
-    return c.json({ influencer: toPublicInfluencer(row) });
+    return c.json({ source: "postgres", influencer: publicInfluencer(toPublicInfluencer(row)) });
   });
   app.get("/v1/posts", async (c) => {
     const sql = dataSql();
-    if (!sql) return c.json({ posts });
-    return c.json({ posts: await readPublicPosts(sql, c.req.query("influencer") || undefined) });
+    if (!sql) return c.json({ source: "mock", posts: posts.map(publicPost) });
+    return c.json({ source: "postgres", posts: (await readPublicPosts(sql, c.req.query("influencer") || undefined)).map(publicPost) });
   });
   app.get("/v1/posts/:slug", async (c) => {
     const sql = dataSql();
     if (!sql) {
       const post = getPost(c.req.param("slug"));
       if (!post) return c.json({ error: "Texto não encontrado." }, 404);
-      return c.json({ post });
+      return c.json({ source: "mock", post: publicPost(post) });
     }
     const post = (await readPublicPosts(sql)).find((item) => item.slug === c.req.param("slug"));
     if (!post) return c.json({ error: "Texto não encontrado." }, 404);
-    return c.json({ post });
+    return c.json({ source: "postgres", post: publicPost(post) });
   });
   app.get("/v1/ugc", async (c) => {
     const sql = dataSql();

@@ -3,20 +3,21 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:f
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
-import { adapterPasswordOk, passwordsMatch, peekBlocked, registerFailure, signSession, toPublicUser, verifySession, type SessionPayload } from "@/server/admin-session";
-import { archiveProduct, createCoupon, createProduct, deleteCoupon, readAdminDb } from "@/server/admin-store";
+import { peekBlocked, registerFailure, signSession, toPublicUser, verifySession, type SessionPayload } from "@/server/admin-session";
+import { archiveProduct, createCoupon, createProduct, deleteCoupon, readAdminDb, updateProduct } from "@/server/admin-store";
 
 const secret = "test-session-secret-32chars-min";
 
 function payload(overrides: Partial<SessionPayload> = {}): SessionPayload {
   return {
     v: 1,
-    sub: "dono-local",
-    email: "dono@pulso.local",
+    sub: "dono",
+    email: "dono@pulso.test",
     name: "Dono",
     role: "dono",
     exp: Math.floor(Date.now() / 1000) + 60,
-    src: "adapter",
+    src: "api",
+    apiToken: "token-da-api",
     ...overrides,
   };
 }
@@ -24,25 +25,12 @@ function payload(overrides: Partial<SessionPayload> = {}): SessionPayload {
 test("a sessão assinada volta e a adulterada não", () => {
   const token = signSession(payload({ apiToken: "segredo-da-api" }), secret);
   const verified = verifySession(token, Date.now(), secret);
-  assert.equal(verified?.sub, "dono-local");
+  assert.equal(verified?.sub, "dono");
+  assert.equal(verifySession(signSession(payload({ src: "adapter", apiToken: undefined }), secret), Date.now(), secret), null);
   assert.equal(JSON.stringify(toPublicUser(verified!)).includes("segredo-da-api"), false);
   const [body, mac] = token.split(".");
   assert.equal(verifySession(`${body}.${mac?.slice(0, -1)}x`, Date.now(), secret), null);
   assert.equal(verifySession(token, Date.now() + 120_000, secret), null);
-});
-
-test("a senha do adaptador só confere com ADMIN_PASSWORD", () => {
-  const previous = process.env.ADMIN_PASSWORD;
-  process.env.ADMIN_PASSWORD = "pulso-teste";
-  assert.equal(passwordsMatch("pulso-teste", "pulso-teste"), true);
-  assert.equal(adapterPasswordOk("pulso-teste").ok, true);
-  assert.equal(adapterPasswordOk("outra").ok, false);
-  delete process.env.ADMIN_PASSWORD;
-  assert.equal(adapterPasswordOk("pulso-teste").ok, false);
-  process.env.ADMIN_PASSWORD = "pulso-admin";
-  assert.equal(adapterPasswordOk("pulso-admin").ok, false);
-  if (previous === undefined) delete process.env.ADMIN_PASSWORD;
-  else process.env.ADMIN_PASSWORD = previous;
 });
 
 test("oito senhas erradas travam o próximo pedido", () => {
@@ -87,6 +75,13 @@ test("produto se arquiva e cupom usado não se apaga", () => {
     });
     assert.equal(created.product.id, "teste-admin");
     assert.equal(created.product.status, "rascunho");
+    const current = db.products.find((product) => product.variants.length > 0);
+    const variant = current?.variants[0];
+    assert.ok(current && variant);
+    assert.throws(
+      () => updateProduct(db, current.id, { ...current, status: "rascunho", variants: [{ ...variant, servings: 0 }] }),
+      /porção/,
+    );
   } finally {
     if (previous === undefined) delete process.env.ADMIN_MOCK_PATH;
     else process.env.ADMIN_MOCK_PATH = previous;

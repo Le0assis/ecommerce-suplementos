@@ -33,4 +33,4 @@ Atualizado na etapa 1 (fundação). As referências de mercado e a tabela das 6 
 
 ## Não vender com este build
 
-Registro ANVISA fictício, sem nota fiscal, sem gateway, conta da loja sem hash de senha. A senha do admin saiu do bundle e ficou em `ADMIN_PASSWORD`. O rodapé já diz que é protótipo.
+Registro ANVISA fictício, sem nota fiscal, sem gateway, conta da loja sem hash de senha. O admin entra pela API, com hash scrypt em `admin_users` e sessão revogável. O rodapé já diz que é protótipo.

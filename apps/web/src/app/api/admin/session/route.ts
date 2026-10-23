@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { loginAgainstApi } from "@/server/admin-client";
-import { currentSession } from "@/server/admin-current";
+import { currentAdminView, currentSession } from "@/server/admin-current";
 import {
-  adapterPasswordOk,
   clearFailures,
   COOKIE_NAME,
   peekBlocked,
@@ -10,7 +9,6 @@ import {
   SESSION_SECONDS,
   signSession,
   toPublicUser,
-  usingDevSessionSecret,
   type SessionPayload,
 } from "@/server/admin-session";
 
@@ -49,9 +47,9 @@ function clientKey(request: Request): string {
 }
 
 export async function GET() {
-  const session = await currentSession();
-  if (!session) return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
-  return NextResponse.json({ user: toPublicUser(session), source: session.src, devSecret: usingDevSessionSecret() });
+  const view = await currentAdminView();
+  if (!view) return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
+  return NextResponse.json({ user: view.user, source: view.source, devSecret: view.devSecret });
 }
 
 export async function POST(request: Request) {
@@ -70,50 +68,41 @@ export async function POST(request: Request) {
   if (!password) return NextResponse.json({ error: "Informe a senha." }, { status: 400 });
 
   const remote = await loginAgainstApi(email, password);
-  if (remote && !remote.ok) {
+  if (!remote) {
+    return NextResponse.json({ error: "A API de admin está fora do ar." }, { status: 503 });
+  }
+  if (!remote.ok) {
     if (remote.status === 401 || remote.status === 403) registerFailure(key);
     return NextResponse.json({ error: remote.error }, { status: remote.status });
   }
 
-  let payload: SessionPayload;
-  if (remote?.ok) {
-    payload = {
-      v: 1,
-      sub: remote.user.id,
-      email: remote.user.email,
-      name: remote.user.name,
-      role: remote.user.role,
-      exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS,
-      src: "api",
-      apiToken: remote.token,
-    };
-  } else {
-    const checked = adapterPasswordOk(password);
-    if (!checked.ok) {
-      if (checked.status === 401) registerFailure(key);
-      return NextResponse.json({ error: checked.error }, { status: checked.status });
-    }
-    payload = {
-      v: 1,
-      sub: "dono-local",
-      email,
-      name: "Dono",
-      role: "dono",
-      exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS,
-      src: "adapter",
-    };
-  }
+  const payload: SessionPayload = {
+    v: 1,
+    sub: remote.user.id,
+    email: remote.user.email,
+    name: remote.user.name,
+    role: remote.user.role,
+    exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS,
+    src: "api",
+    apiToken: remote.token,
+  };
 
+  let signed: string;
+  try {
+    signed = signSession(payload);
+  } catch {
+    return NextResponse.json({ error: "Sessão do site sem segredo. Defina ADMIN_SESSION_SECRET." }, { status: 503 });
+  }
   clearFailures(key);
   const response = NextResponse.json({ user: toPublicUser(payload), source: payload.src });
-  writeCookie(response, request, signSession(payload), SESSION_SECONDS);
+  writeCookie(response, request, signed, SESSION_SECONDS);
   return response;
 }
 
 export async function DELETE(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "Origem recusada." }, { status: 403 });
   const session = await currentSession();
-  if (session?.src === "api" && session.apiToken) {
+  if (session?.apiToken) {
     try {
       await fetch(`${(process.env.API_URL ?? "http://127.0.0.1:8787").replace(/\/$/, "")}/v1/admin/logout`, {
         method: "POST",

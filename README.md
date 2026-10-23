@@ -10,7 +10,7 @@ A documentação para quem vai evoluir o código está em [docs/](docs/README.md
 
 O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 6, em cima das etapas 1 a 5.
 
-Operação: `/admin` entra com a senha do servidor (`ADMIN_PASSWORD`). O valor de exemplo `pulso-admin` não entra. A senha não vai para o JavaScript. Na conta, “Baixar meus dados” gera um JSON sem a senha. “Apagar conta neste aparelho” tira o usuário deste navegador. O guia de publicação está em [docs/deploy.md](docs/deploy.md).
+Operação: `/admin` entra com a conta da API (`dono`, `editor` ou `atendimento`). Não há senha única no `.env`. A senha não vai para o JavaScript. Na conta da loja, “Baixar meus dados” gera um JSON sem a senha. “Apagar conta neste aparelho” tira o usuário deste navegador. O guia de publicação está em [docs/deploy.md](docs/deploy.md). O contrato do login está em [docs/api.md](docs/api.md).
 
 Conteúdo: `/conteudo` lista o que está publicado. Na home, a faixa “No ar” troca de quadro e mostra a transcrição do spot. A foto de avaliação abre num diálogo e é um bloco de cor, com texto alternativo.
 
@@ -32,7 +32,7 @@ O protótipo anterior já deixava a maior parte das telas navegáveis. Cada etap
 - O site em [http://127.0.0.1:43123](http://127.0.0.1:43123)
 - A API em [http://127.0.0.1:8787/health](http://127.0.0.1:8787/health), se você subir o backend
 - Uma conta de demonstração: `ana@pulso.dev` / `pulso123`
-- A tela `/admin` com a senha de `ADMIN_PASSWORD` (troque o exemplo `pulso-admin`; ele é recusado)
+- A tela `/admin` com a conta criada por `pnpm --filter @pulso/db create-owner` (a API precisa estar no ar)
 
 O site funciona **sem Docker e sem banco**. O catálogo mora no código. Postgres e Redis são opcionais e servem para a API ler os mesmos produtos de um banco de verdade.
 
@@ -247,12 +247,12 @@ Abra o `.env` num editor de texto. Cada linha `NOME=valor` é uma variável. Lin
 | `NEXT_PUBLIC_SITE_URL` | `http://127.0.0.1:43123` | URL pública do site, usada em SEO (sitemap, metadados). Se mudar `WEB_PORT`, mude aqui também. Variáveis `NEXT_PUBLIC_` entram no JavaScript do navegador. |
 | `NEXT_PUBLIC_PIX_DISCOUNT` | `10` | Porcentagem inteira do desconto de Pix **mostrada** na interface. A conta do carrinho usa a regra do pacote `@pulso/domain` (também 10%). |
 | `NEXT_PUBLIC_FREE_SHIPPING_CENTS` | `29900` | Piso do frete PAC grátis em **centavos**. `29900` é R$ 299,00. Níveis Bruto e Lenda podem baixar esse piso na regra de domínio. |
-| `ADMIN_PASSWORD` | (defina uma senha) | Senha de fallback do `/admin` quando a API está fora. **Só o servidor lê.** Não use o prefixo `NEXT_PUBLIC_`. O valor de exemplo `pulso-admin` é recusado. O navegador manda a senha para o route handler e recebe um cookie httpOnly. |
+| `ADMIN_OWNER_EMAIL` | `dono@pulso.local` | E-mail da conta dono. O script `pnpm --filter @pulso/db create-owner` lê esta variável. O `/admin` não tem senha no `.env`. |
 | `API_PORT` | `8787` | Porta da API Hono. |
 | `API_DATA_SOURCE` | `mock` | `mock`: a API responde com o catálogo em memória. `postgres`: a API monta o produto pelas tabelas normalizadas (`product_flavors`, `product_variants`, rótulo, fotos). A coluna `products.payload` deixa de ser a leitura. Aí você precisa do Docker, da migração e do seed. |
 | `DATABASE_URL` | `postgres://pulso:pulso@127.0.0.1:5432/pulso` | Conexão do Postgres local. Usuário `pulso`, senha `pulso`, banco `pulso`, porta `5432`. Só vale para esta máquina. |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Cache opcional da API (chave `catalog:products`, 60 segundos). Se apagar a linha, a API não tenta Redis. |
-| `ADMIN_SESSION_SECRET` | (troque o exemplo) | Segredo que assina a sessão do admin (12 horas). O site usa o cookie `pulso_admin_session`. A API usa o cookie `pulso_admin`. O painel lê esse cookie e manda Bearer. Só o servidor lê. Em produção o valor `pulso-dev-session-change-me` não assina. |
+| `ADMIN_SESSION_SECRET` | (troque o exemplo) | Segredo que assina a sessão do admin (12 horas). O site usa o cookie `pulso_admin_session`. A API usa o cookie `pulso_admin`. O painel manda esse token como Bearer e confere `GET /v1/admin/me`. Só o servidor lê. Em produção o valor `pulso-dev-session-change-me` não assina. |
 | `PAYMENT_GATEWAY` | `auto` | Sandbox. `auto` manda Pix e boleto ao Mercado Pago e cartão à Pagar.me. `mercadopago` ou `pagarme` força o gateway. Não coloque token real. A confirmação mostra um id `mp_sandbox_` ou `pm_sandbox_`. |
 
 O arquivo `.env` está no `.gitignore`. Não faça commit dele.
@@ -403,7 +403,7 @@ O Turborepo sobe site e API no mesmo terminal. `Ctrl+C` para os dois.
 4. Checkout. CEP de teste: `01310-100` (Avenida Paulista). CPF de teste: `529.982.247-25`. Cartão de teste: `4242 4242 4242 4242`, validade futura, qualquer CVV.
 5. Marque 18+, termos e LGPD. A confirmação mostra Pix ou boleto com o aviso de simulação.
 6. Entrar com `ana@pulso.dev` / `pulso123`. Ela já tem pedido, pontos e nível.
-7. `/raspadinha` uma vez por dia (fuso de São Paulo). `/quiz` e `/calculadora`. `/admin` com o e-mail `dono@pulso.local` e a senha de `ADMIN_PASSWORD`.
+7. `/raspadinha` uma vez por dia (fuso de São Paulo). `/quiz` e `/calculadora`. `/admin` com o e-mail e a senha da conta criada por `create-owner`. A API precisa estar no ar.
 
 Cupons que funcionam: `LUNA15`, `CAIO10`, `NANDA10`, `THEO10`, `PULSO10`, `RASPA5`, `RASPA10`, `RASPAFRETE`. `VENCIDO` existe e está inativo.
 
@@ -481,7 +481,7 @@ No Windows PowerShell: `Remove-Item -Recurse -Force apps/web/.next`.
 Esperado neste protótipo. As páginas leem `@pulso/data`. A função pronta para a troca é `loadStorefront` em `apps/web/src/server/catalog.ts`. A API, sim, obedece `API_DATA_SOURCE`.
 
 **`/admin` recusa a senha.**  
-A senha é `ADMIN_PASSWORD` no `.env` da raiz, lida só pelo servidor. Reinicie `pnpm dev` depois de editar. O exemplo `pulso-admin` não entra: troque por outra senha. O cookie da sessão precisa de `ADMIN_SESSION_SECRET` diferente do exemplo antes de publicar.
+A conta está em `admin_users`, não numa variável do site. Crie o dono com `pnpm --filter @pulso/db create-owner` e entre com esse e-mail. A API precisa responder em `API_URL`. Se ela estiver fora, o login devolve 503. O cookie da sessão precisa de `ADMIN_SESSION_SECRET` diferente do exemplo antes de publicar.
 
 **Carrinho ou login “fantasma”.**  
 O estado fica no `localStorage`, chave `pulso-store`. Limpe o armazenamento do site no navegador (seção 10).

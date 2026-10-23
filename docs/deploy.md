@@ -6,12 +6,12 @@ Este guia publica a **demonstração**. Pix, boleto e cartão continuam sandbox.
 
 | Peça | Como | Variáveis |
 | --- | --- | --- |
-| Site | `pnpm --filter @pulso/web build` e `pnpm --filter @pulso/web start` | `WEB_PORT`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_PIX_DISCOUNT`, `NEXT_PUBLIC_FREE_SHIPPING_CENTS`, `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET` |
+| Site | `pnpm --filter @pulso/web build` e `pnpm --filter @pulso/web start` | `WEB_PORT`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_PIX_DISCOUNT`, `NEXT_PUBLIC_FREE_SHIPPING_CENTS`, `API_URL`, `ADMIN_SESSION_SECRET` |
 | API | `pnpm --filter @pulso/api start` | `API_PORT`, `API_DATA_SOURCE`, `PAYMENT_GATEWAY`, `DATABASE_URL`, `REDIS_URL` |
 | Postgres | serviço gerenciado, Postgres 16 | usuário e senha **novos**, não `pulso`/`pulso` |
 | Redis | opcional | se não houver, apague `REDIS_URL` |
 
-`ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET` ficam só no servidor. O login grava o cookie httpOnly `pulso_admin_session` por 12 horas. Não publique de novo uma variável `NEXT_PUBLIC_ADMIN_PASSWORD`. Troque os dois segredos antes de um domínio público. `pulso-admin` e `pulso-dev-session-change-me` não valem em produção: a API recusa subir sem `API_DATA_SOURCE=postgres` e `DATABASE_URL`, e recusa assinar sessão com o segredo de exemplo.
+`ADMIN_SESSION_SECRET` fica só no servidor. O login do site grava o cookie httpOnly `pulso_admin_session` por 12 horas e só funciona com a API no ar. Não publique `ADMIN_PASSWORD` nem `NEXT_PUBLIC_ADMIN_PASSWORD`. A conta dono nasce com `pnpm --filter @pulso/db create-owner`. Troque o segredo da sessão antes de um domínio público. `pulso-dev-session-change-me` não assina em produção: a API recusa subir sem `API_DATA_SOURCE=postgres` e `DATABASE_URL`, e recusa assinar sessão com o segredo de exemplo.
 
 ## Passos
 

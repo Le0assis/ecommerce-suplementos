@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { AdminPublicUser, AdminRole } from "@/lib/admin-types";
 
 export const COOKIE_NAME = "pulso_admin_session";
@@ -36,45 +36,35 @@ export function sessionSecret(): string {
   return DEV_SECRET;
 }
 
-export function passwordsMatch(input: string, expected: string): boolean {
-  const left = createHash("sha256").update(input).digest();
-  const right = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(left, right);
-}
-
-export const EXAMPLE_ADMIN_PASSWORD = "pulso-admin";
-
-export function adapterPasswordOk(password: string): { ok: true } | { ok: false; status: number; error: string } {
-  const expected = process.env.ADMIN_PASSWORD;
-  if (!expected || expected === EXAMPLE_ADMIN_PASSWORD) {
-    return { ok: false, status: 503, error: "ADMIN_PASSWORD não está definida no servidor." };
-  }
-  if (password === EXAMPLE_ADMIN_PASSWORD || !passwordsMatch(password, expected)) {
-    return { ok: false, status: 401, error: "Senha não confere." };
-  }
-  return { ok: true };
-}
-
 export function signSession(payload: SessionPayload, secret = sessionSecret()): string {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const mac = createHmac("sha256", secret).update(body).digest("base64url");
   return `${body}.${mac}`;
 }
 
-export function verifySession(token: string | undefined, now = Date.now(), secret = sessionSecret()): SessionPayload | null {
+export function verifySession(token: string | undefined, now?: number, secret?: string): SessionPayload | null {
   if (!token) return null;
+  const clock = now ?? Date.now();
+  let key = secret;
+  if (!key) {
+    try {
+      key = sessionSecret();
+    } catch {
+      return null;
+    }
+  }
   const parts = token.split(".");
   if (parts.length !== 2) return null;
   const [body, mac] = parts;
   if (!body || !mac) return null;
-  const expected = createHmac("sha256", secret).update(body).digest("base64url");
+  const expected = createHmac("sha256", key).update(body).digest("base64url");
   const left = Buffer.from(mac);
   const right = Buffer.from(expected);
   if (left.length !== right.length || !timingSafeEqual(left, right)) return null;
   try {
     const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as SessionPayload;
-    if (payload.v !== 1 || !payload.sub || !payload.role || !payload.exp) return null;
-    if (payload.exp * 1000 <= now) return null;
+    if (payload.v !== 1 || !payload.sub || !payload.role || !payload.exp || payload.src !== "api" || !payload.apiToken) return null;
+    if (payload.exp * 1000 <= clock) return null;
     return payload;
   } catch {
     return null;

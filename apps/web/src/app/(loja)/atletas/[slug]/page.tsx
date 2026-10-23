@@ -1,5 +1,5 @@
 import { CollabView } from "@/components/content/collab-view";
-import { resolveCollab, type CollabPageModel } from "@/server/public-content";
+import { loadPublicCollab, type CollabPageModel } from "@/server/public-content";
 import { getInfluencer, influencers, products } from "@pulso/data";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
@@ -41,7 +41,7 @@ function catalogShell(slug: string): CollabPageModel | null {
 
 async function LiveCollab({ slug }: { slug: string }) {
   await connection();
-  const model = resolveCollab(slug);
+  const model = await loadPublicCollab(slug);
   if (!model) notFound();
   return <CollabView {...model} />;
 }

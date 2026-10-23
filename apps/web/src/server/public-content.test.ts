@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, test } from "vitest";
 import { seedAdminDb } from "@/server/admin-seed";
-import { resolveArticle, resolveCollab } from "@/server/public-content";
+import { listPublicAthletes, resolveArticle, resolveCollab } from "@/server/public-content";
 
 const dirs: string[] = [];
 const previous = process.env.ADMIN_MOCK_PATH;
@@ -52,6 +52,31 @@ test("a collab lê história, quatro frases e a foto do adaptador", () => {
   assert.equal(page.images[0]?.alt, "Retrato");
   assert.equal(page.images[0]?.href, "https://instagram.com/p/demo");
   assert.equal(page.images[0]?.url, null);
+});
+
+test("influencer criado no adaptador abre em /atletas", () => {
+  const file = useFile("admin-mock.json");
+  const db = seedAdminDb();
+  const base = db.influencers[0];
+  assert.ok(base);
+  db.influencers.push({
+    ...base,
+    id: "nova-collab",
+    slug: "nova-collab",
+    name: "Nova Collab",
+    handle: "@nova",
+    active: true,
+    story: "Entrou pelo admin.",
+    quotes: [],
+    images: [],
+    productIds: [],
+  });
+  writeFileSync(file, JSON.stringify(db));
+  const card = listPublicAthletes().find((item) => item.slug === "nova-collab");
+  assert.equal(card?.path, "/atletas/nova-collab");
+  const page = resolveCollab("nova-collab", Date.parse("2026-10-23T12:00:00-03:00"));
+  assert.equal(page?.name, "Nova Collab");
+  assert.equal(page?.story, "Entrou pelo admin.");
 });
 
 test("influencer inativo some da collab e post arquivado some do blog", () => {

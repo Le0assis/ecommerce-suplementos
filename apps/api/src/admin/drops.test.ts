@@ -145,7 +145,9 @@ describe("drops e lista de espera", () => {
     const list = await app.request("/v1/admin/drops/drop-espera/waitlist", { headers });
     expect((await list.json()).items[0].email).toBe("ana@pulso.test");
     const pub = await app.request("/v1/drops");
-    expect(JSON.stringify(await pub.json())).not.toContain("ana@pulso.test");
+    const pubBody = (await pub.json()) as { drops: { id: string; waitlistCount: number }[] };
+    expect(JSON.stringify(pubBody)).not.toContain("ana@pulso.test");
+    expect(pubBody.drops.find((drop) => drop.id === "drop-espera")?.waitlistCount).toBe(1);
 
     const hidden = await app.request("/v1/admin/drops/waitlist/anonymize", {
       method: "POST",
@@ -156,6 +158,10 @@ describe("drops e lista de espera", () => {
     const tomb = await sql.query<{ email: string; anonymized_at: string | null }>("select email, anonymized_at from drop_waitlist");
     expect(tomb.rows[0]?.email).toMatch(/^anon\+.+@apagado\.invalid$/);
     expect(tomb.rows[0]?.anonymized_at).toBeTruthy();
+    const counted = await app.request("/v1/drops");
+    const countedBody = (await counted.json()) as { drops: { id: string; waitlistCount: number }[] };
+    expect(countedBody.drops.find((drop) => drop.id === "drop-espera")?.waitlistCount).toBe(0);
+    expect(JSON.stringify(countedBody)).not.toContain("ana@pulso.test");
     const audit = await sql.query<{ after_data: { removed: number } | string }>(
       "select after_data from audit_log where action = 'waitlist.anonymize'",
     );
@@ -203,15 +209,19 @@ describe("drops e lista de espera", () => {
   it("no mock não completa unitsTotal nem trata nulo como esgotado", async () => {
     const bare = createApp();
     const response = await bare.request("/v1/drops");
-    const body = (await response.json()) as { source: string; drops: { id: string; unitsLeft: number | null; unitsTotal: number | null; state: string }[] };
+    const body = (await response.json()) as { source: string; drops: { id: string; unitsLeft: number | null; unitsTotal: number | null; state: string; waitlistCount: number }[] };
     expect(body.source).toBe("mock");
     const teaser = body.drops.find((drop) => drop.id === "drop-05");
     expect(teaser?.unitsLeft).toBeNull();
     expect(teaser?.unitsTotal).toBeNull();
     expect(teaser?.state).not.toBe("esgotado");
+    expect(teaser?.waitlistCount).toBe(0);
     const live = body.drops.find((drop) => drop.id === "drop-04-melancia");
     expect(live?.unitsTotal).toBeNull();
     expect(live?.unitsLeft).toBe(14);
+    expect(live?.waitlistCount).toBe(0);
+    const luna = body.drops.find((drop) => drop.id === "drop-luna");
+    expect(luna?.unitsLeft).toBe(76);
     const offline = await bare.request("/v1/drops/drop-05/waitlist", {
       method: "POST",
       headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.79" },

@@ -139,7 +139,8 @@ function parseVariant(input: unknown, flavors: AdminFlavor[]): AdminVariant {
   const stock = whole(input.stock, 0);
   const weightGrams = whole(input.weightGrams, 0);
   const servings = whole(input.servings, 0);
-  if (priceCents < 0 || stock < 0 || weightGrams < 0 || servings < 0) throw new AdminRuleError(400, "Preço e estoque não podem ser negativos.");
+  if (priceCents < 0 || stock < 0 || weightGrams < 0) throw new AdminRuleError(400, "Preço e estoque não podem ser negativos.");
+  if (servings < 1) throw new AdminRuleError(400, "A variação precisa de pelo menos uma porção, mesmo em rascunho.");
   if (compareAtCents !== null && compareAtCents < 0) throw new AdminRuleError(400, "O preço riscado não pode ser negativo.");
   const id = text(input.id) || `${flavorId}__${slugify(size)}`;
   return { id, flavorId, size, sku, priceCents, compareAtCents, stock, weightGrams, servings };

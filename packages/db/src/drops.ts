@@ -23,6 +23,7 @@ export interface AdminDrop {
 
 export interface PublicDrop extends AdminDrop {
   state: DropState;
+  waitlistCount: number;
 }
 
 export interface WaitlistEntry {
@@ -118,9 +119,43 @@ function toAdmin(row: DropRow): AdminDrop {
   };
 }
 
-function toPublic(row: DropRow, now: Date): PublicDrop {
-  const item = toAdmin(row);
+function toPublic(row: DropRow, now: Date, unitsLeft: number | null, waitlistCount: number): PublicDrop {
+  const item = { ...toAdmin(row), unitsLeft, waitlistCount };
   return { ...item, state: dropState(item, now) };
+}
+
+async function flavorMinStock(sql: Sql, flavorIds: string[]): Promise<Map<string, number>> {
+  if (!flavorIds.length) return new Map();
+  const rows = await sql.query<{ flavor_id: string; stock: number | string }>(
+    `select flavor_id, coalesce(min(stock), 0)::int as stock
+     from product_variants
+     where flavor_id = any($1::text[])
+     group by flavor_id`,
+    [flavorIds],
+  );
+  return new Map(rows.rows.map((row) => [row.flavor_id, intOrNull(row.stock) ?? 0]));
+}
+
+async function waitlistCounts(sql: Sql, ids: string[]): Promise<Map<string, number>> {
+  if (!ids.length) return new Map();
+  const rows = await sql.query<{ drop_id: string; count: number | string }>(
+    `select drop_id, count(*)::int as count
+     from drop_waitlist
+     where anonymized_at is null and drop_id = any($1::text[])
+     group by drop_id`,
+    [ids],
+  );
+  return new Map(rows.rows.map((row) => [row.drop_id, intOrNull(row.count) ?? 0]));
+}
+
+async function publishRows(sql: Sql, rows: DropRow[], now: Date): Promise<PublicDrop[]> {
+  const flavorIds = rows.map((row) => row.flavor_id).filter((id): id is string => Boolean(id));
+  const [stocks, counts] = await Promise.all([flavorMinStock(sql, flavorIds), waitlistCounts(sql, rows.map((row) => row.id))]);
+  return rows.map((row) => {
+    const fromFlavor = row.flavor_id ? stocks.get(row.flavor_id) : undefined;
+    const unitsLeft = fromFlavor !== undefined ? fromFlavor : intOrNull(row.units_left);
+    return toPublic(row, now, unitsLeft, counts.get(row.id) ?? 0);
+  });
 }
 
 async function resolveProduct(sql: Sql, productId: string): Promise<string> {
@@ -187,13 +222,13 @@ export async function listPublicDrops(sql: Sql, now: Date): Promise<PublicDrop[]
     `select ${DROP_COLUMNS} from drops
      order by case status when 'no_ar' then 0 when 'em_breve' then 1 else 2 end, ends_at asc nulls last, edition asc`,
   );
-  return rows.rows.map((row) => toPublic(row, now));
+  return publishRows(sql, rows.rows, now);
 }
 
 export async function getPublicDrop(sql: Sql, id: string, now: Date): Promise<PublicDrop | null> {
   const rows = await sql.query<DropRow>(`select ${DROP_COLUMNS} from drops where id = $1`, [id]);
   const row = rows.rows[0];
-  return row ? toPublic(row, now) : null;
+  return row ? (await publishRows(sql, [row], now))[0] ?? null : null;
 }
 
 export async function saveDrop(sql: Sql, input: AdminDrop, mode: "insert" | "update"): Promise<AdminDrop> {

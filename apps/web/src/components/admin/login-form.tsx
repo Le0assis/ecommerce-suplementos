@@ -8,7 +8,7 @@ import { useState, type FormEvent } from "react";
 
 export function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState("dono@pulso.local");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -36,11 +36,11 @@ export function LoginForm() {
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-16">
       <Logo />
       <h1 className="mt-6 font-display text-6xl leading-none">Admin</h1>
-      <p className="mt-2 text-sm text-muted-foreground">A senha fica no servidor. O navegador só recebe um cookie httpOnly.</p>
+      <p className="mt-2 text-sm text-muted-foreground">Conta da API: dono, editor ou atendimento. O navegador só recebe um cookie httpOnly.</p>
       <form className="mt-6 space-y-3" onSubmit={(event) => void submit(event)}>
         <label className="block text-sm">
           <span className="mb-1.5 block text-muted-foreground">E-mail</span>
-          <Input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          <Input type="email" autoComplete="username" placeholder="dono@pulso.local" value={email} onChange={(event) => setEmail(event.target.value)} required />
         </label>
         <label className="block text-sm">
           <span className="mb-1.5 block text-muted-foreground">Senha</span>

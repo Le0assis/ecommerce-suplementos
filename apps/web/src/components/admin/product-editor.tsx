@@ -229,7 +229,7 @@ export function ProductEditor({ productId }: { productId: string }) {
             <MoneyField key={`${variant.id}-price-${variant.priceCents}`} label="Preço" cents={variant.priceCents} onChange={(priceCents) => update({ variants: mapVariant(product.variants, variant.id, { priceCents }) })} />
             <MoneyField key={`${variant.id}-compare-${variant.compareAtCents ?? 0}`} label="Preço riscado" cents={variant.compareAtCents ?? 0} onChange={(compareAtCents) => update({ variants: mapVariant(product.variants, variant.id, { compareAtCents: compareAtCents || null }) })} />
             <Field label="Peso (g)"><Input aria-label={`Peso ${variant.sku}`} inputMode="numeric" value={String(variant.weightGrams)} onChange={(event) => update({ variants: mapVariant(product.variants, variant.id, { weightGrams: Math.max(0, Number(event.target.value) || 0) }) })} /></Field>
-            <Field label="Porções"><Input aria-label={`Porções ${variant.sku}`} inputMode="numeric" value={String(variant.servings)} onChange={(event) => update({ variants: mapVariant(product.variants, variant.id, { servings: Math.max(0, Number(event.target.value) || 0) }) })} /></Field>
+            <Field label="Porções"><Input aria-label={`Porções ${variant.sku}`} inputMode="numeric" value={String(variant.servings)} onChange={(event) => update({ variants: mapVariant(product.variants, variant.id, { servings: Math.max(1, Number(event.target.value) || 1) }) })} /></Field>
             <div className="md:col-span-4"><Button type="button" size="sm" variant="outline" onClick={() => update({ variants: product.variants.filter((item) => item.id !== variant.id) })}>Remover variante</Button></div>
           </div>
         ))}
