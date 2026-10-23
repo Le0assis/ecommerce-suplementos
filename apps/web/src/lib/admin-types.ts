@@ -46,10 +46,8 @@ export interface AdminPublicUser {
 
 export interface AdminSessionView {
   user: AdminPublicUser;
-}
-
-export interface AdminActor extends AdminPublicUser {
-  token: string;
+  source: AdminDataSource;
+  devSecret: boolean;
 }
 
 export interface AdminFlavor {
@@ -487,12 +485,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { href: "/admin/clientes", label: "Clientes", resource: "customers" },
   { href: "/admin/vitrine", label: "Vitrine", resource: "banners" },
 ];
-
-export function navResource(pathname: string): AdminResource | null {
-  const matches = ADMIN_NAV.filter((item) => item.href !== "/admin" && (pathname === item.href || pathname.startsWith(`${item.href}/`)));
-  matches.sort((a, b) => b.href.length - a.href.length);
-  return matches[0]?.resource ?? null;
-}
 
 export const PRODUCT_STATUSES: { id: ProductStatus; label: string }[] = [
   { id: "rascunho", label: "Rascunho" },

@@ -1,6 +1,7 @@
-import { canAccess, type AdminActor, type AdminResource } from "@/lib/admin-types";
+import type { AdminPublicUser, AdminResource, AdminRole } from "@/lib/admin-types";
+import { canAccess } from "@/lib/admin-types";
 import { dispatchRecords } from "@/server/admin-records";
-import { apiBase, COOKIE_NAME } from "@/server/admin-session";
+import type { SessionPayload } from "@/server/admin-session";
 import {
   addFlavor,
   addImage,
@@ -30,9 +31,10 @@ import {
  * Cliente do admin.
  * Contrato esperado da API: /v1/admin/* com Bearer da sessão.
  * ADAPTER: 404 ou API fora do ar caem no arquivo local `.data/admin-mock.json`.
- * O login não usa esse arquivo. A sessão vem de POST /v1/admin/login.
+ * Isso não é o Postgres. Some quando o backend publicar as rotas.
  */
 
+const ROLES: AdminRole[] = ["dono", "editor", "atendimento"];
 let apiDownUntil = 0;
 
 export interface AdminHandlerResult {
@@ -40,8 +42,22 @@ export interface AdminHandlerResult {
   body: Record<string, unknown>;
 }
 
+function apiBase(): string {
+  return (process.env.API_URL ?? "http://127.0.0.1:8787").replace(/\/$/, "");
+}
+
 function withSource(body: Record<string, unknown>, source: "api" | "adapter"): Record<string, unknown> {
   return { ...body, source };
+}
+
+function tokenFromApiCookie(response: Response): string | null {
+  const listed = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
+  const sources = listed.length > 0 ? listed : [response.headers.get("set-cookie") ?? ""];
+  for (const source of sources) {
+    const match = /(?:^|[;,]\s*)pulso_admin=([^;]+)/.exec(source);
+    if (match?.[1]) return decodeURIComponent(match[1]);
+  }
+  return null;
 }
 
 async function readJson(response: Response): Promise<Record<string, unknown>> {
@@ -50,8 +66,39 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
   return { data: json };
 }
 
-async function tryRemote(session: AdminActor, method: string, segments: string[], search: URLSearchParams, body: unknown): Promise<AdminHandlerResult | null> {
-  if (!session.token) return null;
+export async function loginAgainstApi(email: string, password: string): Promise<
+  | { ok: true; token: string; user: AdminPublicUser }
+  | { ok: false; status: number; error: string }
+  | null
+> {
+  if (Date.now() < apiDownUntil) return null;
+  try {
+    const response = await fetch(`${apiBase()}/v1/admin/login`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(600),
+    });
+    if (response.status === 404) return null;
+    const json = await readJson(response);
+    if (!response.ok) {
+      return { ok: false, status: response.status, error: typeof json.error === "string" ? json.error : "Não foi possível entrar." };
+    }
+    const user = json.user as AdminPublicUser | undefined;
+    const token = tokenFromApiCookie(response) ?? (typeof json.token === "string" ? json.token : null);
+    if (!token || !user || !ROLES.includes(user.role)) {
+      return { ok: false, status: 502, error: "A API de login respondeu sem sessão utilizável." };
+    }
+    return { ok: true, token, user };
+  } catch {
+    apiDownUntil = Date.now() + 30_000;
+    return null;
+  }
+}
+
+async function tryRemote(session: SessionPayload, method: string, segments: string[], search: URLSearchParams, body: unknown): Promise<AdminHandlerResult | null> {
+  if (session.src !== "api" || !session.apiToken) return null;
   if (Date.now() < apiDownUntil) return null;
   const query = search.toString();
   try {
@@ -59,8 +106,7 @@ async function tryRemote(session: AdminActor, method: string, segments: string[]
       method,
       headers: {
         accept: "application/json",
-        authorization: `Bearer ${session.token}`,
-        cookie: `${COOKIE_NAME}=${encodeURIComponent(session.token)}`,
+        authorization: `Bearer ${session.apiToken}`,
         ...(body !== undefined ? { "content-type": "application/json" } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -183,10 +229,10 @@ function localDispatch(method: string, segments: string[], search: URLSearchPara
   throw new AdminRuleError(404, "Rota admin não encontrada.");
 }
 
-export async function handleAdminData(session: AdminActor, method: string, segments: string[], search: URLSearchParams, body: unknown): Promise<AdminHandlerResult> {
+export async function handleAdminData(session: SessionPayload, method: string, segments: string[], search: URLSearchParams, body: unknown): Promise<AdminHandlerResult> {
   const resource = RESOURCE[segments[0] ?? ""];
   if (!resource) return { status: 404, body: { error: "Rota admin não encontrada.", source: "adapter" } };
-  if (!canAccess(session.role, resource)) return { status: 403, body: { error: "Seu papel não faz isso.", source: session.token ? "api" : "adapter" } };
+  if (!canAccess(session.role, resource)) return { status: 403, body: { error: "Seu papel não faz isso.", source: session.src } };
   const remote = await tryRemote(session, method, segments, search, body);
   if (remote) return remote;
   try {

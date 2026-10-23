@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { handleAdminData } from "@/server/admin-client";
-import { currentActor } from "@/server/admin-current";
+import { currentSession } from "@/server/admin-current";
 
 async function handle(request: Request, context: { params: Promise<{ path: string[] }> }) {
-  const session = await currentActor();
-  if (session === "down") return NextResponse.json({ error: "A API de login não respondeu." }, { status: 503 });
-  if (!session) return NextResponse.json({ error: "Faça login para continuar." }, { status: 401 });
+  const session = await currentSession();
+  if (!session) return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
   const length = Number(request.headers.get("content-length") ?? "0");
   if (length > 800_000) return NextResponse.json({ error: "Arquivo grande demais para o adaptador." }, { status: 413 });
   const { path } = await context.params;

@@ -7,16 +7,18 @@ import type { AdminDrop } from "@/lib/admin-types";
 import { handleAdminData } from "@/server/admin-client";
 import { dispatchRecords } from "@/server/admin-records";
 import { migrateAdminDb, seedAdminDb } from "@/server/admin-seed";
-import type { AdminActor } from "@/lib/admin-types";
+import type { SessionPayload } from "@/server/admin-session";
 import { readAdminDb } from "@/server/admin-store";
 
-function session(role: AdminActor["role"]): AdminActor {
+function session(role: SessionPayload["role"]): SessionPayload {
   return {
-    id: "teste",
+    v: 1,
+    sub: "teste",
     email: "teste@pulso.local",
     name: "Teste",
     role,
-    token: "",
+    exp: Math.floor(Date.now() / 1000) + 60,
+    src: "adapter",
   };
 }
 
