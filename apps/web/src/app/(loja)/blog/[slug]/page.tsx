@@ -38,7 +38,7 @@ function catalogArticle(slug: string): PublicArticle | null {
   };
 }
 
-function Article({ article }: { article: PublicArticle }) {
+export function Article({ article }: { article: PublicArticle }) {
   return (
     <article className="mx-auto max-w-3xl px-4 py-10">
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-lime">{article.category} · {article.authorName}</p>

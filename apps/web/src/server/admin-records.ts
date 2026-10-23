@@ -25,6 +25,7 @@ import type {
   SubscriptionStatus,
 } from "@/lib/admin-types";
 import { slugify } from "@/lib/admin-types";
+import { bannerHrefError } from "@/lib/safe-href";
 import type { AdminDb } from "@/server/admin-seed";
 import { acceptableImageUrl, AdminRuleError, archiveProduct, createProduct, getProduct, updateProduct } from "@/server/admin-store";
 
@@ -923,6 +924,13 @@ function banners(db: AdminDb, method: string, id: string | undefined, search: UR
   throw new AdminRuleError(405, "Método não aceito para a vitrine.");
 }
 
+function bannerHref(value: string): string {
+  const href = value.trim();
+  const problem = bannerHrefError(href);
+  if (problem) throw new AdminRuleError(400, problem);
+  return href;
+}
+
 function parseBanner(db: AdminDb, input: unknown, existing?: AdminBanner): AdminBanner {
   const source = record(input, "Banner");
   const title = text(source.title, existing?.title);
@@ -939,7 +947,7 @@ function parseBanner(db: AdminDb, input: unknown, existing?: AdminBanner): Admin
     slot,
     title,
     subtitle: text(source.subtitle, existing?.subtitle ?? "").slice(0, 180),
-    href: text(source.href, existing?.href ?? "/").slice(0, 200),
+    href: bannerHref(text(source.href, existing?.href ?? "/").slice(0, 200)),
     imageUrl: imageOrNull(source.imageUrl, existing?.imageUrl ?? null),
     accent: hexColor(source.accent, existing?.accent ?? "#d6ff3c", true) ?? "#d6ff3c",
     position: Math.max(0, whole(source.position, existing?.position ?? db.banners.length)),

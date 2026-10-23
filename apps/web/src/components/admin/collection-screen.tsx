@@ -26,6 +26,7 @@ export function CollectionScreen<T extends { id: string }>({
   newHref,
   editHref,
   removeLabel = "Apagar",
+  validate,
 }: {
   eyebrow: string;
   title: string;
@@ -38,6 +39,7 @@ export function CollectionScreen<T extends { id: string }>({
   newHref?: string;
   editHref?: (item: T) => string;
   removeLabel?: string;
+  validate?: (draft: T) => string | null;
 }) {
   const [items, setItems] = useState<T[]>([]);
   const [query, setQuery] = useState("");
@@ -78,6 +80,12 @@ export function CollectionScreen<T extends { id: string }>({
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!draft) return;
+    const problem = validate?.(draft);
+    if (problem) {
+      setNotice(null);
+      setError(problem);
+      return;
+    }
     setError(null);
     setNotice(null);
     const exists = Boolean(draft.id) && items.some((item) => item.id === draft.id);

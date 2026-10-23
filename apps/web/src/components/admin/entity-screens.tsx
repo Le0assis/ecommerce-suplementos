@@ -2,6 +2,8 @@
 
 import { CollectionScreen, type FieldSpec } from "@/components/admin/collection-screen";
 import { CheckRow, Field, Notice, Section, SelectField, StatusPill, TextArea } from "@/components/admin/fields";
+import { BannerLink } from "@/components/content/banner-link";
+import { bannerHrefError } from "@/lib/safe-href";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError } from "@/lib/admin-fetch";
@@ -712,7 +714,7 @@ export function BannersScreen() {
     { kind: "text", key: "title", label: "Título" },
     { kind: "text", key: "subtitle", label: "Subtítulo" },
     { kind: "select", key: "slot", label: "Lugar", options: [{ value: "hero", label: "Hero" }, { value: "marquee", label: "Faixa" }, { value: "destaque", label: "Destaque" }] },
-    { kind: "text", key: "href", label: "Link" },
+    { kind: "text", key: "href", label: "Link", hint: "https:// ou um caminho que começa com /." },
     { kind: "text", key: "imageUrl", label: "Imagem (https)" },
     { kind: "text", key: "accent", label: "Cor (#hex)" },
     { kind: "number", key: "position", label: "Ordem" },
@@ -725,10 +727,11 @@ export function BannersScreen() {
         title="Vitrine"
         description="Hero, faixa e destaques. A home ainda lê o mock fixo até a vitrine passar a consumir esta lista."
         resource="banners"
+        validate={(draft) => bannerHrefError(draft.href)}
         blank={(): AdminBanner => ({ id: "", slot: "destaque", title: "", subtitle: "", href: "/", imageUrl: null, accent: "#d6ff3c", position: 0, active: true, startsAt: null, endsAt: null })}
         fields={fields}
         columns={[
-          { header: "Título", cell: (item) => item.title },
+          { header: "Título", cell: (item) => <BannerLink href={item.href}>{item.title}</BannerLink> },
           { header: "Lugar", cell: (item) => item.slot },
           { header: "Estado", cell: (item) => <StatusPill status={item.active ? "ativo" : "oculto"} /> },
         ]}

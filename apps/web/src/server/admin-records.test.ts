@@ -104,6 +104,11 @@ test("kit, drop, post, avaliação e pontos seguem as regras", () => {
   assert.throws(() => dispatchRecords(db, "PATCH", ["influencers", "luna-vaz"], search, {
     images: [{ alt: "", fallbackHex: "#ff5cae" }],
   }), /texto alternativo/);
+  for (const href of ["javascript:alert(1)", "data:text/html,hi", "http://pulso.dev", "//pulso.dev"]) {
+    assert.throws(() => dispatchRecords(db, "POST", ["banners"], search, { title: `Ruim ${href}`, slot: "destaque", href }), /https/);
+  }
+  const banner = dispatchRecords(db, "POST", ["banners"], search, { title: "Capa segura", slot: "destaque", href: "https://pulso.dev/drop" });
+  assert.equal((banner?.body.item as { href: string }).href, "https://pulso.dev/drop");
 });
 
 test("editor não vê pedido nem fidelidade; atendimento vê pedido", async () => {

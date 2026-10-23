@@ -2,6 +2,7 @@ import { ReviewList } from "@/components/content/review-list";
 import { BuyBox } from "@/components/product/buy-box";
 import { ProductCard } from "@/components/product/product-card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { jsonLdHtml } from "@/lib/safe-href";
 import { getProduct, getReviews, products } from "@pulso/data";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -33,7 +34,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
   return (
     <article className="mx-auto max-w-6xl px-4 py-8">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json">{jsonLdHtml(jsonLd)}</script>
       <Suspense fallback={<p>Abrindo o sabor…</p>}>
         <BuyBox product={product} />
       </Suspense>
