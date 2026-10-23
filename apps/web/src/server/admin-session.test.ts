@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:f
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
-import { peekBlocked, registerFailure, signSession, toPublicUser, verifySession, type SessionPayload } from "@/server/admin-session";
+import { signSession, toPublicUser, verifySession, type SessionPayload } from "@/server/admin-session";
 import { archiveProduct, createCoupon, createProduct, deleteCoupon, readAdminDb, updateProduct } from "@/server/admin-store";
 
 const secret = "test-session-secret-32chars-min";
@@ -31,13 +31,6 @@ test("a sessão assinada volta e a adulterada não", () => {
   const [body, mac] = token.split(".");
   assert.equal(verifySession(`${body}.${mac?.slice(0, -1)}x`, Date.now(), secret), null);
   assert.equal(verifySession(token, Date.now() + 120_000, secret), null);
-});
-
-test("oito senhas erradas travam o próximo pedido", () => {
-  const key = `ip-${Date.now()}`;
-  for (let attempt = 0; attempt < 7; attempt += 1) assert.equal(registerFailure(key).blocked, false);
-  assert.equal(registerFailure(key).blocked, true);
-  assert.equal(peekBlocked(key).blocked, true);
 });
 
 test("o código do admin não publica a senha", () => {

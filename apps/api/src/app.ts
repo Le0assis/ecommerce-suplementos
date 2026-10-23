@@ -46,8 +46,17 @@ function publicInfluencer<T extends { slug: string }>(influencer: T): T & { path
   return { ...influencer, path: `/atletas/${influencer.slug}` };
 }
 
-function publicPost<T extends { slug: string }>(post: T): T & { path: string } {
-  return { ...post, path: `/blog/${post.slug}` };
+function publicPost<T extends { slug: string; author?: string; authorSlug?: string | null; authorAvatar?: string | null; authorBio?: string | null }>(
+  post: T,
+): T & { path: string; author: string; authorSlug: string | null; authorAvatar: string | null; authorBio: string | null } {
+  return {
+    ...post,
+    author: post.author || "Redação PULSO",
+    authorSlug: post.authorSlug ?? null,
+    authorAvatar: post.authorAvatar ?? null,
+    authorBio: post.authorBio ?? null,
+    path: `/blog/${post.slug}`,
+  };
 }
 
 async function couponSource(sql?: Sql): Promise<Coupon[]> {

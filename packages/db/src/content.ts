@@ -425,14 +425,24 @@ export async function archivePost(sql: Sql, slug: string): Promise<PostAdmin> {
   return savePost(sql, { ...current, status: "arquivado" }, author?.name ?? "Redação PULSO");
 }
 
-export function toPublicPost(row: PostAdmin, authorName: string): Post & { blocks: PostBlock[]; authorId: string | null; influencerSlug?: string } {
+export function toPublicPost(row: PostAdmin, author?: AuthorRow | null): Post & {
+  blocks: PostBlock[];
+  authorId: string | null;
+  authorSlug: string | null;
+  authorAvatar: string | null;
+  authorBio: string | null;
+  influencerSlug?: string;
+} {
   return {
     slug: row.slug,
     title: row.title,
     excerpt: row.excerpt,
     category: row.category,
     readMinutes: row.readMinutes,
-    author: authorName,
+    author: author?.name || "Redação PULSO",
+    authorSlug: author?.id ?? null,
+    authorAvatar: author?.photoUrl ?? null,
+    authorBio: author?.bio ?? null,
     publishedAt: row.publishedAt ?? "",
     coverHex: row.coverHex ?? "#d6ff3c",
     body: row.blocks.filter((block) => block.type === "paragrafo").map((block) => block.text),
@@ -448,5 +458,5 @@ export async function readPublicPosts(sql: Sql, influencer?: string, now = new D
   const today = now.toISOString().slice(0, 10);
   return posts
     .filter((post) => post.status === "publicado" || (post.status === "agendado" && post.publishedAt && post.publishedAt <= today))
-    .map((post) => toPublicPost(post, authors.find((author) => author.id === post.authorId)?.name ?? "Redação PULSO"));
+    .map((post) => toPublicPost(post, authors.find((item) => item.id === post.authorId)));
 }

@@ -20,13 +20,29 @@ Resposta `200`:
 
 O JSON não traz token. O valor da sessão sai só no cabeçalho `Set-Cookie`.
 
-Papéis: `dono` (tudo, inclusive fidelidade e `GET /v1/admin/audit-log`), `editor` (catálogo, conteúdo, cupom, promoção, drop, quiz, raspadinha, banner, upload) e `atendimento` (pedido, avaliação, cliente). Outro papel ou conta inativa responde `401` com `{ "error": "E-mail ou senha não confere." }`.
+Papéis: `dono` (tudo, inclusive fidelidade e `GET /v1/admin/audit`), `editor` (catálogo, conteúdo, cupom, promoção, drop, quiz, raspadinha, banner, upload) e `atendimento` (pedido, avaliação, cliente). Outro papel ou conta inativa responde `401` com `{ "error": "E-mail ou senha não confere." }`.
 
 Cada tentativa reserva o IP antes de qualquer espera. Com `REDIS_URL`, a reserva é `INCR` e `EXPIRE` de 15 minutos em `pulso:login:ip:<ip>`. Sem Redis, é um `Map` no processo, atualizado na hora. A 31ª tentativa nesse IP responde `429`, `Retry-After: 900` e `{ "error": "Muitas tentativas de login. Espera alguns minutos." }`.
 
 Há no máximo uma tentativa em andamento por conta e IP (`pulso:login:slot:<email>:<ip>` no Redis, ou o mesmo `Map`). As outras, no mesmo instante, respondem `429` na hora e não calculam scrypt. Senha errada soma `failed_attempts` no banco antes de conferir o hash. O atraso não segura esta resposta: ele segura a próxima. A fórmula é `min(8000, 100 * 2^min(falhas - 2, 7))` milissegundos, a partir da segunda falha, e chega a 8 segundos. Enquanto esse prazo não passa, a próxima tentativa nesse par conta+IP responde `429` e não calcula scrypt, mesmo com a senha certa. A conta não trava: a senha certa, depois do prazo ou de outro IP, zera o contador e `locked_until`.
 
 O IP é o do socket. Atrás de um proxy, `TRUSTED_PROXIES` é obrigatório: sem a lista, todo cliente vira o IP do proxy e o limite de login trava todo mundo junto. `X-Forwarded-For` só entra se esse socket estiver na lista; vale o salto mais à direita que não é proxy. Com `VERCEL=1`, o cabeçalho lido é `x-vercel-forwarded-for`.
+
+O site chama `POST /v1/admin/login` de servidor para servidor. A API, então, vê o IP do Next em todo login. `POST /api/admin/session` acrescenta o IP do cliente no fim de `X-Forwarded-For` (não substitui a cadeia). O endereço do Next precisa estar em `TRUSTED_PROXIES`, senão todo mundo divide o limite do IP do Next.
+
+Exemplo com Next e API na mesma máquina:
+
+```
+TRUSTED_PROXIES=127.0.0.1
+```
+
+Exemplo com um proxy na frente e o Next em outra rede:
+
+```
+TRUSTED_PROXIES=203.0.113.8,10.0.0.5
+```
+
+`203.0.113.8` é o proxy que fala com a API. `10.0.0.5` é o Next. Os dois entram na lista porque cada um escreve um salto. Sem o IP do Next, o limite não separa os clientes.
 
 Sem `ADMIN_SESSION_SECRET` de pelo menos 16 caracteres, o login responde `503`. Em produção, o valor de exemplo `pulso-dev-session-change-me` também responde `503`. Em produção a API só sobe com `API_DATA_SOURCE=postgres` e `DATABASE_URL`.
 
@@ -84,7 +100,7 @@ Sem token no JSON.
 
 `DELETE /api/admin/session` chama `POST /v1/admin/logout` com o bearer, apaga `pulso_admin_session` e responde `{ "ok": true }`. `POST` e `DELETE` de outra origem respondem `403`.
 
-O site ainda conta 8 falhas em 15 minutos por IP do primeiro salto de `X-Forwarded-For` e responde `429`. Isso trava só o route handler daquele IP. Não trava a conta no banco. O scrypt e o atraso progressivo ficam na API.
+O site não conta falha de login. `POST /api/admin/session` repassa o status, o JSON e o `Retry-After` da API. `401` chega como `{ "error": "E-mail ou senha não confere." }`. `429` chega como `{ "error": "Muitas tentativas de login. Espera alguns minutos." }` com o `Retry-After` da API.
 
 O arquivo `apps/web/.data/admin-mock.json` continua existindo para o CRUD de teste quando a API está fora. Sem a API não dá para obter sessão, então o painel não abre por esse arquivo.
 
@@ -135,6 +151,9 @@ Com `API_DATA_SOURCE=postgres` e banco, a leitura é a tabela. Sem banco, a resp
       "category": "Collab",
       "readMinutes": 3,
       "author": "Redação PULSO",
+      "authorSlug": "redacao",
+      "authorAvatar": null,
+      "authorBio": "Textos da casa.",
       "publishedAt": "2026-10-01",
       "coverHex": "#d6ff3c",
       "body": ["Suplemento alimentar não é medicamento."],
@@ -147,7 +166,35 @@ Com `API_DATA_SOURCE=postgres` e banco, a leitura é a tabela. Sem banco, a resp
 }
 ```
 
-`body` continua sendo só os parágrafos. `blocks` traz `paragrafo`, `titulo`, `imagem`, `citacao_lateral` e `produto`. `GET /v1/posts/:slug` devolve `{ "source", "post" }` ou `404` `{ "error": "Texto não encontrado." }`.
+`author` é o nome. `authorSlug`, `authorAvatar` e `authorBio` vêm do autor (`authors.id`, `photo_url`, `bio`) e saem `null` quando não há autor ou o campo está vazio. O mock usa o mesmo formato, com esses três em `null`. `body` continua sendo só os parágrafos. `blocks` traz `paragrafo`, `titulo`, `imagem`, `citacao_lateral` e `produto`. `GET /v1/posts/:slug` devolve `{ "source", "post" }` ou `404` `{ "error": "Texto não encontrado." }`.
+
+## Auditoria
+
+`GET /v1/admin/audit` é só do `dono`. Editor e atendimento recebem `403`. Sem sessão, `401`. `GET /v1/admin/audit-log` é o mesmo handler.
+
+Filtros na query: `actor` (id em `admin_users`), `entity`, `entityId`, `from` e `to`. Data `YYYY-MM-DD` vale o dia UTC inteiro. Data com hora compara o instante. Data inválida responde `400` `{ "error": "Data inválida." }`.
+
+`page` começa em 1. `pageSize` vai de 1 a 100, padrão 50.
+
+```json
+{
+  "page": 1,
+  "pageSize": 50,
+  "total": 1,
+  "items": [
+    {
+      "id": "…",
+      "actorId": "dono",
+      "action": "login",
+      "entity": "admin_user",
+      "entityId": "dono",
+      "before": null,
+      "after": { "email": "dono@pulso.local", "role": "dono" },
+      "createdAt": "2026-10-23T12:00:00.000Z"
+    }
+  ]
+}
+```
 
 `/atletas`, `/atletas/:slug`, `/blog` e `/blog/:slug` leem `GET /v1/influencers` e `GET /v1/posts` quando a API responde, seja `source` `postgres` ou `mock`. O arquivo do adaptador não alimenta essas páginas. Se a API não responder, a página volta ao catálogo `@pulso/data`. Um `404` da API não abre a ficha do arquivo. `generateStaticParams` lista o catálogo; o slug novo abre no pedido, dentro do `Suspense`. Influencer criado no admin só ganha página pública quando a API o devolve.
 

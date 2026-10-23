@@ -381,6 +381,7 @@ function articleFromRemote(post: {
   excerpt?: string;
   category?: string;
   author?: string;
+  authorBio?: string | null;
   blocks?: AdminPostBlock[];
   body?: string[];
   influencerSlug?: string;
@@ -395,7 +396,7 @@ function articleFromRemote(post: {
     excerpt: post.excerpt ?? "",
     category: post.category || "Suplemento",
     authorName: post.author || "Redação PULSO",
-    authorBio: "",
+    authorBio: post.authorBio ?? "",
     authorHref: influencer ? `/atletas/${influencer}` : null,
     blocks,
     products: articleProducts(productIds),

@@ -5,8 +5,6 @@ export const COOKIE_NAME = "pulso_admin_session";
 export const SESSION_SECONDS = 60 * 60 * 12;
 const DEV_SECRET = "pulso-dev-only-session-secret";
 const EXAMPLE_SECRET = "pulso-dev-session-change-me";
-const FAILURE_WINDOW_MS = 15 * 60 * 1000;
-const FAILURE_LIMIT = 8;
 
 export interface SessionPayload {
   v: 1;
@@ -18,8 +16,6 @@ export interface SessionPayload {
   src: "api" | "adapter";
   apiToken?: string;
 }
-
-const failures = new Map<string, { count: number; reset: number }>();
 
 export function usingDevSessionSecret(): boolean {
   const secret = process.env.ADMIN_SESSION_SECRET;
@@ -73,26 +69,4 @@ export function verifySession(token: string | undefined, now?: number, secret?: 
 
 export function toPublicUser(payload: SessionPayload): AdminPublicUser {
   return { id: payload.sub, email: payload.email, name: payload.name, role: payload.role };
-}
-
-export function peekBlocked(key: string, now = Date.now()): { blocked: boolean; retryAfter: number } {
-  const current = failures.get(key);
-  if (!current || current.reset <= now) return { blocked: false, retryAfter: 0 };
-  if (current.count >= FAILURE_LIMIT) return { blocked: true, retryAfter: Math.ceil((current.reset - now) / 1000) };
-  return { blocked: false, retryAfter: 0 };
-}
-
-export function registerFailure(key: string, now = Date.now()): { blocked: boolean; retryAfter: number } {
-  const current = failures.get(key);
-  if (!current || current.reset <= now) {
-    failures.set(key, { count: 1, reset: now + FAILURE_WINDOW_MS });
-    return { blocked: false, retryAfter: 0 };
-  }
-  current.count += 1;
-  if (current.count >= FAILURE_LIMIT) return { blocked: true, retryAfter: Math.ceil((current.reset - now) / 1000) };
-  return { blocked: false, retryAfter: 0 };
-}
-
-export function clearFailures(key: string): void {
-  failures.delete(key);
 }

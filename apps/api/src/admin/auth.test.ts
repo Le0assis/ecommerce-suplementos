@@ -1,3 +1,4 @@
+import { serve } from "@hono/node-server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app";
 import { auth, createAdminApp, createTestDb, login, resetTables } from "./harness";
@@ -186,5 +187,76 @@ describe("login do admin", () => {
       trustedProxies: ["203.0.113.8"],
       vercel: true,
     })).toBe("198.51.100.20");
+  });
+
+  it("separa o limite de dois IPs encaminhados pelo Next", async () => {
+    const previous = process.env.TRUSTED_PROXIES;
+    process.env.TRUSTED_PROXIES = "127.0.0.1";
+    const app = createAdminApp(sql);
+    const server = await new Promise<ReturnType<typeof serve>>((resolve) => {
+      const started = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 }, () => resolve(started));
+    });
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const attempt = (ip: string) =>
+      fetch(`http://127.0.0.1:${port}/v1/admin/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": ip },
+        body: JSON.stringify({ email: "dono@pulso.test", password: "senha-errada-pulso" }),
+      });
+    try {
+      const burst = await Promise.all(Array.from({ length: 31 }, () => attempt("203.0.113.50")));
+      expect(burst.some((response) => response.status === 429)).toBe(true);
+      expect(burst.every((response) => response.status === 401 || response.status === 429)).toBe(true);
+      const other = await attempt("203.0.113.51");
+      expect(other.status).toBe(401);
+      const flooded = await attempt("203.0.113.50");
+      expect(flooded.status).toBe(429);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      if (previous === undefined) delete process.env.TRUSTED_PROXIES;
+      else process.env.TRUSTED_PROXIES = previous;
+    }
+  });
+
+  it("lista a auditoria do dono com página, ator, entidade e data", async () => {
+    const app = createAdminApp(sql);
+    const owner = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.90");
+    const editor = await login(app, "editor@pulso.test", "senha-editor-pulso", "203.0.113.91");
+    const denied = await app.request("/v1/admin/audit", { headers: auth(editor.token, "203.0.113.91") });
+    expect(denied.status).toBe(403);
+    await sql.query(
+      `insert into audit_log (id, actor_id, action, entity, entity_id, created_at)
+       values ('aud-1', 'dono', 'product.save', 'product', 'caos', '2026-10-01T12:00:00Z'),
+              ('aud-2', 'editor', 'post.save', 'post', 'collab', '2026-10-20T12:00:00Z')`,
+    );
+    const headers = auth(owner.token, "203.0.113.90");
+    const byActor = await app.request("/v1/admin/audit?actor=editor&entity=post", { headers });
+    expect(byActor.status).toBe(200);
+    const actorBody = (await byActor.json()) as { total: number; items: { id: string; actorId: string; entity: string; entityId: string }[] };
+    expect(actorBody.total).toBe(1);
+    expect(actorBody.items[0]).toMatchObject({ id: "aud-2", actorId: "editor", entity: "post", entityId: "collab" });
+    const byEntity = (await (await app.request("/v1/admin/audit?entity=post", { headers })).json()) as { items: unknown[] };
+    expect(byEntity.items).toHaveLength(1);
+    const byDate = (await (await app.request("/v1/admin/audit?from=2026-10-20&to=2026-10-20", { headers })).json()) as {
+      total: number;
+      items: { id: string }[];
+    };
+    expect(byDate.total).toBe(1);
+    expect(byDate.items[0]?.id).toBe("aud-2");
+    const paged = (await (await app.request("/v1/admin/audit?page=1&pageSize=1", { headers })).json()) as {
+      page: number;
+      pageSize: number;
+      total: number;
+      items: unknown[];
+    };
+    expect(paged.page).toBe(1);
+    expect(paged.pageSize).toBe(1);
+    expect(paged.items).toHaveLength(1);
+    expect(paged.total).toBeGreaterThan(1);
+    const bad = await app.request("/v1/admin/audit?from=ontem", { headers });
+    expect(bad.status).toBe(400);
+    const alias = await app.request("/v1/admin/audit-log", { headers });
+    expect(alias.status).toBe(200);
   });
 });

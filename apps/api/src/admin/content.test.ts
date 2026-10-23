@@ -35,7 +35,7 @@ describe("autores, blocos e fotos do influencer", () => {
     const restored = await app.request("/v1/admin/authors", {
       method: "POST",
       headers,
-      body: JSON.stringify({ id: "redacao", name: "Redação PULSO", bio: "Textos da casa." }),
+      body: JSON.stringify({ id: "redacao", name: "Redação PULSO", bio: "Textos da casa.", photoUrl: "https://cdn.pulso.test/autor.png" }),
     });
     expect(restored.status).toBe(201);
     const influencer = await app.request("/v1/admin/influencers", {
@@ -105,6 +105,10 @@ describe("autores, blocos e fotos do influencer", () => {
     const posts = listedBody.posts;
     expect(posts).toHaveLength(1);
     expect(posts[0].path).toBe("/blog/collab-luna-teste");
+    expect(posts[0].author).toBe("Redação PULSO");
+    expect(posts[0].authorSlug).toBe("redacao");
+    expect(posts[0].authorAvatar).toBe("https://cdn.pulso.test/autor.png");
+    expect(posts[0].authorBio).toBe("Textos da casa.");
     expect(posts[0].body).toEqual(["Suplemento alimentar não é medicamento."]);
     expect(posts[0].blocks).toHaveLength(2);
     const archived = await app.request("/v1/admin/posts/collab-luna-teste", { method: "DELETE", headers });

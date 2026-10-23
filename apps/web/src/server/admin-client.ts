@@ -69,7 +69,7 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
 /** O atraso progressivo do login chega a 8 s. O corte fica acima disso. */
 export const LOGIN_API_TIMEOUT_MS = 15_000;
 
-export async function loginAgainstApi(email: string, password: string): Promise<
+export async function loginAgainstApi(email: string, password: string, forwardedFor?: string): Promise<
   | { ok: true; token: string; user: AdminPublicUser }
   | { ok: false; status: number; error: string; retryAfter: string | null }
   | null
@@ -77,7 +77,11 @@ export async function loginAgainstApi(email: string, password: string): Promise<
   try {
     const response = await fetch(`${apiBase()}/v1/admin/login`, {
       method: "POST",
-      headers: { accept: "application/json", "content-type": "application/json" },
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        ...(forwardedFor ? { "x-forwarded-for": forwardedFor } : {}),
+      },
       body: JSON.stringify({ email, password }),
       cache: "no-store",
       signal: AbortSignal.timeout(LOGIN_API_TIMEOUT_MS),

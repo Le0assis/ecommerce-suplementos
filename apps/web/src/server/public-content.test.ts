@@ -166,7 +166,17 @@ test("a vitrine lê influencer e post da API e ignora o arquivo", async () => {
     if (url.includes("/v1/posts/texto-api")) {
       return Response.json({
         source: "mock",
-        post: { slug: "texto-api", title: "Texto da API", excerpt: "Curto", category: "Collab", author: "Redação", blocks: [{ id: "p1", type: "paragrafo", text: "Parágrafo da API." }] },
+        post: {
+          slug: "texto-api",
+          title: "Texto da API",
+          excerpt: "Curto",
+          category: "Collab",
+          author: "Redação",
+          authorBio: "Bio da API.",
+          authorSlug: "redacao",
+          authorAvatar: null,
+          blocks: [{ id: "p1", type: "paragrafo", text: "Parágrafo da API." }],
+        },
       });
     }
     if (url.includes("/v1/posts/pre-sem-passar-mal") || url.includes("/v1/influencers/so-arquivo")) {
@@ -193,6 +203,8 @@ test("a vitrine lê influencer e post da API e ignora o arquivo", async () => {
   assert.equal(posts[0]?.path, "/blog/texto-api");
   const article = await loadPublicArticle("texto-api");
   assert.equal(article?.blocks[0]?.type, "paragrafo");
+  assert.equal(article?.authorName, "Redação");
+  assert.equal(article?.authorBio, "Bio da API.");
   assert.equal(await loadPublicArticle("pre-sem-passar-mal"), null);
   assert.equal(await loadPublicCollab("so-arquivo"), null);
 });

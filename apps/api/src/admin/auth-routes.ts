@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import Redis from "ioredis";
 import { z } from "zod";
+import type { Context } from "hono";
 import { clientIp, HttpError, pageQuery, parseInput, readJson, requireActor, type AdminRuntime } from "./http";
 import { openSession, revokeSession, sessionIsLive } from "./live-session";
 import { isRole } from "./permissions";
@@ -286,14 +287,21 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
     return c.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
   });
 
-  admin.get("/audit-log", async (c) => {
+  const audit = async (c: Context) => {
     const ctx = runtime();
-    const actor = await requireActor(c, ctx, "audit");
+    await requireActor(c, ctx, "audit");
     const paging = pageQuery(c, 50);
-    const entity = (c.req.query("entity") ?? "").slice(0, 40);
-    const entityId = (c.req.query("entityId") ?? "").slice(0, 80);
+    const actorId = (c.req.query("actor") ?? "").trim().slice(0, 80);
+    const entity = (c.req.query("entity") ?? "").trim().slice(0, 40);
+    const entityId = (c.req.query("entityId") ?? "").trim().slice(0, 80);
+    const from = parseAuditBound(c.req.query("from"), false);
+    const to = parseAuditBound(c.req.query("to"), true);
     const where: string[] = [];
     const params: unknown[] = [];
+    if (actorId) {
+      params.push(actorId);
+      where.push(`actor_id = $${params.length}`);
+    }
     if (entity) {
       params.push(entity);
       where.push(`entity = $${params.length}`);
@@ -302,14 +310,62 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
       params.push(entityId);
       where.push(`entity_id = $${params.length}`);
     }
+    if (from) {
+      params.push(from.instant.toISOString());
+      where.push(`created_at >= $${params.length}::timestamptz`);
+    }
+    if (to) {
+      params.push(to.instant.toISOString());
+      where.push(to.exclusive ? `created_at < $${params.length}::timestamptz` : `created_at <= $${params.length}::timestamptz`);
+    }
     const clause = where.length ? `where ${where.join(" and ")}` : "";
-    const rows = await ctx.sql.query(
+    const total = await ctx.sql.query<{ total: number }>(`select count(*)::int as total from audit_log ${clause}`, params);
+    const rows = await ctx.sql.query<{
+      id: string;
+      actor_id: string | null;
+      action: string;
+      entity: string;
+      entity_id: string | null;
+      before_data: unknown;
+      after_data: unknown;
+      created_at: Date | string;
+    }>(
       `select id, actor_id, action, entity, entity_id, before_data, after_data, created_at
        from audit_log ${clause}
        order by created_at desc
-       limit $${params.length + 1}`,
-      [...params, Math.min(paging.pageSize, 100)],
+       limit $${params.length + 1} offset $${params.length + 2}`,
+      [...params, paging.pageSize, (paging.page - 1) * paging.pageSize],
     );
-    return c.json({ actor: actor.email, items: rows.rows });
-  });
+    return c.json({
+      page: paging.page,
+      pageSize: paging.pageSize,
+      total: Number(total.rows[0]?.total ?? 0),
+      items: rows.rows.map((row) => ({
+        id: row.id,
+        actorId: row.actor_id,
+        action: row.action,
+        entity: row.entity,
+        entityId: row.entity_id,
+        before: row.before_data,
+        after: row.after_data,
+        createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+      })),
+    });
+  };
+  admin.get("/audit", audit);
+  admin.get("/audit-log", audit);
+}
+
+function parseAuditBound(raw: string | undefined, end: boolean): { instant: Date; exclusive: boolean } | undefined {
+  const value = (raw ?? "").trim();
+  if (!value) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const start = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(start.getTime())) throw new HttpError(400, "Data inválida.");
+    if (!end) return { instant: start, exclusive: false };
+    return { instant: new Date(start.getTime() + 24 * 60 * 60 * 1000), exclusive: true };
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new HttpError(400, "Data inválida.");
+  return { instant: date, exclusive: false };
 }

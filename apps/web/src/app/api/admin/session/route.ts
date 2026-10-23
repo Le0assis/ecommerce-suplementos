@@ -1,16 +1,8 @@
 import { NextResponse } from "next/server";
 import { loginAgainstApi } from "@/server/admin-client";
 import { currentAdminView, currentSession } from "@/server/admin-current";
-import {
-  clearFailures,
-  COOKIE_NAME,
-  peekBlocked,
-  registerFailure,
-  SESSION_SECONDS,
-  signSession,
-  toPublicUser,
-  type SessionPayload,
-} from "@/server/admin-session";
+import { forwardedForApi } from "@/server/forwarded-for";
+import { COOKIE_NAME, SESSION_SECONDS, signSession, toPublicUser, type SessionPayload } from "@/server/admin-session";
 
 function cookieSecure(request: Request): boolean {
   const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
@@ -42,10 +34,6 @@ function sameOrigin(request: Request): boolean {
   }
 }
 
-function clientKey(request: Request): string {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-}
-
 export async function GET() {
   const view = await currentAdminView();
   if (!view) return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
@@ -54,30 +42,19 @@ export async function GET() {
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "Origem recusada." }, { status: 403 });
-  const key = clientKey(request);
-  const blocked = peekBlocked(key);
-  if (blocked.blocked) {
-    return NextResponse.json(
-      { error: "Muitas tentativas. Espere um pouco e tente de novo.", retryAfter: blocked.retryAfter },
-      { status: 429, headers: { "retry-after": String(blocked.retryAfter) } },
-    );
-  }
   const body = (await request.json().catch(() => null)) as { email?: unknown; password?: unknown } | null;
   const password = typeof body?.password === "string" ? body.password : "";
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   if (!email.includes("@") || !password) return NextResponse.json({ error: "Informe e-mail e senha." }, { status: 400 });
 
-  const remote = await loginAgainstApi(email, password);
+  const remote = await loginAgainstApi(email, password, forwardedForApi(request));
   if (!remote) {
     return NextResponse.json({ error: "A API de admin está fora do ar." }, { status: 503 });
   }
   if (!remote.ok) {
-    if (remote.status === 401 || remote.status === 403) registerFailure(key);
-    const headers = remote.retryAfter ? { "retry-after": remote.retryAfter } : undefined;
-    return NextResponse.json(
-      { error: remote.error, ...(remote.retryAfter ? { retryAfter: Number(remote.retryAfter) || remote.retryAfter } : {}) },
-      { status: remote.status, headers },
-    );
+    const headers = new Headers();
+    if (remote.retryAfter) headers.set("retry-after", remote.retryAfter);
+    return NextResponse.json({ error: remote.error }, { status: remote.status, headers });
   }
 
   const payload: SessionPayload = {
@@ -97,7 +74,6 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Sessão do site sem segredo. Defina ADMIN_SESSION_SECRET." }, { status: 503 });
   }
-  clearFailures(key);
   const response = NextResponse.json({ user: toPublicUser(payload), source: payload.src });
   writeCookie(response, request, signed, SESSION_SECONDS);
   return response;
