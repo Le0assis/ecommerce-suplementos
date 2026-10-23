@@ -1,4 +1,5 @@
 import { coupons, getInfluencer, getPost, getReviews, influencers, posts, ugc } from "@pulso/data";
+import { listInfluencers, readPublicPosts, toPublicInfluencer } from "@pulso/db/content";
 import { couponBlockReason, getAdminCoupon, readPublicCoupons, type AdminCoupon } from "@pulso/db/catalog";
 import { getPool } from "@pulso/db/pool";
 import { listBanners, listUgc, listVideos, readLoyalty, readPublicReviews, ugcPublic } from "@pulso/db/resources";
@@ -110,18 +111,35 @@ app.get("/v1/products/:slug", async (c) => {
   return c.json({ source: loaded.source, products });
 });
 
-app.get("/v1/influencers", (c) => c.json({ influencers }));
-app.get("/v1/influencers/:slug", (c) => {
-  const influencer = getInfluencer(c.req.param("slug"));
-  if (!influencer) return c.json({ error: "Atleta não encontrado." }, 404);
-  return c.json({ influencer });
-});
-app.get("/v1/posts", (c) => c.json({ posts }));
-app.get("/v1/posts/:slug", (c) => {
-  const post = getPost(c.req.param("slug"));
-  if (!post) return c.json({ error: "Texto não encontrado." }, 404);
-  return c.json({ post });
-});
+  app.get("/v1/influencers", async (c) => {
+    if (!options.sql) return c.json({ influencers });
+    const rows = await listInfluencers(options.sql, false);
+    return c.json({ influencers: rows.map(toPublicInfluencer) });
+  });
+  app.get("/v1/influencers/:slug", async (c) => {
+    if (!options.sql) {
+      const influencer = getInfluencer(c.req.param("slug"));
+      if (!influencer) return c.json({ error: "Atleta não encontrado." }, 404);
+      return c.json({ influencer });
+    }
+    const row = (await listInfluencers(options.sql, false)).find((item) => item.slug === c.req.param("slug"));
+    if (!row) return c.json({ error: "Atleta não encontrado." }, 404);
+    return c.json({ influencer: toPublicInfluencer(row) });
+  });
+  app.get("/v1/posts", async (c) => {
+    if (!options.sql) return c.json({ posts });
+    return c.json({ posts: await readPublicPosts(options.sql, c.req.query("influencer") || undefined) });
+  });
+  app.get("/v1/posts/:slug", async (c) => {
+    if (!options.sql) {
+      const post = getPost(c.req.param("slug"));
+      if (!post) return c.json({ error: "Texto não encontrado." }, 404);
+      return c.json({ post });
+    }
+    const post = (await readPublicPosts(options.sql)).find((item) => item.slug === c.req.param("slug"));
+    if (!post) return c.json({ error: "Texto não encontrado." }, 404);
+    return c.json({ post });
+  });
   app.get("/v1/ugc", async (c) => {
     if (!options.sql) return c.json({ ugc });
     return c.json({ ugc: ugcPublic(await listUgc(options.sql, false)) });

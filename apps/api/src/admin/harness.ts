@@ -75,7 +75,7 @@ export async function resetTables(sql: SqlClient): Promise<void> {
   resetLoginLimits();
   await sql.query("update admin_users set failed_attempts = 0, locked_until = null");
   await sql.query(
-    `truncate products, coupons, audit_log, orders, customers, influencers, promotions, quiz_questions,
+    `truncate products, coupons, audit_log, orders, customers, influencers, posts, authors, promotions, quiz_questions,
             scratch_prizes, banners, ugc_posts, video_spots, reviews, loyalty_settings, subscriptions
      restart identity cascade`,
   );

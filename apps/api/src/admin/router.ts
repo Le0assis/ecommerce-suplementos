@@ -3,6 +3,7 @@ import { getPool } from "@pulso/db/pool";
 import { fromPgPool, type SqlClient } from "@pulso/db/sql";
 import { Hono } from "hono";
 import { mountAuth } from "./auth-routes";
+import { mountContent } from "./content-routes";
 import { mountCoupons } from "./coupon-routes";
 import { applyAdminCors, HttpError, parseInput, readJson, requireActor } from "./http";
 import { mountOps } from "./ops-routes";
@@ -66,6 +67,7 @@ export function mountAdmin(app: Hono, options: AdminAppOptions = {}): void {
   mountProducts(admin, runtime);
   mountCoupons(admin, runtime);
   mountOps(admin, runtime);
+  mountContent(admin, runtime);
 
   admin.post("/uploads", async (c) => {
     const ctx = runtime();

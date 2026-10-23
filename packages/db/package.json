@@ -11,6 +11,7 @@
     "./audit": "./src/audit.ts",
     "./catalog": "./src/catalog.ts",
     "./resources": "./src/resources.ts",
+    "./content": "./src/content.ts",
     "./password": "./src/password.ts"
   },
   "scripts": {
