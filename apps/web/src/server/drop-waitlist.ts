@@ -81,11 +81,11 @@ export async function joinDropWaitlist(dropId: string, input: { email?: unknown;
   const api = await postApi(`/v1/drops/${encodeURIComponent(dropId)}/waitlist`, { email, consent: true, consentOrigin: ORIGIN });
   if (api && api.status !== 503) {
     if (api.status >= 400) return { status: api.status, body: { error: api.body.error ?? "Não deu para entrar na lista." } };
-    const local = remember(dropId, email, consentAt);
-    return { status: api.status, body: { ok: true, already: api.body.already === true || local.already, source: "api" } };
+    remember(dropId, email, consentAt);
+    return { status: 200, body: { ok: true, source: "api" } };
   }
-  const local = remember(dropId, email, consentAt);
-  return { status: local.already ? 200 : 201, body: { ok: true, already: local.already, source: "adapter" } };
+  remember(dropId, email, consentAt);
+  return { status: 200, body: { ok: true, source: "adapter" } };
 }
 
 export async function eraseDropWaitlist(input: { email?: unknown }): Promise<{ status: number; body: { ok: true } }> {

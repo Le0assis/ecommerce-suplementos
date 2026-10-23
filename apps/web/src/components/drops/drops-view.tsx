@@ -94,8 +94,8 @@ function WaitlistForm({ dropId, count }: { dropId: string; count: number }) {
       setNotice("Pedido recebido.");
       return;
     }
-    if (!body.already) setPeople((value) => value + 1);
-    setNotice(body.already ? "Esse e-mail já estava na lista." : "Anotado. A gente avisa quando abrir.");
+    setPeople((value) => value + 1);
+    setNotice("Anotado. A gente avisa quando abrir.");
   }
 
   return (

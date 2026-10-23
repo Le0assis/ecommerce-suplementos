@@ -131,14 +131,15 @@ describe("drops e lista de espera", () => {
       headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.73" },
       body: JSON.stringify({ email: "Ana@Pulso.Test", consent: true }),
     });
-    expect(joined.status).toBe(201);
+    expect(joined.status).toBe(200);
+    expect(await joined.json()).toEqual({ ok: true });
     const again = await app.request("/v1/drops/drop-espera/waitlist", {
       method: "POST",
       headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.74" },
       body: JSON.stringify({ email: "ana@pulso.test", consent: true, consentOrigin: "pagina_drops:v1" }),
     });
     expect(again.status).toBe(200);
-    expect((await again.json()).already).toBe(true);
+    expect(await again.json()).toEqual({ ok: true });
     const rows = await sql.query<{ email: string }>("select email from drop_waitlist");
     expect(rows.rows).toEqual([{ email: "ana@pulso.test" }]);
 

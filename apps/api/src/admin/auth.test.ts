@@ -1,15 +1,23 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app";
 import { auth, createAdminApp, createTestDb, login, resetTables } from "./harness";
-import { loginBackoffMs } from "./auth-routes";
+import { loginBackoffMs, loginProofCount } from "./auth-routes";
 import { clientAddress } from "./http";
 import { sessionSecret } from "./session";
 import type { SqlClient } from "@pulso/db/sql";
 
 let sql: SqlClient;
 let close: () => Promise<void>;
+const previousRedis = process.env.REDIS_URL;
+const previousProxies = process.env.TRUSTED_PROXIES;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 beforeAll(async () => {
+  delete process.env.REDIS_URL;
+  process.env.TRUSTED_PROXIES = "local";
   const db = await createTestDb();
   sql = db.sql;
   close = db.close;
@@ -17,6 +25,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await close();
+  if (previousRedis === undefined) delete process.env.REDIS_URL;
+  else process.env.REDIS_URL = previousRedis;
+  if (previousProxies === undefined) delete process.env.TRUSTED_PROXIES;
+  else process.env.TRUSTED_PROXIES = previousProxies;
 });
 
 beforeEach(async () => {
@@ -53,15 +65,23 @@ describe("login do admin", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 
-  it("atrasa a senha errada e ainda entra com a senha certa", async () => {
+  it("segura a próxima tentativa e ainda entra com a senha certa", async () => {
     const app = createAdminApp(sql);
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const failed = await login(app, "dono@pulso.test", "senha-errada-pulso", "203.0.113.20");
+    const ip = "203.0.113.20";
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const failed = await login(app, "dono@pulso.test", "senha-errada-pulso", ip);
       expect(failed.response.status).toBe(401);
+      if (attempt < 4) await wait(loginBackoffMs(attempt) + 40);
     }
+    const proofs = loginProofCount();
+    const rushed = await login(app, "dono@pulso.test", "senha-dona-pulso", ip);
+    expect(rushed.response.status).toBe(429);
+    expect(rushed.response.headers.get("retry-after")).toBeTruthy();
+    expect(loginProofCount()).toBe(proofs);
     const counted = await sql.query<{ failed_attempts: number }>("select failed_attempts from admin_users where email = 'dono@pulso.test'");
     expect(counted.rows[0]?.failed_attempts).toBe(4);
-    const opened = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.20");
+    await wait(loginBackoffMs(4) + 40);
+    const opened = await login(app, "dono@pulso.test", "senha-dona-pulso", ip);
     expect(opened.response.status).toBe(200);
     const reset = await sql.query<{ failed_attempts: number; locked_until: string | null }>(
       "select failed_attempts, locked_until from admin_users where email = 'dono@pulso.test'",
@@ -94,6 +114,31 @@ describe("login do admin", () => {
     expect(again.status).toBe(401);
   });
 
+  it("responde 429 no meio de tentativas paralelas e a senha certa ainda entra", async () => {
+    const app = createAdminApp(sql);
+    const attack = "203.0.113.77";
+    const responses = await Promise.all(
+      Array.from({ length: 200 }, () => login(app, "dono@pulso.test", "senha-errada-pulso", attack)),
+    );
+    const statuses = responses.map((item) => item.response.status);
+    const unauthorized = statuses.filter((status) => status === 401).length;
+    const limited = statuses.filter((status) => status === 429).length;
+    expect(unauthorized + limited).toBe(200);
+    expect(limited).toBe(199);
+    expect(unauthorized).toBe(1);
+    expect(loginProofCount()).toBe(1);
+    const counted = await sql.query<{ failed_attempts: number }>(
+      "select failed_attempts from admin_users where email = 'dono@pulso.test'",
+    );
+    expect(counted.rows[0]?.failed_attempts).toBe(unauthorized);
+    const flooded = await login(app, "dono@pulso.test", "senha-dona-pulso", attack);
+    expect(flooded.response.status).toBe(429);
+    expect(loginProofCount()).toBe(unauthorized);
+    const opened = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.78");
+    expect(opened.response.status).toBe(200);
+    expect(opened.body.user).toMatchObject({ email: "dono@pulso.test", role: "dono" });
+  });
+
   it("recusa origem desconhecida e login sem segredo", async () => {
     const app = createAdminApp(sql);
     const origin = await app.request("/v1/admin/login", {
@@ -115,7 +160,11 @@ describe("login do admin", () => {
     expect(sessionSecret({ NODE_ENV: "production", ADMIN_SESSION_SECRET: "pulso-dev-session-change-me" })).toBeNull();
     expect(sessionSecret({ NODE_ENV: "test", ADMIN_SESSION_SECRET: "pulso-dev-session-change-me" })).toBe("pulso-dev-session-change-me");
     expect(loginBackoffMs(1)).toBe(0);
+    expect(loginBackoffMs(2)).toBe(100);
     expect(loginBackoffMs(3)).toBeGreaterThan(loginBackoffMs(2));
+    expect(loginBackoffMs(8)).toBe(6_400);
+    expect(loginBackoffMs(9)).toBe(8_000);
+    expect(loginBackoffMs(12)).toBe(8_000);
     expect(clientAddress({
       socketAddress: "203.0.113.8",
       forwardedFor: "198.51.100.9, 203.0.113.8",

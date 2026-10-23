@@ -2,6 +2,7 @@ import { writeAudit } from "@pulso/db/audit";
 import { hashPassword, verifyPassword } from "@pulso/db/password";
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
+import Redis from "ioredis";
 import { z } from "zod";
 import { clientIp, HttpError, pageQuery, parseInput, readJson, requireActor, type AdminRuntime } from "./http";
 import { openSession, revokeSession, sessionIsLive } from "./live-session";
@@ -18,39 +19,109 @@ const IP_LIMIT = 30;
 
 export function loginBackoffMs(failedAttempts: number): number {
   if (failedAttempts <= 1) return 0;
-  return Math.min(8_000, 100 * 2 ** Math.min(failedAttempts - 2, 6));
-}
-
-function wait(ms: number): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return Math.min(8_000, 100 * 2 ** Math.min(failedAttempts - 2, 7));
 }
 
 const ipHits = new Map<string, { count: number; reset: number }>();
+const slots = new Map<string, { inflight: boolean; notBefore: number }>();
 let dummyHash: string | null = null;
+let proofs = 0;
+let redisClient: Redis | null = null;
+let redisUrl = "";
+
+const BUSY = "Muitas tentativas de login. Espera alguns minutos.";
 
 async function dummy(): Promise<string> {
   dummyHash ??= await hashPassword("senha-dummy-pulso");
   return dummyHash;
 }
 
-function ipLimited(ip: string, now: number): boolean {
-  const current = ipHits.get(ip);
-  if (!current || current.reset <= now) return false;
-  return current.count >= IP_LIMIT;
-}
-
-function recordIp(ip: string, now: number): void {
+function reserveIpMap(ip: string, now: number): boolean {
   const current = ipHits.get(ip);
   if (!current || current.reset <= now) {
     ipHits.set(ip, { count: 1, reset: now + LOCK_MS });
-    return;
+    return true;
   }
   current.count += 1;
+  return current.count <= IP_LIMIT;
+}
+
+function slotKey(email: string, ip: string): string {
+  return `${email}\n${ip}`;
+}
+
+function reserveSlotMap(email: string, ip: string, now: number): { ok: true } | { ok: false; retryAfter: number } {
+  const key = slotKey(email, ip);
+  const slot = slots.get(key);
+  if (slot?.inflight) return { ok: false, retryAfter: 1 };
+  if (slot && slot.notBefore > now) {
+    return { ok: false, retryAfter: Math.max(1, Math.ceil((slot.notBefore - now) / 1000)) };
+  }
+  slots.set(key, { inflight: true, notBefore: 0 });
+  return { ok: true };
+}
+
+function settleSlotMap(email: string, ip: string, now: number, delayMs: number): void {
+  if (delayMs <= 0) {
+    slots.delete(slotKey(email, ip));
+    return;
+  }
+  slots.set(slotKey(email, ip), { inflight: false, notBefore: now + delayMs });
+}
+
+function redis(): Redis | null {
+  const url = process.env.REDIS_URL;
+  if (!url) return null;
+  if (redisClient && redisUrl === url) return redisClient;
+  redisClient?.disconnect();
+  redisUrl = url;
+  redisClient = new Redis(url, {
+    connectTimeout: 800,
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    lazyConnect: true,
+  });
+  return redisClient;
+}
+
+async function reserveIpRedis(ip: string): Promise<boolean> {
+  const client = redis();
+  if (!client) return false;
+  const key = `pulso:login:ip:${ip}`;
+  const count = await client.incr(key);
+  if (count === 1 || (await client.ttl(key)) < 0) await client.expire(key, LOCK_MS / 1000);
+  return count <= IP_LIMIT;
+}
+
+async function reserveSlotRedis(email: string, ip: string): Promise<{ ok: true } | { ok: false; retryAfter: number }> {
+  const client = redis();
+  if (!client) return { ok: false, retryAfter: 1 };
+  const key = `pulso:login:slot:${email}:${ip}`;
+  const set = await client.set(key, "1", "PX", 30_000, "NX");
+  if (set === "OK") return { ok: true };
+  const ttl = await client.pttl(key);
+  return { ok: false, retryAfter: Math.max(1, Math.ceil(Math.max(ttl, 1000) / 1000)) };
+}
+
+async function settleSlotRedis(email: string, ip: string, delayMs: number): Promise<void> {
+  const client = redis();
+  if (!client) return;
+  const key = `pulso:login:slot:${email}:${ip}`;
+  if (delayMs <= 0) {
+    await client.del(key);
+    return;
+  }
+  await client.set(key, "1", "PX", delayMs);
+}
+
+export function loginProofCount(): number {
+  return proofs;
 }
 
 export function resetLoginLimits(): void {
   ipHits.clear();
+  slots.clear();
+  proofs = 0;
 }
 
 interface UserRow {
@@ -67,70 +138,117 @@ interface UserRow {
 export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
   admin.post("/login", async (c) => {
     const ctx = runtime();
-    const body = parseInput(loginSchema, await readJson(c));
-    const email = body.email.toLowerCase();
     const now = ctx.now();
     const ip = clientIp(c);
-    if (ipLimited(ip, now.getTime())) {
+    let memory = !process.env.REDIS_URL;
+    let allowed = false;
+    if (memory) {
+      allowed = reserveIpMap(ip, now.getTime());
+    } else {
+      try {
+        allowed = await reserveIpRedis(ip);
+      } catch {
+        memory = true;
+        allowed = reserveIpMap(ip, now.getTime());
+      }
+    }
+    if (!allowed) {
       c.header("retry-after", "900");
-      throw new HttpError(429, "Muitas tentativas de login. Espera alguns minutos.");
+      throw new HttpError(429, BUSY);
     }
-    const found = await ctx.sql.query<UserRow>(
-      `select id, email, name, role, password_hash, active, failed_attempts, locked_until
-       from admin_users where email = $1`,
-      [email],
-    );
-    const user = found.rows[0];
-    if (!user || !user.active || !isRole(user.role)) {
-      await verifyPassword(body.password, await dummy());
-      recordIp(ip, now.getTime());
-      await writeAudit(ctx.sql, {
-        actorId: null,
-        action: "login_failed",
-        entity: "admin_user",
-        entityId: null,
-        after: { email },
-      });
-      throw new HttpError(401, "E-mail ou senha não confere.");
+    const body = parseInput(loginSchema, await readJson(c));
+    const email = body.email.toLowerCase();
+    const clock = Date.now();
+    let gate: { ok: true } | { ok: false; retryAfter: number };
+    if (memory) {
+      gate = reserveSlotMap(email, ip, clock);
+    } else {
+      try {
+        gate = await reserveSlotRedis(email, ip);
+      } catch {
+        memory = true;
+        gate = reserveSlotMap(email, ip, clock);
+      }
     }
-    const bumped = await ctx.sql.query<{ failed_attempts: number }>(
-      `update admin_users
-       set failed_attempts = failed_attempts + 1, updated_at = now()
-       where id = $1
-       returning failed_attempts`,
-      [user.id],
-    );
-    const attempts = Number(bumped.rows[0]?.failed_attempts ?? 1);
-    const ok = await verifyPassword(body.password, user.password_hash);
-    if (!ok) {
-      recordIp(ip, now.getTime());
-      await wait(loginBackoffMs(attempts));
+    if (!gate.ok) {
+      c.header("retry-after", String(gate.retryAfter));
+      throw new HttpError(429, BUSY);
+    }
+    let held = true;
+    const settle = async (delayMs: number) => {
+      held = false;
+      if (!memory) {
+        try {
+          await settleSlotRedis(email, ip, delayMs);
+          return;
+        } catch {
+          memory = true;
+        }
+      }
+      settleSlotMap(email, ip, Date.now(), delayMs);
+    };
+    try {
+      const found = await ctx.sql.query<UserRow>(
+        `select id, email, name, role, password_hash, active, failed_attempts, locked_until
+         from admin_users where email = $1`,
+        [email],
+      );
+      const user = found.rows[0];
+      if (!user || !user.active || !isRole(user.role)) {
+        proofs += 1;
+        await verifyPassword(body.password, await dummy());
+        await settle(0);
+        await writeAudit(ctx.sql, {
+          actorId: null,
+          action: "login_failed",
+          entity: "admin_user",
+          entityId: null,
+          after: { email },
+        });
+        throw new HttpError(401, "E-mail ou senha não confere.");
+      }
+      const bumped = await ctx.sql.query<{ failed_attempts: number }>(
+        `update admin_users
+         set failed_attempts = failed_attempts + 1, updated_at = now()
+         where id = $1
+         returning failed_attempts`,
+        [user.id],
+      );
+      const attempts = Number(bumped.rows[0]?.failed_attempts ?? 1);
+      proofs += 1;
+      const ok = await verifyPassword(body.password, user.password_hash);
+      if (!ok) {
+        await settle(loginBackoffMs(attempts));
+        await writeAudit(ctx.sql, {
+          actorId: null,
+          action: "login_failed",
+          entity: "admin_user",
+          entityId: user.id,
+          after: { email },
+        });
+        throw new HttpError(401, "E-mail ou senha não confere.");
+      }
+      await ctx.sql.query(
+        "update admin_users set failed_attempts = 0, locked_until = null, updated_at = now() where id = $1",
+        [user.id],
+      );
+      await settle(0);
+      const exp = Math.floor(now.getTime() / 1000) + SESSION_SECONDS;
+      const jti = randomUUID();
+      await openSession(ctx.sql, jti, user.id, new Date(exp * 1000));
+      const token = signSession({ sub: user.id, email: user.email, name: user.name, role: user.role, exp, jti }, ctx.secret);
       await writeAudit(ctx.sql, {
-        actorId: null,
-        action: "login_failed",
+        actorId: user.id,
+        action: "login",
         entity: "admin_user",
         entityId: user.id,
-        after: { email },
+        after: { email: user.email, role: user.role },
       });
-      throw new HttpError(401, "E-mail ou senha não confere.");
+      c.header("set-cookie", sessionCookie(token, SESSION_SECONDS, ctx.cookieSecure));
+      return c.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+    } finally {
+      if (held) await settle(0);
     }
-    await ctx.sql.query(
-      "update admin_users set failed_attempts = 0, locked_until = null, updated_at = now() where id = $1",
-      [user.id],
-    );
-    const exp = Math.floor(now.getTime() / 1000) + SESSION_SECONDS;
-    const jti = randomUUID();
-    await openSession(ctx.sql, jti, user.id, new Date(exp * 1000));
-    const token = signSession({ sub: user.id, email: user.email, name: user.name, role: user.role, exp, jti }, ctx.secret);
-    await writeAudit(ctx.sql, {
-      actorId: user.id,
-      action: "login",
-      entity: "admin_user",
-      entityId: user.id,
-      after: { email: user.email, role: user.role },
-    });
-    c.header("set-cookie", sessionCookie(token, SESSION_SECONDS, ctx.cookieSecure));
-    return c.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
   });
 
   admin.post("/logout", async (c) => {

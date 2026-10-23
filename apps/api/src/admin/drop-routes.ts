@@ -285,7 +285,7 @@ export function mountPublicDrops(app: Hono, resolveSql: () => Sql | null, now: (
     const sql = resolveSql();
     if (!sql) return c.json({ error: "A lista de espera ainda não está no banco." }, 503);
     const body = parseInput(joinSchema, await readJson(c));
-    const result = await guard(() =>
+    await guard(() =>
       joinWaitlist(sql, {
         dropId: c.req.param("id"),
         email: body.email,
@@ -293,6 +293,6 @@ export function mountPublicDrops(app: Hono, resolveSql: () => Sql | null, now: (
         consentAt: now().toISOString(),
       }),
     );
-    return c.json({ ok: true, already: result.already }, result.already ? 200 : 201);
+    return c.json({ ok: true });
   });
 }

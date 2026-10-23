@@ -152,10 +152,11 @@ test("a lista guarda o e-mail com consentimento e a saída pública não apaga",
   const denied = await joinDropWaitlist("drop-05", { email: "lista@pulso.dev", consent: false }, at);
   assert.equal(denied.status, 400);
   const created = await joinDropWaitlist("drop-05", { email: " Lista@pulso.dev ", consent: true }, at);
-  assert.equal(created.status, 201);
-  assert.equal(created.body.source, "adapter");
+  assert.equal(created.status, 200);
+  assert.deepEqual(created.body, { ok: true, source: "adapter" });
   const again = await joinDropWaitlist("drop-05", { email: "lista@pulso.dev", consent: true }, at);
-  assert.equal(again.body.already, true);
+  assert.equal(again.status, 200);
+  assert.deepEqual(again.body, { ok: true, source: "adapter" });
   const raw = JSON.parse(readFileSync(process.env.DROP_WAITLIST_PATH, "utf8")) as { entries: Record<string, string>[] };
   assert.equal(raw.entries.length, 1);
   assert.deepEqual(Object.keys(raw.entries[0] ?? {}).sort(), ["consentAt", "consentOrigin", "dropId", "email"]);

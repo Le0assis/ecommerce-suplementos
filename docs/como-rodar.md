@@ -47,7 +47,7 @@ pnpm start:api        # tsx, sem pasta dist
 Ainda não há Dockerfile de app nem projeto na Vercel. Quando for publicar:
 
 1. Site: Next.js com as `NEXT_PUBLIC_*` do ambiente e `WEB_PORT` definido pelo host. Build command `pnpm --filter @pulso/web build`.
-2. API: processo Node `pnpm --filter @pulso/api start`, `API_PORT` atrás do proxy.
+2. API: processo Node `pnpm --filter @pulso/api start`, `API_PORT` atrás do proxy. Atrás de proxy, `TRUSTED_PROXIES` é obrigatório. Sem a lista, o limite de login vê só o IP do proxy.
 3. Postgres gerenciado. Rode `pnpm db:migrate` e `pnpm db:seed` uma vez. Não use a senha `pulso` fora da máquina local.
 4. Redis gerenciado, ou apague `REDIS_URL` para seguir sem cache.
 5. Defina `ADMIN_SESSION_SECRET` no servidor, diferente do exemplo. Ele não usa prefixo `NEXT_PUBLIC_`. O cookie da sessão já é httpOnly. Crie o dono com `pnpm --filter @pulso/db create-owner`. A API de produção exige `API_DATA_SOURCE=postgres`. O `/admin` não entra se a API estiver fora.

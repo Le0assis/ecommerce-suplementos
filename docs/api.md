@@ -22,7 +22,11 @@ O JSON não traz token. O valor da sessão sai só no cabeçalho `Set-Cookie`.
 
 Papéis: `dono` (tudo, inclusive fidelidade e `GET /v1/admin/audit-log`), `editor` (catálogo, conteúdo, cupom, promoção, drop, quiz, raspadinha, banner, upload) e `atendimento` (pedido, avaliação, cliente). Outro papel ou conta inativa responde `401` com `{ "error": "E-mail ou senha não confere." }`.
 
-Senha errada soma `failed_attempts` no banco antes de conferir o hash e espera um atraso que cresce até 8 segundos. A conta não trava: a senha certa zera o contador e `locked_until`. Trinta falhas no mesmo IP, na memória do processo, respondem `429` com `Retry-After: 900`. O IP é o do socket. `X-Forwarded-For` só entra se esse socket estiver em `TRUSTED_PROXIES`; vale o salto mais à direita que não é proxy. Com `VERCEL=1`, o cabeçalho lido é `x-vercel-forwarded-for`.
+Cada tentativa reserva o IP antes de qualquer espera. Com `REDIS_URL`, a reserva é `INCR` e `EXPIRE` de 15 minutos em `pulso:login:ip:<ip>`. Sem Redis, é um `Map` no processo, atualizado na hora. A 31ª tentativa nesse IP responde `429`, `Retry-After: 900` e `{ "error": "Muitas tentativas de login. Espera alguns minutos." }`.
+
+Há no máximo uma tentativa em andamento por conta e IP (`pulso:login:slot:<email>:<ip>` no Redis, ou o mesmo `Map`). As outras, no mesmo instante, respondem `429` na hora e não calculam scrypt. Senha errada soma `failed_attempts` no banco antes de conferir o hash. O atraso não segura esta resposta: ele segura a próxima. A fórmula é `min(8000, 100 * 2^min(falhas - 2, 7))` milissegundos, a partir da segunda falha, e chega a 8 segundos. Enquanto esse prazo não passa, a próxima tentativa nesse par conta+IP responde `429` e não calcula scrypt, mesmo com a senha certa. A conta não trava: a senha certa, depois do prazo ou de outro IP, zera o contador e `locked_until`.
+
+O IP é o do socket. Atrás de um proxy, `TRUSTED_PROXIES` é obrigatório: sem a lista, todo cliente vira o IP do proxy e o limite de login trava todo mundo junto. `X-Forwarded-For` só entra se esse socket estiver na lista; vale o salto mais à direita que não é proxy. Com `VERCEL=1`, o cabeçalho lido é `x-vercel-forwarded-for`.
 
 Sem `ADMIN_SESSION_SECRET` de pelo menos 16 caracteres, o login responde `503`. Em produção, o valor de exemplo `pulso-dev-session-change-me` também responde `503`. Em produção a API só sobe com `API_DATA_SOURCE=postgres` e `DATABASE_URL`.
 
@@ -80,7 +84,7 @@ Sem token no JSON.
 
 `DELETE /api/admin/session` chama `POST /v1/admin/logout` com o bearer, apaga `pulso_admin_session` e responde `{ "ok": true }`. `POST` e `DELETE` de outra origem respondem `403`.
 
-O site ainda conta 8 falhas em 15 minutos por IP do primeiro salto de `X-Forwarded-For` e responde `429`. Isso trava só o route handler daquele IP. Não trava a conta no banco.
+O site ainda conta 8 falhas em 15 minutos por IP do primeiro salto de `X-Forwarded-For` e responde `429`. Isso trava só o route handler daquele IP. Não trava a conta no banco. O scrypt e o atraso progressivo ficam na API.
 
 O arquivo `apps/web/.data/admin-mock.json` continua existindo para o CRUD de teste quando a API está fora. Sem a API não dá para obter sessão, então o painel não abre por esse arquivo.
 
@@ -182,9 +186,9 @@ Com `API_DATA_SOURCE=postgres` e banco, a leitura é a tabela. Sem banco, a resp
 
 O card da home lê esse `unitsLeft` (o do drop, ou o mínimo do sabor). Não usa o `unitsLeft` embutido no produto do catálogo quando o drop tem sabor.
 
-`POST /v1/drops/:id/waitlist` com `{ "email", "consent": true, "consentOrigin"? }` grava a lista. Sem `consent: true`, `400`. O mesmo e-mail no mesmo drop responde `200` `{ "already": true }`. Sem banco, `503`.
+`POST /v1/drops/:id/waitlist` com `{ "email", "consent": true, "consentOrigin"? }` grava a lista. Sem `consent: true`, `400`. E-mail novo e e-mail que já estava respondem a mesma coisa: `200` `{ "ok": true }`. Sem banco, `503`.
 
-`POST /v1/drops/waitlist/erase` responde sempre `200` `{ "ok": true }` e não apaga, não anonimiza e não diz se o e-mail estava na lista. A saída por link de e-mail ainda não existe. Apagar e anonimizar seguem em `POST /v1/admin/drops/waitlist/erase` e `POST /v1/admin/drops/waitlist/anonymize`.
+`POST /v1/drops/waitlist/erase` responde sempre `200` `{ "ok": true }` e não apaga, não anonimiza e não diz se o e-mail estava na lista. Quem quer sair pede ao suporte. O atendimento apaga ou anonimiza com `POST /v1/admin/drops/waitlist/erase` e `POST /v1/admin/drops/waitlist/anonymize`. A confirmação por link no e-mail fica para o Léo decidir.
 
 ## Variação sem porção
 
