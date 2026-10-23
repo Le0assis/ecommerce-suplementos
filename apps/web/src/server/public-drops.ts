@@ -1,8 +1,8 @@
 import type { AdminDb } from "@/server/admin-seed";
 import { peekAdminDb } from "@/server/admin-store";
-import { waitlistCounts } from "@/server/drop-waitlist";
 import { dropViewState, stockOf, type DropViewState } from "@/lib/drop-view";
 import { influencers, products, upcomingDrop } from "@pulso/data";
+import { unstable_rethrow } from "next/navigation";
 
 export interface PublicDropView {
   id: string;
@@ -196,15 +196,15 @@ async function fetchApi(): Promise<{ drops: DropSeed[]; source: string } | null>
     const body = (await response.json()) as { source?: string; drops?: Partial<DropSeed>[] };
     if (!Array.isArray(body.drops)) return null;
     return { drops: fromApi(body.drops), source: body.source ?? "" };
-  } catch {
+  } catch (error) {
+    unstable_rethrow(error);
     return null;
   }
 }
 
 export async function loadPublicDrops(now = Date.now()): Promise<PublicDropView[]> {
   const db = peekAdminDb();
-  const counts = waitlistCounts();
   const api = await fetchApi();
   const seeds = api?.drops.length ? api.drops : fromCatalog(db);
-  return assembleDrops(now, seeds, counts, api?.source === "postgres" ? null : db);
+  return assembleDrops(now, seeds, {}, api?.source === "postgres" ? null : db);
 }

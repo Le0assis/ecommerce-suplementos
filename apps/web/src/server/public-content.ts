@@ -3,6 +3,7 @@ import { safeBannerHref } from "@/lib/safe-href";
 import { peekAdminDb } from "@/server/admin-store";
 import { getInfluencer, influencers, posts as catalogPosts, products as catalogProducts } from "@pulso/data";
 import type { Product } from "@pulso/domain";
+import { unstable_rethrow } from "next/navigation";
 
 export interface CollabPageModel {
   name: string;
@@ -215,7 +216,8 @@ async function fetchApi(path: string): Promise<ApiHit> {
     if (!response.ok) return { kind: "down" };
     const body = (await response.json()) as Record<string, unknown>;
     return { kind: "ok", body };
-  } catch {
+  } catch (error) {
+    unstable_rethrow(error);
     return { kind: "down" };
   }
 }
@@ -419,6 +421,9 @@ export async function loadPublicArticle(slug: string): Promise<PublicArticle | n
   const remote = await fetchApi(`/v1/posts/${encodeURIComponent(slug)}`);
   if (remote.kind === "missing") return null;
   if (remote.kind === "ok" && remote.body.post && typeof remote.body.post === "object") {
+    const status = (remote.body.post as { status?: unknown }).status;
+    if (status === "rascunho" || status === "arquivado" || status === "agendado") return null;
+    if (typeof status === "string" && status !== "publicado") return null;
     return articleFromRemote(remote.body.post as Parameters<typeof articleFromRemote>[0]);
   }
   if (remote.kind === "down") return catalogArticle(slug);

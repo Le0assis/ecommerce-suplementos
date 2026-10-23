@@ -35,7 +35,8 @@ export type AdminResource =
   | "orders"
   | "customers"
   | "loyalty"
-  | "uploads";
+  | "uploads"
+  | "waitlist";
 
 export interface AdminPublicUser {
   id: string;
@@ -93,7 +94,7 @@ export interface AdminLabel {
 export interface AdminImage {
   id: string;
   flavorId: string | null;
-  url: string;
+  url: string | null;
   alt: string;
   position: number;
   isCover: boolean;
@@ -158,6 +159,15 @@ export interface AdminCategory {
   kind: "categoria" | "objetivo";
   name: string;
   blurb: string;
+  imageUrl: string | null;
+  position: number;
+}
+
+/** Linha de GET /v1/admin/categories e /goals. A API usa slug, sem id e sem kind. */
+export interface AdminNamed {
+  slug: string;
+  name: string;
+  blurb: string | null;
   imageUrl: string | null;
   position: number;
 }
@@ -476,6 +486,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { href: "/admin/cupons", label: "Cupons", resource: "coupons" },
   { href: "/admin/promocoes", label: "Promoções", resource: "promotions" },
   { href: "/admin/drops", label: "Drops", resource: "drops" },
+  { href: "/admin/lista-espera", label: "Lista de espera", resource: "waitlist" },
   { href: "/admin/quiz", label: "Quiz", resource: "quiz" },
   { href: "/admin/avaliacoes", label: "Avaliações", resource: "reviews" },
   { href: "/admin/social", label: "Social", resource: "ugc" },
@@ -534,8 +545,8 @@ export function blankProduct(): AdminProduct {
     name: "",
     line: "",
     tagline: "",
-    description: "",
-    howToUse: "",
+    description: "Ficha de demonstração. Este produto não é um medicamento.",
+    howToUse: "Modo de uso de demonstração.",
     categoryId: "pre-treino",
     goals: [],
     badges: [],
@@ -553,10 +564,10 @@ export function blankProduct(): AdminProduct {
     label: {
       registration: "NI-DEMO-NOVO",
       category: "Suplemento alimentar",
-      serving: "",
-      servingsPerContainer: 0,
-      ingredients: "",
-      allergens: "",
+      serving: "30 g",
+      servingsPerContainer: 30,
+      ingredients: "Ingredientes de demonstração.",
+      allergens: "Sem declaração de alergênico neste protótipo.",
       warnings: ["Este produto não é um medicamento."],
       nutrition: [],
       manufacturer: "PULSO Indústria de Alimentos Ltda. (empresa fictícia deste protótipo).",

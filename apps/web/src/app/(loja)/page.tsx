@@ -1,4 +1,5 @@
 import { HomeView, type HomeDropCard } from "@/components/home/home-view";
+import { loadPublicBanners } from "@/server/public-catalog";
 import { loadPublicDrops } from "@/server/public-drops";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -11,12 +12,13 @@ function homeDrop(drops: Awaited<ReturnType<typeof loadPublicDrops>>): HomeDropC
 
 async function HomeLive() {
   await connection();
-  return <HomeView dropCard={homeDrop(await loadPublicDrops())} />;
+  const [drops, banners] = await Promise.all([loadPublicDrops(), loadPublicBanners()]);
+  return <HomeView dropCard={homeDrop(drops)} banners={banners} />;
 }
 
 export default function HomePage() {
   return (
-    <Suspense fallback={<HomeView dropCard={null} />}>
+    <Suspense fallback={<HomeView dropCard={null} banners={[]} />}>
       <HomeLive />
     </Suspense>
   );

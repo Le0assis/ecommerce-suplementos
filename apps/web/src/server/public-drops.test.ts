@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, test } from "vitest";
@@ -143,29 +143,33 @@ test("GET /v1/drops manda o estoque e a contagem do próprio drop", async () => 
   }
 });
 
-test("a lista guarda o e-mail com consentimento e a saída pública não apaga", async () => {
+test("a lista não grava e-mail local e a resposta não diz se já estava", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "pulso-wait-"));
   dirs.push(dir);
-  process.env.DROP_WAITLIST_PATH = path.join(dir, "lista.json");
+  const file = path.join(dir, "lista.json");
+  process.env.DROP_WAITLIST_PATH = file;
   process.env.API_URL = "http://127.0.0.1:9";
-  const at = "2026-10-23T12:00:00.000Z";
-  const denied = await joinDropWaitlist("drop-05", { email: "lista@pulso.dev", consent: false }, at);
+  const denied = await joinDropWaitlist("drop-05", { email: "lista@pulso.dev", consent: false });
   assert.equal(denied.status, 400);
-  const created = await joinDropWaitlist("drop-05", { email: " Lista@pulso.dev ", consent: true }, at);
-  assert.equal(created.status, 200);
-  assert.deepEqual(created.body, { ok: true, source: "adapter" });
-  const again = await joinDropWaitlist("drop-05", { email: "lista@pulso.dev", consent: true }, at);
-  assert.equal(again.status, 200);
-  assert.deepEqual(again.body, { ok: true, source: "adapter" });
-  const raw = JSON.parse(readFileSync(process.env.DROP_WAITLIST_PATH, "utf8")) as { entries: Record<string, string>[] };
-  assert.equal(raw.entries.length, 1);
-  assert.deepEqual(Object.keys(raw.entries[0] ?? {}).sort(), ["consentAt", "consentOrigin", "dropId", "email"]);
-  assert.equal(raw.entries[0]?.email, "lista@pulso.dev");
-  assert.equal(raw.entries[0]?.consentOrigin, "pagina_drops:v1");
+  const down = await joinDropWaitlist("drop-05", { email: " Lista@pulso.dev ", consent: true });
+  assert.equal(down.status, 503);
+  assert.equal("already" in down.body, false);
+  assert.equal(existsSync(file), false);
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ ok: true, already: true });
+  try {
+    const created = await joinDropWaitlist("drop-05", { email: "lista@pulso.dev", consent: true });
+    assert.equal(created.status, 200);
+    assert.deepEqual(created.body, { ok: true });
+    const again = await joinDropWaitlist("drop-05", { email: "lista@pulso.dev", consent: true });
+    assert.deepEqual(again.body, { ok: true });
+    assert.equal("already" in again.body, false);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
   const erased = await eraseDropWaitlist({ email: "lista@pulso.dev" });
   assert.deepEqual(erased.body, { ok: true });
-  const after = JSON.parse(readFileSync(process.env.DROP_WAITLIST_PATH, "utf8")) as { entries: unknown[] };
-  assert.equal(after.entries.length, 1);
+  assert.equal(existsSync(file), false);
   const stranger = await eraseDropWaitlist({ email: "outra@pulso.dev" });
   assert.deepEqual(stranger.body, { ok: true });
 });

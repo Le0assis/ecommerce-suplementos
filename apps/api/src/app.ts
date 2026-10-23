@@ -102,7 +102,9 @@ export function createApp(options: AdminAppOptions = {}): Hono {
   });
 
   app.onError((error, c) => {
-    if (error instanceof HttpError) return c.json({ error: error.message }, error.status);
+    if (error instanceof HttpError) {
+      return c.json(error.fields ? { error: error.message, fields: error.fields } : { error: error.message }, error.status);
+    }
     console.error(error);
     return c.json({ error: "Erro interno." }, 500);
   });

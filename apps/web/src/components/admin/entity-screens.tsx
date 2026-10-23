@@ -10,13 +10,13 @@ import { adminFetch, AdminApiError } from "@/lib/admin-fetch";
 import type {
   AdminAuthor,
   AdminBanner,
-  AdminCategory,
   AdminCoupon,
   AdminCustomer,
   AdminDrop,
   AdminInfluencer,
   AdminList,
   AdminLoyalty,
+  AdminNamed,
   AdminOne,
   AdminOrder,
   AdminPost,
@@ -31,6 +31,8 @@ import type {
   DropStatus,
   ReviewStatus,
 } from "@/lib/admin-types";
+import { uniqueSlug } from "@/lib/admin-payload";
+import { slugify } from "@/lib/admin-types";
 import { formatBRL } from "@pulso/domain";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -161,30 +163,44 @@ export function KitsScreen() {
   );
 }
 
-export function CategoriesScreen() {
-  const fields: FieldSpec<AdminCategory>[] = [
+function NamedCollection({ resource, eyebrow, title, description }: { resource: "categories" | "goals"; eyebrow: string; title: string; description: string }) {
+  const fields: FieldSpec<AdminNamed>[] = [
     { kind: "text", key: "name", label: "Nome" },
-    { kind: "text", key: "id", label: "Slug", hint: "Depois de criar, o slug não muda." },
-    { kind: "select", key: "kind", label: "Tipo", options: [{ value: "categoria", label: "Categoria" }, { value: "objetivo", label: "Objetivo" }] },
+    { kind: "text", key: "slug", label: "Slug", hint: "Letras minúsculas e hífen. Vazio, sai do nome. A API não tem PATCH: gravar de novo usa o mesmo slug." },
     { kind: "number", key: "position", label: "Ordem" },
     { kind: "text", key: "imageUrl", label: "Imagem (https)" },
     { kind: "textarea", key: "blurb", label: "Texto curto" },
   ];
   return (
-    <div className="mx-auto max-w-5xl">
-      <CollectionScreen
-        eyebrow="Catálogo"
-        title="Categorias"
-        description="Categorias da loja e objetivos do quiz. Apagar só se nenhum produto usar."
-        resource="categories"
-        columns={[
-          { header: "Nome", cell: (item) => item.name },
-          { header: "Tipo", cell: (item) => item.kind },
-          { header: "Ordem", cell: (item) => item.position },
-        ]}
-        blank={(): AdminCategory => ({ id: "", kind: "categoria", name: "", blurb: "", imageUrl: null, position: 0 })}
-        fields={fields}
-      />
+    <CollectionScreen<AdminNamed>
+      eyebrow={eyebrow}
+      title={title}
+      description={description}
+      resource={resource}
+      write="post"
+      rowKey={(item) => item.slug}
+      prepare={(draft, items, exists) => ({
+        ...draft,
+        slug: exists ? slugify(draft.slug) : uniqueSlug(draft.slug || draft.name, items.map((item) => item.slug)),
+        blurb: draft.blurb?.trim() ? draft.blurb : null,
+        imageUrl: draft.imageUrl?.trim() ? draft.imageUrl.trim() : null,
+      })}
+      columns={[
+        { header: "Nome", cell: (item) => item.name },
+        { header: "Slug", cell: (item) => item.slug },
+        { header: "Ordem", cell: (item) => item.position },
+      ]}
+      blank={(): AdminNamed => ({ slug: "", name: "", blurb: "", imageUrl: null, position: 0 })}
+      fields={fields}
+    />
+  );
+}
+
+export function CategoriesScreen() {
+  return (
+    <div className="mx-auto max-w-5xl space-y-12">
+      <NamedCollection resource="categories" eyebrow="Catálogo" title="Categorias" description="A rota é /categories, identificada pelo slug. Apagar só se nenhum produto usar." />
+      <NamedCollection resource="goals" eyebrow="Quiz" title="Objetivos" description="A rota é /goals, não /categories. O slug é o identificador." />
     </div>
   );
 }
@@ -243,6 +259,7 @@ export function BlogScreen() {
         title="Autores"
         description="Um autor pode ser alguém de fora ou um influencer da collab."
         resource="authors"
+        write="post"
         blank={() => ({ id: "", name: "", photoUrl: null, bio: "", influencerId: null })}
         fields={authorFields}
         columns={[
@@ -256,11 +273,11 @@ export function BlogScreen() {
 
 export function PromotionsScreen() {
   const [products, setProducts] = useState<AdminProduct[]>([]);
-  const [categories, setCategories] = useState<AdminCategory[]>([]);
+  const [categories, setCategories] = useState<AdminNamed[]>([]);
   useEffect(() => {
     void Promise.all([
       adminFetch<AdminList<AdminProduct>>("products?status=todos&pageSize=100"),
-      adminFetch<AdminList<AdminCategory>>("categories?kind=categoria&pageSize=100"),
+      adminFetch<AdminList<AdminNamed>>("categories?pageSize=100"),
     ]).then(([productList, categoryList]) => {
       setProducts(productList.items);
       setCategories(categoryList.items);
@@ -273,6 +290,7 @@ export function PromotionsScreen() {
         title="Promoções"
         description="Preço riscado por período, num produto ou numa categoria. Percentual de 1% a 30%."
         resource="promotions"
+        write="post"
         blank={() => ({ id: "", name: "", kind: "percent", value: 10, targetType: "produto", productId: null, categoryId: null, startsAt: null, endsAt: null, badge: null, active: true })}
         columns={[
           { header: "Nome", cell: (item) => item.name },
@@ -302,7 +320,7 @@ export function PromotionsScreen() {
             ) : (
               <SelectField label="Categoria" value={draft.categoryId ?? ""} onChange={(categoryId) => update({ categoryId })}>
                 <option value="">Escolher</option>
-                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                {categories.map((category) => <option key={category.slug} value={category.slug}>{category.name}</option>)}
               </SelectField>
             )}
             <Field label="Começa" hint="Horário de São Paulo.">
@@ -386,6 +404,7 @@ export function QuizScreen() {
         title="Quiz"
         description="Perguntas, opções e pesos. A loja ainda responde com a regra fixa do domínio até o backend publicar o quiz."
         resource="quiz"
+        write="post"
         blank={() => ({ id: "", prompt: "", answerKey: "", position: 0, options: [{ id: "", label: "", value: "", position: 0, weights: {} }] })}
         columns={[
           { header: "Pergunta", cell: (item) => item.prompt },
@@ -493,6 +512,7 @@ export function SocialScreen() {
         title="Posts"
         description="Fotos com link, sem API do Instagram. Ocultar tira da grade."
         resource="ugc"
+        write="post"
         blank={() => ({ id: "", author: "", handle: "@", caption: "", likes: 0, accent: "#d6ff3c", productId: null, position: 0, hidden: false })}
         fields={ugcFields}
         columns={[
@@ -505,6 +525,7 @@ export function SocialScreen() {
         title="Vídeos"
         description="Três cores de quadro e a transcrição que a faixa da home lê."
         resource="videos"
+        write="post"
         blank={() => ({ id: "", slug: "", title: "", caption: "", duration: "0:15", frames: ["#d6ff3c", "#101402", "#ff3d8a"], transcript: ["Suplemento alimentar. Não é medicamento."], position: 0, hidden: false })}
         columns={[
           { header: "Título", cell: (item) => item.title },
@@ -552,6 +573,7 @@ export function ScratchScreen() {
         title="Raspadinha"
         description="Prêmios e chance. O sorteio da loja ainda usa a lista fixa do domínio até a API assumir."
         resource="scratch-prizes"
+        write="post"
         blank={() => ({ id: "", label: "", detail: "", weight: 10, couponCode: null, points: null, active: true, position: 0 })}
         fields={fields}
         columns={[
@@ -590,7 +612,7 @@ export function LoyaltyScreen() {
     try {
       const saved = await adminFetch<AdminOne<AdminLoyalty>>("settings/loyalty", { method: "PATCH", body: JSON.stringify(item) });
       setItem(saved.item);
-      setNotice("Constantes salvas no adaptador. A loja ainda calcula com os números do domínio.");
+      setNotice("Salvo.");
     } catch (caught) {
       setError(caught instanceof AdminApiError ? caught.message : "Não deu para salvar.");
     }
@@ -680,9 +702,28 @@ export function CustomersScreen() {
       <CollectionScreen<AdminCustomer>
         eyebrow="Operação"
         title="Clientes"
-        description="Ajuste de pontos e pausa da assinatura. A exclusão de conta fica no fluxo LGPD do backend."
+        description="O saldo muda por um delta em /customers/:id/points. A assinatura usa /subscriptions/:id. Não há PATCH do cliente inteiro."
         resource="customers"
         removeLabel=""
+        saveDraft={async (draft, items) => {
+          const previous = items.find((item) => item.id === draft.id);
+          if (!previous) throw new AdminApiError(404, "A API não tem GET de cliente por id. Esse cliente não está na lista.");
+          const delta = Math.trunc(draft.pointsBalance) - previous.pointsBalance;
+          if (delta !== 0) {
+            await adminFetch(`customers/${encodeURIComponent(draft.id)}/points`, {
+              method: "PATCH",
+              body: JSON.stringify({ delta, reason: "Ajuste no painel" }),
+            });
+          }
+          for (const subscription of draft.subscriptions) {
+            const before = previous.subscriptions.find((item) => item.id === subscription.id);
+            if (!before || before.status === subscription.status) continue;
+            await adminFetch(`subscriptions/${encodeURIComponent(subscription.id)}`, {
+              method: "PATCH",
+              body: JSON.stringify({ status: subscription.status }),
+            });
+          }
+        }}
         columns={[
           { header: "Nome", cell: (item) => item.name },
           { header: "E-mail", cell: (item) => item.email },
@@ -692,7 +733,7 @@ export function CustomersScreen() {
           <div className="space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
               <Field label="Pontos na conta"><Input aria-label="Pontos na conta" type="number" min={0} value={draft.pointsBalance} onChange={(event) => update({ pointsBalance: Number(event.target.value) })} /></Field>
-              <Field label="Pontos acumulados"><Input aria-label="Pontos acumulados" type="number" min={0} value={draft.pointsLifetime} onChange={(event) => update({ pointsLifetime: Number(event.target.value) })} /></Field>
+              <Field label="Pontos acumulados" hint="A API não altera este total."><Input aria-label="Pontos acumulados" value={draft.pointsLifetime} readOnly /></Field>
             </div>
             {draft.subscriptions.map((subscription) => (
               <SelectField key={subscription.id} label={subscription.name} value={subscription.status} onChange={(status) => update({ subscriptions: draft.subscriptions.map((item) => item.id === subscription.id ? { ...item, status: status as AdminCustomer["subscriptions"][number]["status"] } : item) })}>
@@ -725,8 +766,9 @@ export function BannersScreen() {
       <CollectionScreen
         eyebrow="Home"
         title="Vitrine"
-        description="Hero, faixa e destaques. A home ainda lê o mock fixo até a vitrine passar a consumir esta lista."
+        description="Hero, faixa e destaques. A home lê GET /v1/banners. Criar e editar usam POST; a API não tem PATCH nem GET por id."
         resource="banners"
+        write="post"
         validate={(draft) => bannerHrefError(draft.href)}
         blank={(): AdminBanner => ({ id: "", slot: "destaque", title: "", subtitle: "", href: "/", imageUrl: null, accent: "#d6ff3c", position: 0, active: true, startsAt: null, endsAt: null })}
         fields={fields}

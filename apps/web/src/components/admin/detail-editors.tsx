@@ -5,6 +5,7 @@ import { CheckRow, Field, ImageUrlField, Notice, Section, SelectField, TextArea 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError } from "@/lib/admin-fetch";
+import { omitEmptyIds, uniqueSlug } from "@/lib/admin-payload";
 import type { AdminAuthor, AdminCoupon, AdminInfluencer, AdminList, AdminOne, AdminOrder, AdminPost, AdminProduct } from "@/lib/admin-types";
 import { ORDER_STATUSES, POST_STATUSES, slugify } from "@/lib/admin-types";
 import { blockProblem, readyBlocks } from "@/lib/post-blocks";
@@ -65,12 +66,20 @@ function fromLocal(value: string): string | null {
   return value.length === 16 ? `${value}:00-03:00` : value;
 }
 
+function publishedDay(value: string | null): string | null {
+  if (!value) return null;
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
+  return match?.[1] ?? null;
+}
+
 export function InfluencerEditor({ influencerId }: { influencerId: string }) {
   const isNew = influencerId === "novo";
   const router = useRouter();
   const [person, setPerson] = useState<AdminInfluencer | null>(isNew ? blankInfluencer() : null);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
+  const [knownSlugs, setKnownSlugs] = useState<string[]>([]);
+  const [slugEdited, setSlugEdited] = useState(!isNew);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -78,16 +87,22 @@ export function InfluencerEditor({ influencerId }: { influencerId: string }) {
     let cancelled = false;
     async function load() {
       try {
-        const [productList, couponList] = await Promise.all([
+        const [productList, couponList, people] = await Promise.all([
           adminFetch<AdminList<AdminProduct>>("products?status=todos&pageSize=100"),
           adminFetch<AdminList<AdminCoupon>>("coupons?pageSize=100"),
+          adminFetch<AdminList<AdminInfluencer>>("influencers?pageSize=100"),
         ]);
         if (cancelled) return;
         setProducts(productList.items);
         setCoupons(couponList.items);
+        setKnownSlugs(people.items.map((item) => item.slug));
         if (!isNew) {
-          const one = await adminFetch<AdminOne<AdminInfluencer>>(`influencers/${influencerId}`);
-          if (!cancelled) setPerson(one.item);
+          const found = people.items.find((item) => item.id === influencerId || item.slug === influencerId);
+          if (!found) {
+            setError("A API não tem GET /v1/admin/influencers/:id. Esse influencer não está na lista.");
+            return;
+          }
+          setPerson(found);
         }
       } catch (caught) {
         if (!cancelled) setError(caught instanceof AdminApiError ? caught.message : "Não deu para abrir o influencer.");
@@ -106,23 +121,23 @@ export function InfluencerEditor({ influencerId }: { influencerId: string }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!person) return;
-    const payload = {
+    const slug = isNew || !person.id ? uniqueSlug(person.slug || person.name, knownSlugs) : slugify(person.slug || person.name);
+    const payload = omitEmptyIds({
       ...person,
-      slug: person.slug || slugify(person.name),
+      slug,
       instagramUrl: person.instagramUrl?.trim() ? person.instagramUrl.trim() : null,
       quotes: person.quotes.filter((quote) => quote.body.trim()),
       images: person.images.filter((image) => image.alt.trim()),
-    };
+    });
     setError(null);
     setNotice(null);
     try {
+      const saved = await adminFetch<AdminOne<AdminInfluencer>>("influencers", { method: "POST", body: JSON.stringify(payload) });
       if (isNew || !person.id) {
-        const created = await adminFetch<AdminOne<AdminInfluencer>>("influencers", { method: "POST", body: JSON.stringify(payload) });
-        router.push(`/admin/influencers/${created.item.id}`);
+        router.push(`/admin/influencers/${saved.item.id || saved.item.slug}`);
         router.refresh();
         return;
       }
-      const saved = await adminFetch<AdminOne<AdminInfluencer>>(`influencers/${person.id}`, { method: "PATCH", body: JSON.stringify(payload) });
       setPerson(saved.item);
       setNotice("Influencer salvo.");
     } catch (caught) {
@@ -141,8 +156,15 @@ export function InfluencerEditor({ influencerId }: { influencerId: string }) {
       {notice ? <Notice tone="ok">{notice}</Notice> : null}
       <Section title="Perfil">
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Nome"><Input aria-label="Nome" value={person.name} onChange={(event) => update({ name: event.target.value })} required /></Field>
-          <Field label="Slug"><Input aria-label="Slug" value={person.slug} onChange={(event) => update({ slug: slugify(event.target.value) })} /></Field>
+          <Field label="Nome"><Input aria-label="Nome" value={person.name} onChange={(event) => {
+            const name = event.target.value;
+            setPerson((current) => {
+              if (!current) return current;
+              if (slugEdited) return { ...current, name };
+              return { ...current, name, slug: uniqueSlug(name, knownSlugs, current.id ? current.slug : undefined) };
+            });
+          }} required /></Field>
+          <Field label="Slug"><Input aria-label="Slug" value={person.slug} onChange={(event) => { setSlugEdited(true); update({ slug: slugify(event.target.value) }); }} /></Field>
           <Field label="@ Instagram"><Input aria-label="Handle" value={person.handle} onChange={(event) => update({ handle: event.target.value })} required /></Field>
           <Field label="Link do perfil"><Input aria-label="Instagram" placeholder="https://instagram.com/..." value={person.instagramUrl ?? ""} onChange={(event) => update({ instagramUrl: event.target.value || null })} /></Field>
           <Field label="Cidade"><Input aria-label="Cidade" value={person.city} onChange={(event) => update({ city: event.target.value })} /></Field>
@@ -204,6 +226,7 @@ export function PostEditor({ postId }: { postId: string }) {
   const [post, setPost] = useState<AdminPost | null>(isNew ? blankPost() : null);
   const [authors, setAuthors] = useState<AdminAuthor[]>([]);
   const [influencers, setInfluencers] = useState<AdminInfluencer[]>([]);
+  const [knownSlugs, setKnownSlugs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -211,16 +234,22 @@ export function PostEditor({ postId }: { postId: string }) {
     let cancelled = false;
     async function load() {
       try {
-        const [authorList, people] = await Promise.all([
+        const [authorList, people, posts] = await Promise.all([
           adminFetch<AdminList<AdminAuthor>>("authors?pageSize=100"),
           adminFetch<AdminList<AdminInfluencer>>("influencers?pageSize=100"),
+          adminFetch<AdminList<AdminPost>>("posts?pageSize=100"),
         ]);
         if (cancelled) return;
         setAuthors(authorList.items);
         setInfluencers(people.items);
+        setKnownSlugs(posts.items.map((item) => item.slug));
         if (!isNew) {
-          const one = await adminFetch<AdminOne<AdminPost>>(`posts/${postId}`);
-          if (!cancelled) setPost(one.item);
+          const found = posts.items.find((item) => item.id === postId || item.slug === postId);
+          if (!found) {
+            setError("A API não tem GET /v1/admin/posts/:slug. Esse post não está na lista.");
+            return;
+          }
+          setPost(found);
         }
       } catch (caught) {
         if (!cancelled) setError(caught instanceof AdminApiError ? caught.message : "Não deu para abrir o post.");
@@ -245,20 +274,21 @@ export function PostEditor({ postId }: { postId: string }) {
       setError(problem);
       return;
     }
-    const payload = {
+    const slug = isNew || !post.id ? uniqueSlug(post.slug || post.title, knownSlugs) : slugify(post.slug || post.title);
+    const payload = omitEmptyIds({
       ...post,
-      slug: post.slug || slugify(post.title),
+      slug,
+      publishedAt: publishedDay(post.publishedAt),
       blocks: readyBlocks(post.blocks),
-    };
+    });
     setError(null);
     try {
+      const saved = await adminFetch<AdminOne<AdminPost>>("posts", { method: "POST", body: JSON.stringify(payload) });
       if (isNew || !post.id) {
-        const created = await adminFetch<AdminOne<AdminPost>>("posts", { method: "POST", body: JSON.stringify(payload) });
-        router.push(`/admin/blog/${created.item.id}`);
+        router.push(`/admin/blog/${saved.item.id || saved.item.slug}`);
         router.refresh();
         return;
       }
-      const saved = await adminFetch<AdminOne<AdminPost>>(`posts/${post.id}`, { method: "PATCH", body: JSON.stringify(payload) });
       setPost(saved.item);
       setNotice("Post salvo.");
     } catch (caught) {
@@ -278,8 +308,9 @@ export function PostEditor({ postId }: { postId: string }) {
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Título"><Input aria-label="Título" value={post.title} onChange={(event) => {
           const title = event.target.value;
-          const auto = !post.slug || post.slug === slugify(post.title);
-          update({ title, slug: auto ? slugify(title) : post.slug });
+          const current = post.id ? post.slug : undefined;
+          const auto = !post.slug || post.slug === slugify(post.title) || post.slug === uniqueSlug(post.title, knownSlugs, current);
+          update({ title, slug: auto ? uniqueSlug(title, knownSlugs, current) : post.slug });
         }} required /></Field>
         <Field label="Slug"><Input aria-label="Slug" value={post.slug} onChange={(event) => update({ slug: slugify(event.target.value) })} /></Field>
         <Field label="Categoria"><Input aria-label="Categoria do post" value={post.category} onChange={(event) => update({ category: event.target.value })} /></Field>
@@ -320,9 +351,15 @@ export function OrderEditor({ orderId }: { orderId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    void adminFetch<AdminOne<AdminOrder>>(`orders/${orderId}`)
+    void adminFetch<AdminList<AdminOrder>>("orders")
       .then((result) => {
-        if (!cancelled) setOrder(result.item);
+        if (cancelled) return;
+        const found = result.items.find((item) => item.id === orderId);
+        if (!found) {
+          setError("A API não tem GET /v1/admin/orders/:id. Esse pedido não está na lista.");
+          return;
+        }
+        setOrder(found);
       })
       .catch((caught) => {
         if (!cancelled) setError(caught instanceof AdminApiError ? caught.message : "Não deu para abrir o pedido.");

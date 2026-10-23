@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "vitest";
@@ -114,18 +114,29 @@ test("kit, drop, post, avaliação e pontos seguem as regras", () => {
 test("editor não vê pedido nem fidelidade; atendimento vê pedido", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "pulso-admin-role-"));
   const previous = process.env.ADMIN_MOCK_PATH;
+  const previousApi = process.env.API_URL;
   process.env.ADMIN_MOCK_PATH = path.join(dir, "admin-mock.json");
+  process.env.API_URL = "http://127.0.0.1:9";
   try {
     const search = new URLSearchParams();
+    const file = path.join(dir, "admin-mock.json");
     assert.equal((await handleAdminData(session("editor"), "GET", ["orders"], search, undefined)).status, 403);
     assert.equal((await handleAdminData(session("editor"), "GET", ["settings", "loyalty"], search, undefined)).status, 403);
-    assert.equal((await handleAdminData(session("editor"), "GET", ["quiz"], search, undefined)).status, 200);
-    assert.equal((await handleAdminData(session("atendimento"), "GET", ["orders"], search, undefined)).status, 200);
-    assert.equal((await handleAdminData(session("atendimento"), "GET", ["reviews"], search, undefined)).status, 200);
-    assert.equal((await handleAdminData(session("dono"), "GET", ["settings", "loyalty"], search, undefined)).status, 200);
+    assert.equal((await handleAdminData(session("editor"), "GET", ["drops", "drop-05", "waitlist"], search, undefined)).status, 403);
+    const quiz = await handleAdminData(session("editor"), "GET", ["quiz"], search, undefined);
+    assert.equal(quiz.status, 401);
+    assert.notEqual(quiz.body.source, "adapter");
+    const orders = await handleAdminData(session("atendimento"), "GET", ["orders"], search, undefined);
+    assert.equal(orders.status, 401);
+    const loyalty = await handleAdminData({ ...session("dono"), src: "api", apiToken: "token-de-teste" }, "GET", ["settings", "loyalty"], search, undefined);
+    assert.equal(loyalty.status, 503);
+    assert.match(String(loyalty.body.error), /fora do ar/);
+    assert.equal(existsSync(file), false);
   } finally {
     if (previous === undefined) delete process.env.ADMIN_MOCK_PATH;
     else process.env.ADMIN_MOCK_PATH = previous;
+    if (previousApi === undefined) delete process.env.API_URL;
+    else process.env.API_URL = previousApi;
     rmSync(dir, { recursive: true, force: true });
   }
 });

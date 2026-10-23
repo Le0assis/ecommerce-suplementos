@@ -15,6 +15,17 @@ export class AdminApiError extends Error {
   }
 }
 
+export function adminErrorMessage(body: { error?: unknown; fields?: unknown } | null, fallback = "Não deu para concluir."): string {
+  const fields = body?.fields;
+  if (fields && typeof fields === "object" && !Array.isArray(fields)) {
+    const lines = Object.entries(fields as Record<string, unknown>)
+      .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0)
+      .map(([key, message]) => `${key}: ${message}`);
+    if (lines.length) return lines.join(" ");
+  }
+  return typeof body?.error === "string" && body.error ? body.error : fallback;
+}
+
 export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -29,9 +40,9 @@ export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T
   } catch {
     throw new AdminApiError(0, "Sem resposta do painel.");
   }
-  const body = (await response.json().catch(() => null)) as { error?: string } | null;
+  const body = (await response.json().catch(() => null)) as { error?: string; fields?: Record<string, string> } | null;
   if (!response.ok) {
-    const message = body?.error ?? "Não deu para concluir.";
+    const message = adminErrorMessage(body);
     if (isEndedAdminSession(message) && typeof window !== "undefined") {
       window.dispatchEvent(new Event("pulso-admin-session-end"));
     }
@@ -55,22 +66,5 @@ export async function uploadAdminImage(file: File, alt: string): Promise<{ url: 
     if (!sent.ok) throw new AdminApiError(sent.status, "O armazenamento recusou a foto.");
     return { url: ticket.publicUrl, source: ticket.source };
   }
-  if (file.size > 300 * 1024) {
-    throw new AdminApiError(413, ticket.message ?? "Sem Blob, o adaptador aceita até 300 KB. Cole uma URL https ou reduza a imagem.");
-  }
-  const dataUrl = await readDataUrl(file);
-  const saved = await adminFetch<{ source: AdminDataSource; url: string }>("uploads/local", {
-    method: "POST",
-    body: JSON.stringify({ alt: trimmed, dataUrl, contentType: file.type }),
-  });
-  return { url: saved.url, source: saved.source };
-}
-
-function readDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new AdminApiError(400, "Não consegui ler a imagem."));
-    reader.readAsDataURL(file);
-  });
+  throw new AdminApiError(502, ticket.message ?? "A API não devolveu o endereço de upload.");
 }

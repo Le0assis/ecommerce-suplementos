@@ -3,7 +3,11 @@ import { BuyBox } from "@/components/product/buy-box";
 import { ProductCard } from "@/components/product/product-card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { jsonLdHtml } from "@/lib/safe-href";
-import { getProduct, getReviews, products } from "@pulso/data";
+import { loadPublicProduct } from "@/server/public-catalog";
+import { products } from "@pulso/data";
+import type { CatalogProduct } from "@pulso/data";
+import type { Review } from "@pulso/domain";
+import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
@@ -13,16 +17,27 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const product = getProduct(slug);
-  return { title: product ? `${product.name} ${product.line}` : "Produto", description: product?.tagline };
+  const loaded = products.find((item) => item.slug === slug);
+  return { title: loaded ? `${loaded.name} ${loaded.line}` : "Produto", description: loaded?.tagline };
 }
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const product = getProduct(slug);
-  if (!product) notFound();
-  const reviews = getReviews(slug);
-  const related = products.filter((item) => item.slug !== slug && item.goals.some((goal) => product.goals.includes(goal))).slice(0, 3);
+  return (
+    <Suspense fallback={<p className="px-4 py-8">Abrindo o sabor…</p>}>
+      <LiveProduct slug={slug} />
+    </Suspense>
+  );
+}
+
+async function LiveProduct({ slug }: { slug: string }) {
+  await connection();
+  const loaded = await loadPublicProduct(slug);
+  if (!loaded) notFound();
+  return <ProductArticle product={loaded.product} reviews={loaded.reviews} related={loaded.related} names={loaded.names} />;
+}
+
+function ProductArticle({ product, reviews, related, names }: { product: CatalogProduct; reviews: Review[]; related: CatalogProduct[]; names: Record<string, string> }) {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -42,7 +57,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <p className="mt-3 text-sm text-muted-foreground"><strong className="text-foreground">Como usar. </strong>{product.howToUse}</p>
       {product.isKit && product.kitItems ? (
         <ul className="mt-4 text-sm text-muted-foreground">
-          {product.kitItems.map((item) => <li key={item.productSlug}>· {item.quantity}× {getProduct(item.productSlug)?.name ?? item.productSlug}</li>)}
+          {product.kitItems.map((item) => <li key={item.productSlug}>· {item.quantity}× {names[item.productSlug] ?? item.productSlug}</li>)}
         </ul>
       ) : null}
       <Accordion type="single" collapsible className="mt-8 rounded-[1.4rem] border border-white/10 px-4">

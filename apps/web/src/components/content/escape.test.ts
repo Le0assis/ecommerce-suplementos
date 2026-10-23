@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { test } from "vitest";
-import { Article } from "@/app/(loja)/blog/[slug]/page";
+import { Article } from "@/app/blog/[slug]/page";
 import { BannerLink } from "@/components/content/banner-link";
 import { ProductCard } from "@/components/product/product-card";
 import type { PublicArticle } from "@/server/public-content";

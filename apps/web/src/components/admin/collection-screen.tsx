@@ -4,6 +4,7 @@ import { CheckRow, Field, Notice, TextArea } from "@/components/admin/fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError } from "@/lib/admin-fetch";
+import { omitEmptyIds } from "@/lib/admin-payload";
 import type { AdminList, AdminOne } from "@/lib/admin-types";
 import Link from "next/link";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
@@ -14,7 +15,13 @@ export type FieldSpec<T> =
   | { kind: "check"; key: keyof T & string; label: string }
   | { kind: "select"; key: keyof T & string; label: string; options: { value: string; label: string }[]; nullable?: boolean };
 
-export function CollectionScreen<T extends { id: string }>({
+function rowId<T>(item: T, rowKey?: (item: T) => string): string {
+  if (rowKey) return rowKey(item);
+  const id = (item as { id?: unknown }).id;
+  return typeof id === "string" ? id : "";
+}
+
+export function CollectionScreen<T extends object>({
   eyebrow,
   title,
   description,
@@ -27,6 +34,10 @@ export function CollectionScreen<T extends { id: string }>({
   editHref,
   removeLabel = "Apagar",
   validate,
+  rowKey,
+  write = "patch",
+  prepare,
+  saveDraft,
 }: {
   eyebrow: string;
   title: string;
@@ -40,6 +51,11 @@ export function CollectionScreen<T extends { id: string }>({
   editHref?: (item: T) => string;
   removeLabel?: string;
   validate?: (draft: T) => string | null;
+  rowKey?: (item: T) => string;
+  /** `post` grava criação e edição no POST da coleção (upsert). `patch` usa PATCH /:id quando a linha já existe. */
+  write?: "post" | "patch";
+  prepare?: (draft: T, items: T[], exists: boolean) => T;
+  saveDraft?: (draft: T, items: T[]) => Promise<void>;
 }) {
   const [items, setItems] = useState<T[]>([]);
   const [query, setQuery] = useState("");
@@ -88,26 +104,40 @@ export function CollectionScreen<T extends { id: string }>({
     }
     setError(null);
     setNotice(null);
-    const exists = Boolean(draft.id) && items.some((item) => item.id === draft.id);
+    const key = rowId(draft, rowKey);
+    const exists = Boolean(key) && items.some((item) => rowId(item, rowKey) === key);
+    const ready = prepare ? prepare(draft, items, exists) : draft;
     try {
-      if (exists) await adminFetch<AdminOne<T>>(`${resource}/${draft.id}`, { method: "PATCH", body: JSON.stringify(draft) });
-      else await adminFetch<AdminOne<T>>(resource, { method: "POST", body: JSON.stringify(draft) });
+      if (saveDraft) await saveDraft(ready, items);
+      else if (write === "post" || !exists) {
+        await adminFetch<AdminOne<T>>(resource, { method: "POST", body: JSON.stringify(omitEmptyIds(ready)) });
+      } else {
+        await adminFetch<AdminOne<T>>(`${resource}/${encodeURIComponent(key)}`, { method: "PATCH", body: JSON.stringify(ready) });
+      }
       setDraft(null);
       setNotice("Salvo.");
       await reload();
     } catch (caught) {
+      setNotice(null);
       setError(caught instanceof AdminApiError ? caught.message : "Não deu para salvar.");
     }
   }
 
   async function remove(item: T) {
     setError(null);
+    setNotice(null);
+    const key = rowId(item, rowKey);
+    if (!key) {
+      setError("Sem identificador para apagar.");
+      return;
+    }
     try {
-      await adminFetch(`${resource}/${item.id}`, { method: "DELETE" });
+      await adminFetch(`${resource}/${encodeURIComponent(key)}`, { method: "DELETE" });
       setConfirmId(null);
       setNotice("Atualizado.");
       await reload();
     } catch (caught) {
+      setNotice(null);
       setError(caught instanceof AdminApiError ? caught.message : "Não deu para concluir.");
     }
   }
@@ -144,7 +174,7 @@ export function CollectionScreen<T extends { id: string }>({
           <tbody>
             {items.length === 0 && !loading ? <tr><td className="px-3 py-6 text-muted-foreground" colSpan={columns.length + 1}>Nada nesse filtro.</td></tr> : null}
             {items.map((item) => (
-              <tr key={item.id} className="border-t border-white/10">
+              <tr key={rowId(item, rowKey) || JSON.stringify(item)} className="border-t border-white/10">
                 {columns.map((column) => <td key={column.header} className="px-3 py-3">{column.cell(item)}</td>)}
                 <td className="px-3 py-3">
                   <div className="flex flex-wrap gap-2">
@@ -153,10 +183,10 @@ export function CollectionScreen<T extends { id: string }>({
                       <Button size="sm" variant="outline" type="button" onClick={() => { setDraft(item); setNotice(null); setError(null); }}>Editar</Button>
                     ) : null}
                     {removeLabel ? (
-                      confirmId === item.id ? (
+                      confirmId === rowId(item, rowKey) ? (
                         <Button size="sm" variant="outline" type="button" onClick={() => void remove(item)}>Confirmar</Button>
                       ) : (
-                        <Button size="sm" variant="outline" type="button" onClick={() => setConfirmId(item.id)}>{removeLabel}</Button>
+                        <Button size="sm" variant="outline" type="button" onClick={() => setConfirmId(rowId(item, rowKey))}>{removeLabel}</Button>
                       )
                     ) : null}
                   </div>

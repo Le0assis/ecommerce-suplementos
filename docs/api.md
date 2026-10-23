@@ -102,7 +102,7 @@ Sem token no JSON.
 
 O site não conta falha de login. `POST /api/admin/session` repassa o status, o JSON e o `Retry-After` da API. `401` chega como `{ "error": "E-mail ou senha não confere." }`. `429` chega como `{ "error": "Muitas tentativas de login. Espera alguns minutos." }` com o `Retry-After` da API.
 
-O arquivo `apps/web/.data/admin-mock.json` continua existindo para o CRUD de teste quando a API está fora. Sem a API não dá para obter sessão, então o painel não abre por esse arquivo.
+O CRUD do painel não grava `apps/web/.data/admin-mock.json`. Se a API não responde, a tela mostra o erro e não diz que salvou.
 
 ## Rotas do admin
 
@@ -282,4 +282,4 @@ O card da home lê esse `unitsLeft` (o do drop, ou o mínimo do sabor). Não usa
 
 ## Variação sem porção
 
-`servings` menor que 1 é recusado também em rascunho. A API responde `400` (`A variação precisa de pelo menos uma porção.`). O adaptador do site responde `400` (`A variação precisa de pelo menos uma porção, mesmo em rascunho.`). A coluna no banco já exige `servings > 0`.
+`servings` menor que 1 é recusado também em rascunho. A API responde `400` (`A variação precisa de pelo menos uma porção.`). O painel mostra esse erro e não grava por fora. A coluna no banco já exige `servings > 0`.

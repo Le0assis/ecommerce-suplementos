@@ -22,6 +22,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   } catch {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
-  const result = await joinDropWaitlist(id, body, new Date().toISOString());
+  const result = await joinDropWaitlist(id, body);
   return NextResponse.json(result.body, { status: result.status, headers: { "cache-control": "no-store" } });
 }

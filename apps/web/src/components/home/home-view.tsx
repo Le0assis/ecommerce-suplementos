@@ -6,6 +6,7 @@ import { ProductCard } from "@/components/product/product-card";
 import { useStoreData } from "@/components/store-data";
 import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/lib/config";
+import { BannerLink } from "@/components/content/banner-link";
 import { VideoSpot } from "@/components/content/video-spot";
 import { videos } from "@pulso/data";
 import { GOALS, formatBRL } from "@pulso/domain";
@@ -23,14 +24,25 @@ export interface HomeDropCard {
   unitsTotal: number | null;
 }
 
+export interface HomeBanner {
+  id: string;
+  slot: string;
+  title: string;
+  subtitle: string | null;
+  href: string | null;
+}
+
 const marquee = ["PIX 10% OFF", "SABOR ALTO", "FRETE NO CEP", "DROP 04", "CREATINA TODO DIA", "SEM DESCULPA DE RÓTULO", "COLLAB LUNA"];
 
-export function HomeView({ dropCard }: { dropCard: HomeDropCard | null }) {
+export function HomeView({ dropCard, banners }: { dropCard: HomeDropCard | null; banners: HomeBanner[] }) {
   const { products, influencers, posts, ugc, reviews } = useStoreData();
   const caos = products.find((product) => product.slug === "caos-pre-treino");
   const [flavorId, setFlavorId] = useState(caos?.flavors[0]?.id ?? "");
   const flavor = caos?.flavors.find((item) => item.id === flavorId) ?? caos?.flavors[0];
   const heroes = products.filter((product) => product.badges.includes("bestseller") || product.badges.includes("collab")).slice(0, 4);
+  const marqueeBanners = banners.filter((banner) => banner.slot === "marquee");
+  const line = marqueeBanners.length ? marqueeBanners.map((banner) => banner.title) : marquee;
+  const highlights = banners.filter((banner) => banner.slot === "destaque" || banner.slot === "hero");
 
   return (
     <div>
@@ -58,11 +70,22 @@ export function HomeView({ dropCard }: { dropCard: HomeDropCard | null }) {
 
       <div className="overflow-hidden border-y border-white/10 bg-lime text-primary-foreground">
         <div className="marquee-track py-3">
-          {[...marquee, ...marquee].map((item, index) => (
+          {[...line, ...line].map((item, index) => (
             <span key={`${item}-${index}`} className="px-6 font-display text-3xl">{item}</span>
           ))}
         </div>
       </div>
+
+      {highlights.length ? (
+        <section className="mx-auto grid max-w-6xl gap-3 px-4 py-8 md:grid-cols-3">
+          {highlights.map((banner) => (
+            <BannerLink key={banner.id} href={banner.href} className="rounded-[1.4rem] border border-white/10 p-5">
+              <p className="break-words font-display text-4xl leading-none">{banner.title}</p>
+              {banner.subtitle ? <p className="mt-2 text-sm text-muted-foreground">{banner.subtitle}</p> : null}
+            </BannerLink>
+          ))}
+        </section>
+      ) : null}
 
       <section className="mx-auto max-w-6xl px-4 py-12">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-lime">01 — Objetivo</p>

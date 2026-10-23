@@ -70,7 +70,7 @@ function ShareRow({ edition }: { edition: string }) {
 function WaitlistForm({ dropId, count }: { dropId: string; count: number }) {
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
-  const [people, setPeople] = useState(count);
+  const people = count;
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -84,18 +84,13 @@ function WaitlistForm({ dropId, count }: { dropId: string; count: number }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(erase ? { email } : { email, consent: true }),
     });
-    const body = (await response.json().catch(() => ({}))) as { error?: string; already?: boolean };
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
     setPending(false);
     if (!response.ok) {
       setError(body.error ?? "Não deu para salvar.");
       return;
     }
-    if (erase) {
-      setNotice("Pedido recebido.");
-      return;
-    }
-    setPeople((value) => value + 1);
-    setNotice("Anotado. A gente avisa quando abrir.");
+    setNotice("Pedido recebido.");
   }
 
   return (

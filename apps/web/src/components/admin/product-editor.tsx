@@ -4,6 +4,8 @@ import { CheckRow, Field, MoneyField, Notice, Section, SelectField, TextArea } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError, uploadAdminImage } from "@/lib/admin-fetch";
+import { omitEmptyIds, uniqueSlug } from "@/lib/admin-payload";
+import { safePreview } from "@/lib/admin-preview";
 import { blankProduct, PRODUCT_STATUSES, slugify, type AdminFlavor, type AdminImage, type AdminInfluencerRef, type AdminList, type AdminOne, type AdminProduct, type AdminVariant } from "@/lib/admin-types";
 import { CATEGORIES, GOALS, type FlavorFamily } from "@pulso/domain";
 
@@ -25,7 +27,8 @@ export function ProductEditor({ productId }: { productId: string }) {
   const router = useRouter();
   const [product, setProduct] = useState<AdminProduct | null>(isNew ? blankProduct() : null);
   const [influencers, setInfluencers] = useState<AdminInfluencerRef[]>([]);
-  const [catalog, setCatalog] = useState<{ id: string; name: string }[]>([]);
+  const [catalog, setCatalog] = useState<{ id: string; name: string; slug: string }[]>([]);
+  const [slugEdited, setSlugEdited] = useState(!isNew);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -40,7 +43,7 @@ export function ProductEditor({ productId }: { productId: string }) {
         ]);
         if (cancelled) return;
         setInfluencers(people.items);
-        setCatalog(list.items.map((item) => ({ id: item.id, name: item.name })));
+        setCatalog(list.items.map((item) => ({ id: item.id, name: item.name, slug: item.slug })));
         if (!isNew) {
           const one = await adminFetch<AdminOne<AdminProduct>>(`products/${productId}`);
           if (!cancelled) setProduct(one.item);
@@ -62,13 +65,18 @@ export function ProductEditor({ productId }: { productId: string }) {
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!product) return;
-    const payload = {
+    const taken = catalog.map((item) => item.slug);
+    const slug = isNew || !product.id ? uniqueSlug(product.slug || product.name, taken) : slugify(product.slug || product.name);
+    const payload = omitEmptyIds({
       ...product,
-      slug: product.slug || slugify(product.name),
-      images: product.images.filter((image) => image.url.trim() || image.alt.trim()),
+      id: isNew ? "" : product.id,
+      slug,
+      images: product.images
+        .filter((image) => (image.url ?? "").trim() || image.alt.trim())
+        .map((image) => ({ ...image, url: (image.url ?? "").trim() || null })),
       label: { ...product.label, nutrition: product.label.nutrition.filter((row) => row.nutrient.trim() && row.amount.trim()) },
       kitItems: product.isKit ? product.kitItems.filter((item) => item.productId) : product.kitItems,
-    };
+    });
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -79,9 +87,9 @@ export function ProductEditor({ productId }: { productId: string }) {
         router.refresh();
         return;
       }
-      const saved = await adminFetch<AdminOne<AdminProduct>>(`products/${product.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+      const saved = await adminFetch<AdminOne<AdminProduct>>(`products/${product.id}`, { method: "PATCH", body: JSON.stringify({ ...product, slug, images: payload.images, label: payload.label, kitItems: payload.kitItems }) });
       setProduct(saved.item);
-      setNotice("Salvo no adaptador. A vitrine ainda lê o catálogo do código até a API assumir.");
+      setNotice("Salvo.");
     } catch (caught) {
       setError(caught instanceof AdminApiError ? caught.message : "Não deu para salvar.");
     } finally {
@@ -126,10 +134,31 @@ export function ProductEditor({ productId }: { productId: string }) {
       <Section title="Dados">
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Nome">
-            <Input aria-label="Nome" value={product.name} onChange={(event) => update({ name: event.target.value })} onBlur={() => { if (!product.slug) update({ slug: slugify(product.name) }); }} required />
+            <Input
+              aria-label="Nome"
+              value={product.name}
+              onChange={(event) => {
+                const name = event.target.value;
+                const taken = catalog.map((item) => item.slug);
+                setProduct((current) => {
+                  if (!current) return current;
+                  if (slugEdited) return { ...current, name };
+                  return { ...current, name, slug: uniqueSlug(name, taken, current.id ? current.slug : undefined) };
+                });
+              }}
+              required
+            />
           </Field>
-          <Field label="Slug" hint="A URL da loja. Minúsculas e hífen.">
-            <Input aria-label="Slug" value={product.slug} onChange={(event) => update({ slug: slugify(event.target.value) })} required />
+          <Field label="Slug" hint="A URL da loja. Minúsculas e hífen, sem colar o nome.">
+            <Input
+              aria-label="Slug"
+              value={product.slug}
+              onChange={(event) => {
+                setSlugEdited(true);
+                update({ slug: slugify(event.target.value) });
+              }}
+              required
+            />
           </Field>
           <Field label="Linha">
             <Input aria-label="Linha" value={product.line} onChange={(event) => update({ line: event.target.value })} />
@@ -265,13 +294,13 @@ export function ProductEditor({ productId }: { productId: string }) {
         title="Fotos"
         action={<Button type="button" size="sm" variant="outline" onClick={() => update({ images: [...product.images, newImage(product.images)] })}>Adicionar foto</Button>}
       >
-        <p className="text-xs text-muted-foreground">Texto alternativo é obrigatório. Sem Blob, até 300 KB ficam no adaptador. A cor do sabor aparece quando não há URL.</p>
+        <p className="text-xs text-muted-foreground">Texto alternativo é obrigatório. A foto sobe pelo endereço que a API devolver. Sem URL, fica a cor do sabor.</p>
         {product.images.map((image) => {
           const hex = product.flavors.find((flavor) => flavor.id === image.flavorId)?.hex ?? product.flavors[0]?.hex ?? "#141418";
           return (
             <div key={image.id} className="grid gap-2 rounded-2xl border border-white/10 p-3 md:grid-cols-[4rem_1fr_1fr]">
               <div className="h-16 rounded-lg border border-white/10" style={{ background: safePreview(image.url, hex) }} role="img" aria-label={image.alt || "Prévia da foto"} />
-              <Field label="URL"><Input aria-label={`URL da foto ${image.alt || image.id}`} value={image.url} onChange={(event) => update({ images: mapImage(product.images, image.id, { url: event.target.value }) })} /></Field>
+              <Field label="URL"><Input aria-label={`URL da foto ${image.alt || image.id}`} value={image.url ?? ""} onChange={(event) => update({ images: mapImage(product.images, image.id, { url: event.target.value || null }) })} /></Field>
               <Field label="Texto alternativo"><Input aria-label={`Texto alternativo ${image.id}`} value={image.alt} onChange={(event) => update({ images: mapImage(product.images, image.id, { alt: event.target.value }) })} /></Field>
               <SelectField label="Sabor" value={image.flavorId ?? ""} onChange={(value) => update({ images: mapImage(product.images, image.id, { flavorId: value || null }) })}>
                 <option value="">Produto</option>
@@ -287,7 +316,7 @@ export function ProductEditor({ productId }: { productId: string }) {
                     if (!file) return;
                     void uploadAdminImage(file, image.alt).then((uploaded) => {
                       update({ images: mapImage(product.images, image.id, { url: uploaded.url, alt: image.alt }) });
-                      setNotice(uploaded.source === "adapter" ? "Foto guardada no adaptador local." : "Foto enviada.");
+                      setNotice("Foto enviada.");
                     }).catch((caught: unknown) => {
                       setError(caught instanceof AdminApiError ? caught.message : "Não deu para enviar a foto.");
                     });
@@ -360,10 +389,5 @@ function newVariant(product: AdminProduct): AdminVariant {
 }
 
 function newImage(images: AdminImage[]): AdminImage {
-  return { id: nextId("foto", images.map((item) => item.id)), flavorId: null, url: "", alt: "", position: images.length, isCover: images.length === 0 };
-}
-
-function safePreview(url: string, hex: string): string {
-  if (url.startsWith("https://") || url.startsWith("data:image/")) return `${hex} url("${url.replaceAll('"', "")}") center / cover no-repeat`;
-  return hex;
+  return { id: nextId("foto", images.map((item) => item.id)), flavorId: null, url: null, alt: "", position: images.length, isCover: images.length === 0 };
 }

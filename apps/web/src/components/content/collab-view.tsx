@@ -78,7 +78,7 @@ export function CollabView({
         )}
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-lime">{sport} · {followers}</p>
-          <h1 className="font-display text-6xl leading-[0.85] md:text-7xl">{name}</h1>
+          <h1 className="break-words font-display text-6xl leading-[0.85] md:text-7xl">{name}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{handle} · {city}</p>
           <p className="mt-4 max-w-xl text-base leading-7">{copy}</p>
           {profile ? (

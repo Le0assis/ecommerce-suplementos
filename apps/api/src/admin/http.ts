@@ -12,6 +12,7 @@ export class HttpError extends Error {
   constructor(
     readonly status: ContentfulStatusCode,
     message: string,
+    readonly fields?: Record<string, string>,
   ) {
     super(message);
   }
@@ -34,8 +35,13 @@ export interface AdminRuntime {
 export function parseInput<S extends ZodTypeAny>(schema: S, body: unknown): ZodOutput<S> {
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    throw new HttpError(400, issue?.message || "Dados inválidos.");
+    const fields: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const path = issue.path.length ? issue.path.map(String).join(".") : "body";
+      if (!fields[path]) fields[path] = issue.message;
+    }
+    const [path, message] = Object.entries(fields)[0] ?? ["body", "Dados inválidos."];
+    throw new HttpError(400, path === "body" ? message : `${path}: ${message}`, fields);
   }
   return parsed.data;
 }
