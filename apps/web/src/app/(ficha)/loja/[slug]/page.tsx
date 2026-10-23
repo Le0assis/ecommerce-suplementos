@@ -7,9 +7,10 @@ import { loadPublicProduct } from "@/server/public-catalog";
 import { products } from "@pulso/data";
 import type { CatalogProduct } from "@pulso/data";
 import type { Review } from "@pulso/domain";
-import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+
+export const instant = false;
 
 export function generateStaticParams() {
   return products.map((product) => ({ slug: product.slug }));
@@ -21,17 +22,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return { title: loaded ? `${loaded.name} ${loaded.line}` : "Produto", description: loaded?.tagline };
 }
 
-export default function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
-  return (
-    <Suspense fallback={<p className="px-4 py-8">Abrindo o sabor…</p>}>
-      <LiveProduct params={params} />
-    </Suspense>
-  );
-}
-
-async function LiveProduct({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  await connection();
   const loaded = await loadPublicProduct(slug);
   if (!loaded) notFound();
   return <ProductArticle product={loaded.product} reviews={loaded.reviews} related={loaded.related} names={loaded.names} />;
@@ -48,7 +40,7 @@ function ProductArticle({ product, reviews, related, names }: { product: Catalog
   };
 
   return (
-    <article className="mx-auto max-w-6xl px-4 py-8">
+    <article className="mx-auto min-w-0 max-w-6xl px-4 py-8 [overflow-wrap:anywhere]">
       <script type="application/ld+json">{jsonLdHtml(jsonLd)}</script>
       <Suspense fallback={<p>Abrindo o sabor…</p>}>
         <BuyBox product={product} />
@@ -91,7 +83,7 @@ function ProductArticle({ product, reviews, related, names }: { product: Catalog
         </AccordionItem>
       </Accordion>
       <h2 className="mt-10 font-display text-5xl">Também combina</h2>
-      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+      <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-3">
         {related.map((item) => <ProductCard key={item.slug} product={item} />)}
       </div>
     </article>

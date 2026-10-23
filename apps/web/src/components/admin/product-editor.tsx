@@ -4,14 +4,14 @@ import { CheckRow, Field, MoneyField, Notice, Section, SelectField, TextArea } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError, uploadAdminImage } from "@/lib/admin-fetch";
-import { omitEmptyIds, uniqueSlug } from "@/lib/admin-payload";
+import { omitEmptyIds, resolveSlug, uniqueSlug } from "@/lib/admin-payload";
 import { safePreview } from "@/lib/admin-preview";
 import { blankProduct, PRODUCT_STATUSES, slugify, type AdminFlavor, type AdminImage, type AdminInfluencerRef, type AdminList, type AdminOne, type AdminProduct, type AdminVariant } from "@/lib/admin-types";
 import { CATEGORIES, GOALS, type FlavorFamily } from "@pulso/domain";
 
 const BADGE_OPTIONS = ["drop", "limited", "bestseller", "novo", "collab"] as const;
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
 const FAMILIES: { id: FlavorFamily; label: string }[] = [
@@ -25,6 +25,7 @@ const FAMILIES: { id: FlavorFamily; label: string }[] = [
 export function ProductEditor({ productId }: { productId: string }) {
   const isNew = productId === "novo";
   const router = useRouter();
+  const aviso = useSearchParams().get("aviso");
   const [product, setProduct] = useState<AdminProduct | null>(isNew ? blankProduct() : null);
   const [influencers, setInfluencers] = useState<AdminInfluencerRef[]>([]);
   const [catalog, setCatalog] = useState<{ id: string; name: string; slug: string }[]>([]);
@@ -66,7 +67,14 @@ export function ProductEditor({ productId }: { productId: string }) {
     event.preventDefault();
     if (!product) return;
     const taken = catalog.map((item) => item.slug);
-    const slug = isNew || !product.id ? uniqueSlug(product.slug || product.name, taken) : slugify(product.slug || product.name);
+    const resolved = resolveSlug({
+      base: product.name,
+      typed: product.slug,
+      taken,
+      isNew: isNew || !product.id,
+      current: product.id ? product.slug : undefined,
+    });
+    const slug = resolved.slug;
     const payload = omitEmptyIds({
       ...product,
       id: isNew ? "" : product.id,
@@ -83,13 +91,14 @@ export function ProductEditor({ productId }: { productId: string }) {
     try {
       if (isNew || !product.id) {
         const created = await adminFetch<AdminOne<AdminProduct>>("products", { method: "POST", body: JSON.stringify(payload) });
-        router.push(`/admin/produtos/${created.item.id}`);
+        const href = `/admin/produtos/${created.item.id}`;
+        router.push(resolved.notice ? `${href}?aviso=${encodeURIComponent(resolved.notice)}` : href);
         router.refresh();
         return;
       }
       const saved = await adminFetch<AdminOne<AdminProduct>>(`products/${product.id}`, { method: "PATCH", body: JSON.stringify({ ...product, slug, images: payload.images, label: payload.label, kitItems: payload.kitItems }) });
       setProduct(saved.item);
-      setNotice("Salvo.");
+      setNotice(resolved.notice ?? "Salvo.");
     } catch (caught) {
       setError(caught instanceof AdminApiError ? caught.message : "Não deu para salvar.");
     } finally {
@@ -114,6 +123,13 @@ export function ProductEditor({ productId }: { productId: string }) {
   }
 
   const others = catalog.filter((item) => item.id !== product.id);
+  const slugPlan = resolveSlug({
+    base: product.name,
+    typed: product.slug,
+    taken: catalog.map((item) => item.slug),
+    isNew: isNew || !product.id,
+    current: product.id ? product.slug : undefined,
+  });
 
   return (
     <form className="mx-auto max-w-5xl space-y-4" onSubmit={(event) => void save(event)}>
@@ -128,7 +144,9 @@ export function ProductEditor({ productId }: { productId: string }) {
         </div>
       </div>
       {error ? <Notice tone="error">{error}</Notice> : null}
-      {notice ? <Notice tone="ok">{notice}</Notice> : null}
+      {aviso ? <Notice tone="warn">{aviso}</Notice> : null}
+      {slugPlan.notice ? <Notice tone="warn">{slugPlan.notice}</Notice> : null}
+      {notice ? <Notice tone={slugPlan.notice ? "warn" : "ok"}>{notice}</Notice> : null}
       <p className="text-sm text-muted-foreground">Registro fictício, no padrão NI-DEMO. Sem promessa de saúde, sem número de ANVISA real.</p>
 
       <Section title="Dados">

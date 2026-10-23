@@ -59,7 +59,7 @@ export function BlockEditor({ blocks, onChange }: { blocks: AdminPostBlock[]; on
   }
 
   function add(type: AdminPostBlock["type"]) {
-    const id = `bloco-${blocks.length + 1}-${type}`;
+    const id = crypto.randomUUID();
     const block: AdminPostBlock =
       type === "imagem"
         ? { id, type, url: "", alt: "", caption: "" }

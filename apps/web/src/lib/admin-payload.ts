@@ -35,3 +35,27 @@ export function uniqueSlug(base: string, taken: Iterable<string>, current?: stri
   while (used.has(withSuffix(root, n))) n += 1;
   return withSuffix(root, n);
 }
+
+/** Aviso quando o slug gravado ganhou sufixo porque o pedido já existia. */
+export function slugTakenNotice(base: string, finalSlug: string): string | null {
+  const asked = slugify(base).slice(0, 80) || "item";
+  if (!finalSlug || finalSlug === asked) return null;
+  return `Esse slug já existe. O slug final é ${finalSlug}.`;
+}
+
+/** No criar, sufixo -2 fica explícito. No editar, o slug não muda sozinho. */
+export function resolveSlug(input: {
+  base: string;
+  typed: string;
+  taken: Iterable<string>;
+  isNew: boolean;
+  current?: string;
+}): { slug: string; notice: string | null } {
+  const source = input.typed.trim() || input.base;
+  const slug = input.isNew ? uniqueSlug(source, input.taken) : slugify(source);
+  if (!input.isNew) return { slug, notice: null };
+  const auto = uniqueSlug(input.base, input.taken, input.current);
+  const typed = input.typed.trim();
+  const intended = !typed || typed === slugify(input.base) || typed === auto ? input.base : typed;
+  return { slug, notice: slugTakenNotice(intended, slug) };
+}

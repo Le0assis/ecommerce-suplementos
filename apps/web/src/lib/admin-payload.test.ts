@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { adminErrorMessage } from "@/lib/admin-fetch";
-import { omitEmptyIds, uniqueSlug } from "@/lib/admin-payload";
+import { omitEmptyIds, resolveSlug, uniqueSlug } from "@/lib/admin-payload";
 import { safePreview } from "@/lib/admin-preview";
 import { slugify } from "@/lib/admin-types";
 
@@ -13,6 +13,22 @@ test("slugify troca o slug inteiro e uniqueSlug não cola o nome", () => {
   assert.equal(uniqueSlug("Whey Isolado", ["whey-isolado", "whey-isolado-2"]), "whey-isolado-3");
   assert.equal(uniqueSlug("Whey Isolado", ["whey-isolado"], "whey-isolado"), "whey-isolado");
   assert.notEqual(uniqueSlug("Whey Isolado", ["whey-isolado"]), "whey-isoladowhey-isolado");
+});
+
+test("slug repetido avisa o slug final", () => {
+  const taken = ["whey-isolado"];
+  const created = resolveSlug({ base: "Whey Isolado", typed: "", taken, isNew: true });
+  assert.equal(created.slug, "whey-isolado-2");
+  assert.equal(created.notice, "Esse slug já existe. O slug final é whey-isolado-2.");
+  const typed = resolveSlug({ base: "Outro", typed: "whey-isolado", taken, isNew: true });
+  assert.equal(typed.slug, "whey-isolado-2");
+  assert.match(typed.notice ?? "", /whey-isolado-2/);
+  const free = resolveSlug({ base: "Whey Isolado", typed: "meu-pote", taken, isNew: true });
+  assert.equal(free.slug, "meu-pote");
+  assert.equal(free.notice, null);
+  const editing = resolveSlug({ base: "Whey Isolado", typed: "whey-isolado", taken, isNew: false, current: "whey-isolado" });
+  assert.equal(editing.slug, "whey-isolado");
+  assert.equal(editing.notice, null);
 });
 
 test("criar omite id vazio, inclusive nos filhos", () => {

@@ -2,7 +2,7 @@
 
 import { ProductCard } from "@/components/product/product-card";
 import { useStoreData } from "@/components/store-data";
-import { filterProducts, sortProducts, type ProductSort } from "@pulso/data";
+import { filterProducts, sortProducts, type CatalogProduct, type ProductSort } from "@pulso/data";
 import { CATEGORIES, GOALS } from "@pulso/domain";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -16,10 +16,11 @@ const families = [
   { id: "neutro", label: "Neutro" },
 ];
 
-export function CatalogRoute({ lockedGoal, lockedCategory }: { lockedGoal?: string; lockedCategory?: string }) {
+export function CatalogRoute({ products, lockedGoal, lockedCategory }: { products?: CatalogProduct[]; lockedGoal?: string; lockedCategory?: string }) {
   const params = useSearchParams();
   return (
     <CatalogView
+      products={products}
       initialGoal={lockedGoal ?? params.get("objetivo") ?? ""}
       initialCategory={lockedCategory ?? params.get("categoria") ?? ""}
       initialQuery={params.get("q") ?? ""}
@@ -28,19 +29,22 @@ export function CatalogRoute({ lockedGoal, lockedCategory }: { lockedGoal?: stri
 }
 
 export function CatalogView({
+  products: listed,
   initialGoal = "",
   initialCategory = "",
   initialQuery = "",
   title = "Loja",
   lede = "Filtra por objetivo, categoria e família de sabor. O preço menor de cada pote aparece no card.",
 }: {
+  products?: CatalogProduct[];
   initialGoal?: string;
   initialCategory?: string;
   initialQuery?: string;
   title?: string;
   lede?: string;
 }) {
-  const { products } = useStoreData();
+  const store = useStoreData();
+  const products = listed !== undefined ? listed : store.products;
   const [goal, setGoal] = useState(initialGoal);
   const [category, setCategory] = useState(initialCategory);
   const [family, setFamily] = useState("");

@@ -38,12 +38,12 @@ export function BuyBox({ product: initial }: { product: CatalogProduct }) {
   const soldOut = variant.stock <= 0;
 
   return (
-    <div className="grid items-start gap-8 lg:grid-cols-[1.05fr_.95fr]">
-      <div className="rounded-[2rem] border border-white/10 bg-black/50 p-4 sm:p-8">
+    <div className="grid min-w-0 items-start gap-8 lg:grid-cols-[1.05fr_.95fr]">
+      <div className="min-w-0 rounded-[2rem] border border-white/10 bg-black/50 p-4 sm:p-8 [overflow-wrap:anywhere]">
         <Pack line={product.line} flavor={flavor.name} hex={flavor.hex} badge={flavor.limited ? "limited" : product.badges[0]} className="mx-auto max-w-sm" />
         <p className="mt-4 text-center text-sm text-muted-foreground">{flavor.tagline}</p>
       </div>
-      <div>
+      <div className="min-w-0 [overflow-wrap:anywhere]">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-lime">{product.line}</p>
         <h1 className="font-display text-[clamp(4rem,10vw,7rem)] leading-[0.84]">{product.name}</h1>
         <p className="mt-3 max-w-xl text-base text-muted-foreground">{product.tagline}</p>

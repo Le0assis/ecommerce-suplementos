@@ -12,7 +12,7 @@ function publishedLabel(value: string): string {
 
 function BlogList({ posts }: { posts: PublicPostCard[] }) {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
+    <div className="mx-auto min-w-0 max-w-3xl px-4 py-10 [overflow-wrap:anywhere]">
       <h1 className="break-words font-display text-7xl leading-[0.85]">Treino e rótulo</h1>
       <div className="mt-8 space-y-4">
         {posts.map((post) => {

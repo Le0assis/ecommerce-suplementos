@@ -11,7 +11,7 @@ export interface ArticleProduct {
 
 export function ArticleBlocks({ blocks, products }: { blocks: AdminPostBlock[]; products: ArticleProduct[] }) {
   return (
-    <div className="space-y-5 text-base leading-7">
+    <div className="min-w-0 space-y-5 text-base leading-7 [overflow-wrap:anywhere]">
       {blocks.map((block) => {
         if (block.type === "paragrafo") return <p key={block.id}>{block.text}</p>;
         if (block.type === "titulo") return <h2 key={block.id} className="font-display text-4xl leading-none">{block.text}</h2>;

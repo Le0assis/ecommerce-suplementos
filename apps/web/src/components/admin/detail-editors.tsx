@@ -5,13 +5,13 @@ import { CheckRow, Field, ImageUrlField, Notice, Section, SelectField, TextArea 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError } from "@/lib/admin-fetch";
-import { omitEmptyIds, uniqueSlug } from "@/lib/admin-payload";
+import { omitEmptyIds, resolveSlug, uniqueSlug } from "@/lib/admin-payload";
 import type { AdminAuthor, AdminCoupon, AdminInfluencer, AdminList, AdminOne, AdminOrder, AdminPost, AdminProduct } from "@/lib/admin-types";
 import { ORDER_STATUSES, POST_STATUSES, slugify } from "@/lib/admin-types";
 import { blockProblem, readyBlocks } from "@/lib/post-blocks";
 import { formatBRL } from "@pulso/domain";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
 function blankInfluencer(): AdminInfluencer {
@@ -75,6 +75,7 @@ function publishedDay(value: string | null): string | null {
 export function InfluencerEditor({ influencerId }: { influencerId: string }) {
   const isNew = influencerId === "novo";
   const router = useRouter();
+  const aviso = useSearchParams().get("aviso");
   const [person, setPerson] = useState<AdminInfluencer | null>(isNew ? blankInfluencer() : null);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
@@ -117,7 +118,14 @@ export function InfluencerEditor({ influencerId }: { influencerId: string }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!person) return;
-    const slug = isNew || !person.id ? uniqueSlug(person.slug || person.name, knownSlugs) : slugify(person.slug || person.name);
+    const resolved = resolveSlug({
+      base: person.name,
+      typed: person.slug,
+      taken: knownSlugs,
+      isNew: isNew || !person.id,
+      current: person.id ? person.slug : undefined,
+    });
+    const slug = resolved.slug;
     const payload = omitEmptyIds({
       ...person,
       slug,
@@ -136,12 +144,13 @@ export function InfluencerEditor({ influencerId }: { influencerId: string }) {
           setError("A API não devolveu o slug do influencer.");
           return;
         }
-        router.push(`/admin/influencers/${saved.item.slug}`);
+        const href = `/admin/influencers/${saved.item.slug}`;
+        router.push(resolved.notice ? `${href}?aviso=${encodeURIComponent(resolved.notice)}` : href);
         router.refresh();
         return;
       }
       setPerson(saved.item);
-      setNotice("Influencer salvo.");
+      setNotice(resolved.notice ?? "Influencer salvo.");
     } catch (caught) {
       setError(caught instanceof AdminApiError ? caught.message : "Não deu para salvar.");
     }
@@ -149,12 +158,22 @@ export function InfluencerEditor({ influencerId }: { influencerId: string }) {
 
   if (!person) return error ? <Notice tone="error">{error}</Notice> : <p className="text-sm text-muted-foreground">Carregando…</p>;
 
+  const slugPlan = resolveSlug({
+    base: person.name,
+    typed: person.slug,
+    taken: knownSlugs,
+    isNew: isNew || !person.id,
+    current: person.id ? person.slug : undefined,
+  });
+
   return (
     <form className="mx-auto max-w-4xl space-y-4" onSubmit={(event) => void save(event)}>
       <Link href="/admin/influencers" className="text-sm text-lime">Voltar</Link>
       <h1 className="font-display text-6xl leading-none">{isNew ? "Novo influencer" : person.name}</h1>
       <p className="text-sm text-muted-foreground">Não invente fala nem foto de pessoa real. Frase e história ficam vazias até você escrever. Sem promessa de saúde.</p>
       {error ? <Notice tone="error">{error}</Notice> : null}
+      {aviso ? <Notice tone="warn">{aviso}</Notice> : null}
+      {slugPlan.notice ? <Notice tone="warn">{slugPlan.notice}</Notice> : null}
       {notice ? <Notice tone="ok">{notice}</Notice> : null}
       <Section title="Perfil">
         <div className="grid gap-3 md:grid-cols-2">
@@ -225,6 +244,7 @@ export function InfluencerEditor({ influencerId }: { influencerId: string }) {
 export function PostEditor({ postId }: { postId: string }) {
   const isNew = postId === "novo";
   const router = useRouter();
+  const aviso = useSearchParams().get("aviso");
   const [post, setPost] = useState<AdminPost | null>(isNew ? blankPost() : null);
   const [authors, setAuthors] = useState<AdminAuthor[]>([]);
   const [influencers, setInfluencers] = useState<AdminInfluencer[]>([]);
@@ -272,7 +292,14 @@ export function PostEditor({ postId }: { postId: string }) {
       setError(problem);
       return;
     }
-    const slug = isNew || !post.id ? uniqueSlug(post.slug || post.title, knownSlugs) : slugify(post.slug || post.title);
+    const resolved = resolveSlug({
+      base: post.title,
+      typed: post.slug,
+      taken: knownSlugs,
+      isNew: isNew || !post.id,
+      current: post.id ? post.slug : undefined,
+    });
+    const slug = resolved.slug;
     const payload = omitEmptyIds({
       ...post,
       slug,
@@ -289,12 +316,13 @@ export function PostEditor({ postId }: { postId: string }) {
           setError("A API não devolveu o slug do post.");
           return;
         }
-        router.push(`/admin/blog/${saved.item.slug}`);
+        const href = `/admin/blog/${saved.item.slug}`;
+        router.push(resolved.notice ? `${href}?aviso=${encodeURIComponent(resolved.notice)}` : href);
         router.refresh();
         return;
       }
       setPost(saved.item);
-      setNotice("Post salvo.");
+      setNotice(resolved.notice ?? "Post salvo.");
     } catch (caught) {
       setError(caught instanceof AdminApiError ? caught.message : "Não deu para salvar.");
     }
@@ -302,12 +330,22 @@ export function PostEditor({ postId }: { postId: string }) {
 
   if (!post) return error ? <Notice tone="error">{error}</Notice> : <p className="text-sm text-muted-foreground">Carregando…</p>;
 
+  const slugPlan = resolveSlug({
+    base: post.title,
+    typed: post.slug,
+    taken: knownSlugs,
+    isNew: isNew || !post.id,
+    current: post.id ? post.slug : undefined,
+  });
+
   return (
     <form className="mx-auto max-w-5xl space-y-4" onSubmit={(event) => void save(event)}>
       <Link href="/admin/blog" className="text-sm text-lime">Voltar</Link>
       <h1 className="font-display text-6xl leading-none">{isNew ? "Novo post" : post.title}</h1>
       <Notice tone="warn">Sem promessa de saúde, sem cura e sem número de registro real. O rótulo segue NI-DEMO.</Notice>
       {error ? <Notice tone="error">{error}</Notice> : null}
+      {aviso ? <Notice tone="warn">{aviso}</Notice> : null}
+      {slugPlan.notice ? <Notice tone="warn">{slugPlan.notice}</Notice> : null}
       {notice ? <Notice tone="ok">{notice}</Notice> : null}
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Título"><Input aria-label="Título" value={post.title} onChange={(event) => {

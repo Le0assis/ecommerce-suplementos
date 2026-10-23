@@ -4,7 +4,7 @@ import { CheckRow, Field, Notice, TextArea } from "@/components/admin/fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError } from "@/lib/admin-fetch";
-import { omitEmptyIds } from "@/lib/admin-payload";
+import { omitEmptyIds, slugTakenNotice } from "@/lib/admin-payload";
 import type { AdminList, AdminOne } from "@/lib/admin-types";
 import Link from "next/link";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
@@ -19,6 +19,19 @@ function rowId<T>(item: T, rowKey?: (item: T) => string): string {
   if (rowKey) return rowKey(item);
   const id = (item as { id?: unknown }).id;
   return typeof id === "string" ? id : "";
+}
+
+function draftBase(draft: object): string {
+  const row = draft as { slug?: unknown; name?: unknown; title?: unknown };
+  if (typeof row.slug === "string" && row.slug.trim()) return row.slug;
+  if (typeof row.name === "string" && row.name.trim()) return row.name;
+  if (typeof row.title === "string" && row.title.trim()) return row.title;
+  return "";
+}
+
+function draftSlug(value: object): string {
+  const slug = (value as { slug?: unknown }).slug;
+  return typeof slug === "string" ? slug : "";
 }
 
 export function CollectionScreen<T extends object>({
@@ -64,6 +77,7 @@ export function CollectionScreen<T extends object>({
   const [draft, setDraft] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeTone, setNoticeTone] = useState<"ok" | "warn">("ok");
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState("");
   const [loading, setLoading] = useState(true);
@@ -108,6 +122,7 @@ export function CollectionScreen<T extends object>({
     setNotice(null);
     const exists = Boolean(editingKey);
     const ready = prepare ? prepare(draft, items, exists) : draft;
+    const adjusted = !exists ? slugTakenNotice(draftBase(draft), draftSlug(ready)) : null;
     try {
       if (saveDraft) await saveDraft(ready, items);
       else if (!exists) {
@@ -116,7 +131,8 @@ export function CollectionScreen<T extends object>({
         await adminFetch<AdminOne<T>>(`${resource}/${encodeURIComponent(editingKey)}`, { method: "PATCH", body: JSON.stringify(omitEmptyIds(ready)) });
       }
       setDraft(null);
-      setNotice("Salvo.");
+      setNotice(adjusted ?? "Salvo.");
+      setNoticeTone(adjusted ? "warn" : "ok");
       await reload();
     } catch (caught) {
       setNotice(null);
@@ -136,12 +152,15 @@ export function CollectionScreen<T extends object>({
       await adminFetch(`${resource}/${encodeURIComponent(key)}`, { method: "DELETE" });
       setConfirmId(null);
       setNotice("Atualizado.");
+      setNoticeTone("ok");
       await reload();
     } catch (caught) {
       setNotice(null);
       setError(caught instanceof AdminApiError ? caught.message : "Não deu para concluir.");
     }
   }
+
+  const liveSlug = draft && prepare && !editingKey ? slugTakenNotice(draftBase(draft), draftSlug(prepare(draft, items, false))) : null;
 
   return (
     <div>
@@ -162,7 +181,7 @@ export function CollectionScreen<T extends object>({
         <Button type="submit" variant="outline" className="rounded-full">Buscar</Button>
       </form>
       {error ? <div className="mt-3"><Notice tone="error">{error}</Notice></div> : null}
-      {notice ? <div className="mt-3"><Notice tone="ok">{notice}</Notice></div> : null}
+      {notice ? <div className="mt-3"><Notice tone={noticeTone}>{notice}</Notice></div> : null}
       {loading ? <p className="mt-4 text-sm text-muted-foreground">Carregando…</p> : null}
       <div className="mt-4 overflow-auto rounded-[1.4rem] border border-white/10">
         <table className="w-full min-w-[40rem] text-left text-sm">
@@ -211,6 +230,7 @@ export function CollectionScreen<T extends object>({
       {draft && (renderEditor || fields) ? (
         <form className="mt-4 rounded-[1.4rem] border border-white/10 p-4" onSubmit={(event) => void save(event)}>
           {renderEditor ? renderEditor(draft, update) : fields ? <SchemaForm draft={draft} update={update} fields={fields} /> : null}
+          {liveSlug ? <div className="mt-3"><Notice tone="warn">{liveSlug}</Notice></div> : null}
           <div className="mt-4 flex gap-2">
             <Button type="submit" className="rounded-full">Salvar</Button>
             <Button type="button" variant="outline" className="rounded-full" onClick={() => setDraft(null)}>Cancelar</Button>

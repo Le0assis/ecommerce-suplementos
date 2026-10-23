@@ -36,6 +36,23 @@ function catalogProduct(slug: string): { product: CatalogProduct; reviews: Revie
   return { product, reviews: getReviews(slug), related: relatedOf(product, products), names: namesOf(products) };
 }
 
+/** Lista da loja: só o corpo de GET /v1/products. Sem o catálogo seed. */
+export async function loadPublicProducts(): Promise<CatalogProduct[]> {
+  try {
+    const response = await fetch(`${apiBase()}/v1/products`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(800),
+    });
+    if (!response.ok) return [];
+    const body = (await response.json()) as { products?: CatalogProduct[] };
+    if (!Array.isArray(body.products)) return [];
+    return body.products.filter((product) => product?.slug && product.hidden !== true);
+  } catch (error) {
+    unstable_rethrow(error);
+    return [];
+  }
+}
+
 export async function loadPublicProduct(slug: string): Promise<{ product: CatalogProduct; reviews: Review[]; related: CatalogProduct[]; names: Record<string, string> } | null> {
   try {
     const response = await fetch(`${apiBase()}/v1/products/${encodeURIComponent(slug)}`, {

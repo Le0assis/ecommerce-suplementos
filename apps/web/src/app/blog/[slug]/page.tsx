@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export function Article({ article }: { article: PublicArticle }) {
   return (
-    <article className="mx-auto max-w-3xl px-4 py-10">
+    <article className="mx-auto min-w-0 max-w-3xl px-4 py-10 [overflow-wrap:anywhere]">
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-lime">{article.category} · {article.authorName}</p>
       <h1 className="break-words font-display text-6xl leading-[0.9]">{article.title}</h1>
       <p className="mt-3 text-muted-foreground">{article.excerpt}</p>
