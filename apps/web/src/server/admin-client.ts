@@ -150,8 +150,13 @@ const RESOURCE: Record<string, AdminResource> = {
 };
 
 
-function isWaitlistAdmin(segments: string[]): boolean {
-  return segments[0] === "drops" && segments.includes("waitlist");
+function waitlistKind(method: string, segments: string[]): "read" | "anonymize" | "erase" | null {
+  if (segments[0] !== "drops" || !segments.includes("waitlist")) return null;
+  const action = segments[2];
+  if (method === "DELETE" && segments[1] === "waitlist" && action) return "erase";
+  if (method === "POST" && segments[1] === "waitlist" && action === "erase") return "erase";
+  if (method === "POST" && segments[1] === "waitlist" && action === "anonymize") return "anonymize";
+  return "read";
 }
 
 export async function handleAdminData(
@@ -164,9 +169,16 @@ export async function handleAdminData(
 ): Promise<AdminHandlerResult> {
   const resource = RESOURCE[segments[0] ?? ""];
   if (!resource) return { status: 404, body: { error: "Rota admin não encontrada." } };
-  if (isWaitlistAdmin(segments) && session.role !== "dono") {
+  const kind = waitlistKind(method, segments);
+  if (kind === "erase" && session.role !== "dono" && session.role !== "atendimento") {
     return { status: 403, body: { error: "Seu papel não faz isso." } };
   }
-  if (!canAccess(session.role, resource)) return { status: 403, body: { error: "Seu papel não faz isso." } };
+  if (kind === "anonymize" && session.role !== "dono" && session.role !== "editor") {
+    return { status: 403, body: { error: "Seu papel não faz isso." } };
+  }
+  if (kind === "read" && session.role !== "dono" && session.role !== "editor" && session.role !== "atendimento") {
+    return { status: 403, body: { error: "Seu papel não faz isso." } };
+  }
+  if (!kind && !canAccess(session.role, resource)) return { status: 403, body: { error: "Seu papel não faz isso." } };
   return callApi(session, method, segments, search, body, forwardedFor);
 }

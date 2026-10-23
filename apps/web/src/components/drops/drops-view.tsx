@@ -75,14 +75,14 @@ function WaitlistForm({ dropId, count }: { dropId: string; count: number }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  async function submit(erase: boolean) {
+  async function submit() {
     setPending(true);
     setError(null);
     setNotice(null);
-    const response = await fetch(erase ? "/api/drops/waitlist/erase" : `/api/drops/${dropId}/waitlist`, {
+    const response = await fetch(`/api/drops/${dropId}/waitlist`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(erase ? { email } : { email, consent: true }),
+      body: JSON.stringify({ email, consent: true }),
     });
     const body = (await response.json().catch(() => ({}))) as { error?: string };
     setPending(false);
@@ -94,7 +94,7 @@ function WaitlistForm({ dropId, count }: { dropId: string; count: number }) {
   }
 
   return (
-    <form className="mt-4 space-y-3" onSubmit={(event) => { event.preventDefault(); void submit(false); }}>
+    <form className="mt-4 space-y-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <p className="text-sm text-muted-foreground">{people} {people === 1 ? "pessoa na lista" : "pessoas na lista"}</p>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Input type="email" required aria-label="E-mail da lista" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="seu@email.com" />
@@ -106,7 +106,9 @@ function WaitlistForm({ dropId, count }: { dropId: string; count: number }) {
       </label>
       {error ? <p className="text-sm text-pink" role="alert">{error}</p> : null}
       {notice ? <p className="text-sm text-lime" role="status">{notice}</p> : null}
-      <button type="button" className="text-sm text-muted-foreground underline" disabled={pending || !email} onClick={() => void submit(true)}>Pedir saída da lista</button>
+      <p className="text-sm text-muted-foreground">
+        A saída da lista é só pelo atendimento. Para sair, fala com o atendimento pela página de <Link href="/ajuda" className="underline">Ajuda</Link>.
+      </p>
     </form>
   );
 }

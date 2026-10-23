@@ -198,6 +198,8 @@ describe("drops e lista de espera", () => {
     expect((await sql.query("select email from drop_waitlist where email = 'bia@pulso.test'")).rows).toHaveLength(1);
     const support = await login(app, "atendimento@pulso.test", "senha-atendimento", "203.0.113.80");
     const supportHeaders = auth(support.token, "203.0.113.80");
+    const supportList = await app.request("/v1/admin/drops/drop-espera/waitlist", { headers: supportHeaders });
+    expect(supportList.status).toBe(200);
     const missing = await app.request("/v1/admin/drops/waitlist/nao-existe", { method: "DELETE", headers: supportHeaders });
     expect(missing.status).toBe(404);
     const gone = await app.request(`/v1/admin/drops/waitlist/${entry?.id}`, { method: "DELETE", headers: supportHeaders });

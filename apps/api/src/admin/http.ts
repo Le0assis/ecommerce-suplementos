@@ -103,7 +103,12 @@ export function clientIp(c: Context, env: NodeJS.ProcessEnv = process.env): stri
   });
 }
 
-export async function requireActor(c: Context, runtime: AdminRuntime, resource: Resource): Promise<Actor> {
+function roleAllows(role: Role, resource: Resource | readonly Resource[]): boolean {
+  if (typeof resource === "string") return can(role, resource);
+  return resource.some((item) => can(role, item));
+}
+
+export async function requireActor(c: Context, runtime: AdminRuntime, resource: Resource | readonly Resource[]): Promise<Actor> {
   const token = tokenFromRequest(c.req.header("authorization"), c.req.header("cookie"));
   if (!token) throw new HttpError(401, "Faça login para continuar.");
   const claims = readSession(token, runtime.secret, runtime.now());
@@ -111,7 +116,7 @@ export async function requireActor(c: Context, runtime: AdminRuntime, resource: 
   if (!(await sessionIsLive(runtime.sql, claims, runtime.now()))) throw new HttpError(401, "Sessão inválida ou vencida.");
   const actor = await loadActor(runtime.sql, claims);
   if (!actor) throw new HttpError(401, "Sessão inválida ou vencida.");
-  if (!can(actor.role, resource)) throw new HttpError(403, "Seu papel não faz isso.");
+  if (!roleAllows(actor.role, resource)) throw new HttpError(403, "Seu papel não faz isso.");
   return actor;
 }
 

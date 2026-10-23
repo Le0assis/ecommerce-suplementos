@@ -22,8 +22,8 @@ test("o menu separa dono, editor e atendimento", () => {
   assert.equal(canAccess("atendimento", "audit"), false);
   assert.equal(resourceForAdminPath("/admin/auditoria"), "audit");
   assert.equal(canAccess("dono", "waitlist"), true);
-  assert.equal(canAccess("editor", "waitlist"), false);
-  assert.equal(canAccess("atendimento", "waitlist"), false);
+  assert.equal(canAccess("editor", "waitlist"), true);
+  assert.equal(canAccess("atendimento", "waitlist"), true);
   assert.equal(resourceForAdminPath("/admin/lista-espera"), "waitlist");
   assert.equal(resourceForAdminPath("/admin"), null);
   assert.equal(resourceForAdminPath("/admin/pedidos/abc"), "orders");

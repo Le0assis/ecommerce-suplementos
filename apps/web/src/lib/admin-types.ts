@@ -460,9 +460,10 @@ const EDITOR: AdminResource[] = [
   "scratch-prizes",
   "banners",
   "uploads",
+  "waitlist",
 ];
 
-const ATENDIMENTO: AdminResource[] = ["orders", "reviews", "customers"];
+const ATENDIMENTO: AdminResource[] = ["orders", "reviews", "customers", "waitlist"];
 
 export function canAccess(role: AdminRole, resource: AdminResource | null): boolean {
   if (resource === null) return true;
