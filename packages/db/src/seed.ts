@@ -574,6 +574,41 @@ async function seedOperations(client: pg.PoolClient): Promise<void> {
   }
 }
 
+function authorId(name: string): string {
+  const slug = name
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return slug || "autor";
+}
+
+async function seedContent(client: pg.PoolClient): Promise<void> {
+  const names = [...new Set(posts.map((post) => post.author))];
+  for (const name of names) {
+    await client.query(
+      `insert into authors (id, name)
+       values ($1, $2)
+       on conflict (id) do update set name = excluded.name`,
+      [authorId(name), name],
+    );
+  }
+
+  for (const post of posts) {
+    const id = authorId(post.author);
+    await client.query("update posts set author_id = $2 where slug = $1", [post.slug, id]);
+    await client.query("delete from post_blocks where post_id = $1", [post.slug]);
+    for (const [position, text] of post.body.entries()) {
+      await client.query(
+        `insert into post_blocks (id, post_id, position, type, content)
+         values ($1, $2, $3, 'paragrafo', $4::jsonb)`,
+        [`${post.slug}__p${position}`, post.slug, position, JSON.stringify({ text })],
+      );
+    }
+  }
+}
+
 export async function seed(): Promise<void> {
   loadEnv();
   const pool = getPool();
@@ -582,6 +617,7 @@ export async function seed(): Promise<void> {
     await client.query("begin");
     await seedCatalog(client);
     await seedOperations(client);
+    await seedContent(client);
     await client.query("commit");
   } catch (error) {
     await client.query("rollback");

@@ -34,4 +34,13 @@ describe("schema", () => {
     expect(sql).toContain("create index if not exists products_status_idx");
     expect(sql).toContain("create index if not exists banners_slot_idx");
   });
+
+  it("separa autor, bloco e mídia do influencer", () => {
+    const sql = readFileSync(resolve(sqlDir, "004_conteudo.sql"), "utf8");
+    for (const table of ["authors", "post_blocks", "influencer_images", "influencer_quotes"]) {
+      expect(sql).toContain(`create table if not exists ${table}`);
+    }
+    expect(sql).toContain("citacao_lateral");
+    expect(sql).toContain("create index if not exists post_blocks_post_idx");
+  });
 });
