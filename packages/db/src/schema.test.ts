@@ -25,4 +25,13 @@ describe("schema", () => {
     expect(base).toContain("create table if not exists product_flavors");
     expect(base).not.toContain("drop table");
   });
+
+  it("cria o restante do admin e os índices", () => {
+    const sql = readFileSync(resolve(sqlDir, "003_restantes.sql"), "utf8");
+    for (const table of ["promotions", "quiz_questions", "quiz_options", "scratch_prizes", "loyalty_settings", "banners", "ugc_posts", "video_spots"]) {
+      expect(sql).toContain(`create table if not exists ${table}`);
+    }
+    expect(sql).toContain("create index if not exists products_status_idx");
+    expect(sql).toContain("create index if not exists banners_slot_idx");
+  });
 });

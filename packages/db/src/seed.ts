@@ -1,5 +1,22 @@
-import { CATEGORIES, GOALS } from "@pulso/domain";
-import { coupons, influencers, posts, products, reviews } from "@pulso/data";
+import {
+  CATEGORIES,
+  FREE_SHIPPING_CENTS,
+  GOALS,
+  KIT_DISCOUNT_PERCENT,
+  LEVELS,
+  MAX_POINTS_REDEEM_RATIO,
+  PIX_DISCOUNT_PERCENT,
+  PIX_POINTS_BONUS,
+  POINT_VALUE_CENTS,
+  POINTS_PER_REAL,
+  REFERRED_POINTS,
+  REFERRER_POINTS,
+  SCRATCH_PRIZES,
+  SUBSCRIPTION_DEFAULT_PERCENT,
+  WELCOME_POINTS,
+  freeShippingThresholdCents,
+} from "@pulso/domain";
+import { coupons, influencers, posts, products, reviews, ugc, videos } from "@pulso/data";
 import type pg from "pg";
 import { loadEnv } from "./env";
 import { closePool, getPool } from "./pool";
@@ -324,6 +341,239 @@ async function seedCatalog(client: pg.PoolClient): Promise<void> {
   }
 }
 
+type Weights = { products: Record<string, number>; goals: Record<string, number> };
+
+const QUIZ_GOAL_STACKS: Record<string, string[]> = {
+  hipertrofia: ["shape-whey-isolado", "base-creatina", "caos-pre-treino", "volume-hipercalorico"],
+  emagrecimento: ["clear-whey", "corte-termo", "base-creatina", "diaria-multi"],
+  energia: ["caos-pre-treino", "pump-intra", "base-creatina"],
+  recuperacao: ["night-recuperacao", "shape-whey-isolado", "base-creatina", "omega-3"],
+  resistencia: ["pump-intra", "base-creatina", "clear-whey"],
+  saude: ["diaria-multi", "omega-3", "base-creatina"],
+};
+
+function stackWeights(slugs: string[]): Record<string, number> {
+  return Object.fromEntries(slugs.map((slug, index) => [slug, slugs.length - index]));
+}
+
+function weights(products: Record<string, number> = {}, goals: Record<string, number> = {}): Weights {
+  return { products, goals };
+}
+
+const MARQUEE = ["PIX 10% OFF", "SABOR ALTO", "FRETE NO CEP", "DROP 04", "CREATINA TODO DIA", "SEM DESCULPA DE RÓTULO", "COLLAB LUNA"];
+
+async function seedOperations(client: pg.PoolClient): Promise<void> {
+  const questions: { id: string; prompt: string; answerKey: string; options: { value: string; label: string; weights: Weights }[] }[] = [
+    {
+      id: "quiz-goal",
+      prompt: "Qual é o objetivo agora?",
+      answerKey: "goal",
+      options: GOALS.map((goal) => ({
+        value: goal.id,
+        label: goal.label,
+        weights: weights(stackWeights(QUIZ_GOAL_STACKS[goal.id] ?? []), { [goal.id]: 1 }),
+      })),
+    },
+    {
+      id: "quiz-days",
+      prompt: "Quantos dias você treina?",
+      answerKey: "days",
+      options: [2, 3, 4, 5, 6].map((days) => ({ value: String(days), label: `${days} dias`, weights: weights() })),
+    },
+    {
+      id: "quiz-caffeine",
+      prompt: "Cafeína, como é?",
+      answerKey: "caffeine",
+      options: [
+        { value: "alta", label: "Quero o máximo", weights: weights({ "caos-pre-treino": 4 }) },
+        { value: "media", label: "No meio", weights: weights() },
+        { value: "zero", label: "Sem cafeína", weights: weights({ "foco-pre-sem-cafeina": 5, "caos-pre-treino": -5, "corte-termo": -5 }) },
+      ],
+    },
+    {
+      id: "quiz-flavor",
+      prompt: "Que sabor te representa?",
+      answerKey: "flavor",
+      options: [
+        { value: "citrica", label: "Cítrico elétrico", weights: weights() },
+        { value: "doce", label: "Doce", weights: weights({ "shape-whey-isolado": 1, "clear-whey": 1, "volume-hipercalorico": 1 }) },
+        { value: "fruta", label: "Fruta", weights: weights() },
+        { value: "neutro", label: "Sem sabor", weights: weights() },
+      ],
+    },
+    {
+      id: "quiz-budget",
+      prompt: "Orçamento do mês",
+      answerKey: "budget",
+      options: [
+        { value: "baixo", label: "Até uns R$ 150", weights: weights({ "volume-hipercalorico": -8, "collab-luna": -8, "base-creatina": 3 }) },
+        { value: "medio", label: "R$ 150 a 300", weights: weights() },
+        { value: "alto", label: "Monta o stack", weights: weights() },
+      ],
+    },
+  ];
+
+  for (const [position, question] of questions.entries()) {
+    await client.query(
+      `insert into quiz_questions (id, prompt, answer_key, position)
+       values ($1, $2, $3, $4)
+       on conflict (id) do update set prompt = excluded.prompt, answer_key = excluded.answer_key, position = excluded.position`,
+      [question.id, question.prompt, question.answerKey, position],
+    );
+  }
+  await client.query("delete from quiz_options where question_id = any($1::text[])", [questions.map((question) => question.id)]);
+  for (const question of questions) {
+    for (const [position, option] of question.options.entries()) {
+      await client.query(
+        `insert into quiz_options (id, question_id, label, value, position, weights)
+         values ($1, $2, $3, $4, $5, $6::jsonb)`,
+        [`${question.id}__${option.value}`, question.id, option.label, option.value, position, JSON.stringify(option.weights)],
+      );
+    }
+  }
+
+  for (const [position, prize] of SCRATCH_PRIZES.entries()) {
+    await client.query(
+      `insert into scratch_prizes (id, label, detail, weight, coupon_code, points, active, position)
+       values ($1, $2, $3, $4, $5, $6, true, $7)
+       on conflict (id) do update set
+         label = excluded.label,
+         detail = excluded.detail,
+         weight = excluded.weight,
+         coupon_code = excluded.coupon_code,
+         points = excluded.points,
+         active = excluded.active,
+         position = excluded.position`,
+      [prize.id, prize.label, prize.detail, prize.weight, prize.couponCode ?? null, prize.points ?? null, position],
+    );
+  }
+
+  const levels = LEVELS.map((level) => ({
+    id: level.id,
+    name: level.name,
+    min_points: level.minPoints,
+    multiplier: level.multiplier,
+    free_shipping_cents: freeShippingThresholdCents(level.id),
+    perks: level.perks,
+  }));
+  await client.query(
+    `insert into loyalty_settings (
+       id, points_per_real, pix_points_bonus, point_value_cents, max_points_redeem_ratio,
+       welcome_points, free_shipping_cents, pix_discount_percent, kit_discount_percent,
+       subscription_default_percent, referrer_points, referred_points, levels, updated_at
+     ) values ('padrao', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, now())
+     on conflict (id) do update set
+       points_per_real = excluded.points_per_real,
+       pix_points_bonus = excluded.pix_points_bonus,
+       point_value_cents = excluded.point_value_cents,
+       max_points_redeem_ratio = excluded.max_points_redeem_ratio,
+       welcome_points = excluded.welcome_points,
+       free_shipping_cents = excluded.free_shipping_cents,
+       pix_discount_percent = excluded.pix_discount_percent,
+       kit_discount_percent = excluded.kit_discount_percent,
+       subscription_default_percent = excluded.subscription_default_percent,
+       referrer_points = excluded.referrer_points,
+       referred_points = excluded.referred_points,
+       levels = excluded.levels,
+       updated_at = now()`,
+    [
+      POINTS_PER_REAL,
+      String(PIX_POINTS_BONUS),
+      POINT_VALUE_CENTS,
+      String(MAX_POINTS_REDEEM_RATIO),
+      WELCOME_POINTS,
+      FREE_SHIPPING_CENTS,
+      PIX_DISCOUNT_PERCENT,
+      KIT_DISCOUNT_PERCENT,
+      SUBSCRIPTION_DEFAULT_PERCENT,
+      REFERRER_POINTS,
+      REFERRED_POINTS,
+      JSON.stringify(levels),
+    ],
+  );
+
+  const banners: { id: string; slot: string; title: string; subtitle: string | null; href: string | null; position: number }[] = [
+    {
+      id: "banner-hero",
+      slot: "hero",
+      title: "Sabor alto. Treino mais alto.",
+      subtitle: "Pré, whey e creatina com cara de rua.",
+      href: "/loja/caos-pre-treino",
+      position: 0,
+    },
+    ...MARQUEE.map((title, position) => ({ id: `banner-marquee-${position}`, slot: "marquee", title, subtitle: null, href: null, position })),
+    {
+      id: "banner-pix",
+      slot: "destaque",
+      title: `Pix ${PIX_DISCOUNT_PERCENT}% off`,
+      subtitle: "Em tudo. Sem cupom. O desconto aparece no checkout.",
+      href: "/loja",
+      position: 0,
+    },
+    {
+      id: "banner-raspadinha",
+      slot: "destaque",
+      title: "Raspadinha",
+      subtitle: "Uma por dia. Pode vir frete, pontos ou quase.",
+      href: "/raspadinha",
+      position: 1,
+    },
+    {
+      id: "banner-calculadora",
+      slot: "destaque",
+      title: "Calcula a dose",
+      subtitle: "Proteína e creatina, com a letra miúda do lado.",
+      href: "/calculadora",
+      position: 2,
+    },
+  ];
+  for (const banner of banners) {
+    await client.query(
+      `insert into banners (id, slot, title, subtitle, href, position)
+       values ($1, $2, $3, $4, $5, $6)
+       on conflict (id) do update set
+         slot = excluded.slot,
+         title = excluded.title,
+         subtitle = excluded.subtitle,
+         href = excluded.href,
+         position = excluded.position`,
+      [banner.id, banner.slot, banner.title, banner.subtitle, banner.href, banner.position],
+    );
+  }
+
+  for (const [position, post] of ugc.entries()) {
+    await client.query(
+      `insert into ugc_posts (id, author, handle, caption, likes, accent, product_id, position)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (id) do update set
+         author = excluded.author,
+         handle = excluded.handle,
+         caption = excluded.caption,
+         likes = excluded.likes,
+         accent = excluded.accent,
+         product_id = excluded.product_id,
+         position = excluded.position`,
+      [post.id, post.author, post.handle, post.caption, post.likes, post.accent, post.productSlug ?? null, position],
+    );
+  }
+
+  for (const [position, video] of videos.entries()) {
+    await client.query(
+      `insert into video_spots (id, slug, title, caption, duration, frames, transcript, position)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (id) do update set
+         slug = excluded.slug,
+         title = excluded.title,
+         caption = excluded.caption,
+         duration = excluded.duration,
+         frames = excluded.frames,
+         transcript = excluded.transcript,
+         position = excluded.position`,
+      [video.id, video.slug, video.title, video.caption, video.duration, video.frames, video.transcript, position],
+    );
+  }
+}
+
 export async function seed(): Promise<void> {
   loadEnv();
   const pool = getPool();
@@ -331,6 +581,7 @@ export async function seed(): Promise<void> {
   try {
     await client.query("begin");
     await seedCatalog(client);
+    await seedOperations(client);
     await client.query("commit");
   } catch (error) {
     await client.query("rollback");
