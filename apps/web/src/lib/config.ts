@@ -11,7 +11,6 @@ export const siteConfig = {
   pixDiscountPercent: numberFrom(process.env.NEXT_PUBLIC_PIX_DISCOUNT, PIX_DISCOUNT_PERCENT),
   freeShippingCents: numberFrom(process.env.NEXT_PUBLIC_FREE_SHIPPING_CENTS, FREE_SHIPPING_CENTS),
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:43123",
-  adminPassword: process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "pulso-admin",
   apiUrl: process.env.API_URL ?? "http://127.0.0.1:8787",
   dataSource: process.env.DATA_SOURCE === "api" ? "api" : "mock",
   socials: [

@@ -198,7 +198,7 @@ Todo produto tem porção, tabela, ingredientes, alergênicos e advertências. R
 
 ### RNF06 — Segurança
 
-Cabeçalhos `nosniff`, `SAMEORIGIN`, `Referrer-Policy`, `Permissions-Policy`. API com CORS aberto (protótipo) e limite de 60 POST por minuto em memória. Segredos reais não entram no repositório. A senha de admin pública é dívida consciente, documentada, não um controle de acesso.
+Cabeçalhos `nosniff`, `SAMEORIGIN`, `Referrer-Policy`, `Permissions-Policy`. API com CORS aberto (protótipo) e limite de 60 POST por minuto em memória. Segredos reais não entram no repositório. A senha do admin é `ADMIN_PASSWORD`, só no servidor, com sessão em cookie httpOnly.
 
 ### RNF07 — Observabilidade
 

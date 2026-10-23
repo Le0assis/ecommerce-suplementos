@@ -1,15 +1,13 @@
 "use client";
 
-import { AdminPanels } from "@/components/account/admin-panels";
 import { Pack } from "@/components/brand/pack";
 import { ProductCard } from "@/components/product/product-card";
 import { useStoreData } from "@/components/store-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { siteConfig } from "@/lib/config";
 import { useCurrentUser, usePulso, useWishlist } from "@/lib/store";
 import type { SavedAddress } from "@/lib/types";
-import { accountExport, formatBRL, formatCep, levelFor, nextLevel, parseBRLToCents, referralCodeFrom, REFERRED_POINTS, REFERRER_POINTS } from "@pulso/domain";
+import { accountExport, formatBRL, formatCep, levelFor, nextLevel, referralCodeFrom, REFERRED_POINTS, REFERRER_POINTS } from "@pulso/domain";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -329,53 +327,3 @@ export function TrackingView() {
   );
 }
 
-export function AdminView() {
-  const { allProducts } = useStoreData();
-  const savePatch = usePulso((state) => state.savePatch);
-  const orders = usePulso((state) => state.users.flatMap((user) => user.orders));
-  const [password, setPassword] = useState("");
-  const [ok, setOk] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  if (!ok) {
-    return (
-      <form className="mx-auto max-w-md space-y-3 px-4 py-12" onSubmit={(event) => { event.preventDefault(); if (password === siteConfig.adminPassword) setOk(true); else setError("Senha do protótipo não confere."); }}>
-        <h1 className="font-display text-6xl">Admin</h1>
-        <p className="text-sm text-muted-foreground">CMS local. A senha padrão está no .env (NEXT_PUBLIC_ADMIN_PASSWORD) e não protege um servidor.</p>
-        <Input type="password" aria-label="Senha do admin" value={password} onChange={(event) => setPassword(event.target.value)} />
-        {error ? <p className="text-sm text-pink">{error}</p> : null}
-        <Button type="submit" className="rounded-full">Entrar</Button>
-      </form>
-    );
-  }
-  return (
-    <div className="mx-auto max-w-5xl px-4 py-10">
-      <h1 className="font-display text-6xl">Catálogo local</h1>
-      <p className="text-sm text-muted-foreground">Preço e ocultar valem só neste navegador, por cima do mock. {orders.length} pedidos nesta sessão.</p>
-      <div className="mt-4 overflow-auto">
-        <table className="w-full min-w-[40rem] text-left text-sm">
-          <thead><tr className="text-xs uppercase tracking-[0.14em] text-muted-foreground"><th className="py-2">Produto</th><th>Preço base</th><th>Nome</th><th>Visível</th></tr></thead>
-          <tbody>
-            {allProducts.map((product) => (
-              <tr key={product.slug} className="border-t border-white/10">
-                <td className="py-3 font-display text-2xl">{product.line}</td>
-                <td>
-                  <Input
-                    aria-label={`Preço de ${product.name}`}
-                    defaultValue={(Math.min(...product.variants.map((variant) => variant.priceCents)) / 100).toFixed(2).replace(".", ",")}
-                    onBlur={(event) => {
-                      const cents = parseBRLToCents(event.target.value);
-                      if (cents) savePatch(product.slug, { priceCents: cents });
-                    }}
-                  />
-                </td>
-                <td><Input aria-label={`Nome de ${product.name}`} defaultValue={product.name} onBlur={(event) => savePatch(product.slug, { name: event.target.value })} /></td>
-                <td><input type="checkbox" aria-label={`Visível ${product.name}`} defaultChecked={!product.hidden} onChange={(event) => savePatch(product.slug, { hidden: !event.target.checked })} className="accent-lime" /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <AdminPanels />
-    </div>
-  );
-}

@@ -6,12 +6,12 @@ Este guia publica a **demonstração**. Pix, boleto e cartão continuam sandbox.
 
 | Peça | Como | Variáveis |
 | --- | --- | --- |
-| Site | `pnpm --filter @pulso/web build` e `pnpm --filter @pulso/web start` | `WEB_PORT`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_PIX_DISCOUNT`, `NEXT_PUBLIC_FREE_SHIPPING_CENTS` |
+| Site | `pnpm --filter @pulso/web build` e `pnpm --filter @pulso/web start` | `WEB_PORT`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_PIX_DISCOUNT`, `NEXT_PUBLIC_FREE_SHIPPING_CENTS`, `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET` |
 | API | `pnpm --filter @pulso/api start` | `API_PORT`, `API_DATA_SOURCE`, `PAYMENT_GATEWAY`, `DATABASE_URL`, `REDIS_URL` |
 | Postgres | serviço gerenciado, Postgres 16 | usuário e senha **novos**, não `pulso`/`pulso` |
 | Redis | opcional | se não houver, apague `REDIS_URL` |
 
-`NEXT_PUBLIC_ADMIN_PASSWORD` vai para o JavaScript. Antes de um domínio público, troque o admin por sessão no servidor. Até lá, use a senha só numa rede fechada.
+`ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET` ficam só no servidor. O login grava o cookie httpOnly `pulso_admin_session` por 12 horas. Não publique de novo uma variável `NEXT_PUBLIC_ADMIN_PASSWORD`. Troque os dois segredos antes de um domínio público.
 
 ## Passos
 
@@ -30,5 +30,5 @@ O CI (`.github/workflows/ci.yml`) roda lint, typecheck, Vitest e build com `DATA
 - Cobrança sandbox (`mp_sandbox_` / `pm_sandbox_`).
 - CEP em tabela local.
 - Pedido, conta e analytics no `localStorage`.
-- Senha de admin pública.
+- Senha de admin ainda é um segredo único no `.env`, com papéis prontos mas uma conta dono no adaptador.
 - Registro `NI-DEMO`.

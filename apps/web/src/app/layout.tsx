@@ -3,7 +3,7 @@ import { StoreDataProvider } from "@/components/store-data";
 import { CartDrawer, CookieBanner, Toaster } from "@/components/layout/chrome";
 import { siteConfig } from "@/lib/config";
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { Bebas_Neue, Outfit } from "next/font/google";
 import "./globals.css";
 
@@ -30,7 +30,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <CartDrawer />
           <CookieBanner />
           <Toaster />
-          <AnalyticsListener />
+          <Suspense fallback={null}>
+            <AnalyticsListener />
+          </Suspense>
         </StoreDataProvider>
       </body>
     </html>

@@ -98,7 +98,7 @@ Spots em `packages/data/src/videos.ts`. O player troca de quadro e mostra a tran
 
 ## Admin `/admin`
 
-Senha `NEXT_PUBLIC_ADMIN_PASSWORD`. Além de preço, nome e visibilidade, dá para ajustar estoque por sabor, data de fim do drop, ligar cupom e renomear ou esconder conteúdo. A lista de pedidos e a fila de analytics aparecem no mesmo painel. Tudo fica no `localStorage`.
+Login no servidor. A senha é `ADMIN_PASSWORD` (sem prefixo `NEXT_PUBLIC_`). `POST /api/admin/session` compara essa senha, ou `POST /v1/admin/login` quando a API responder, e grava o cookie httpOnly `pulso_admin_session` por 12 horas, assinado com `ADMIN_SESSION_SECRET`. Papéis: dono, editor e atendimento. Nesta fase o painel edita produtos (incluindo sabores, variantes, rótulo e fotos) e cupons. Enquanto a API não tem essas rotas, um adaptador grava em `apps/web/.data/admin-mock.json`, fora do Git. Produto se arquiva. Cupom só se apaga se o uso for zero.
 
 ## Privacidade na conta
 

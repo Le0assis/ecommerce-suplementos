@@ -17,7 +17,7 @@ Atualizado na etapa 1 (fundação). As referências de mercado e a tabela das 6 
 | --- | --- |
 | `DATA_SOURCE=api` | Função `loadStorefront` pronta. Páginas ainda importam `@pulso/data` |
 | Pedido, cliente, pontos, wishlist, assinatura | Funcionam no `localStorage`. Tabelas SQL existem vazias |
-| Admin | Patch local de nome, preço e ocultar. Não é CMS |
+| Admin | Login com cookie httpOnly. Produtos e cupons no adaptador local até a API `/v1/admin` existir |
 | CEP e frete | Tabela demo. Contrato de função estável para trocar pela ViaCEP |
 | Pagamento | UI completa, cobrança falsa, marcada na confirmação |
 | Raspadinha | Uma por dia no navegador. Prêmio não persiste no servidor |
@@ -33,4 +33,4 @@ Atualizado na etapa 1 (fundação). As referências de mercado e a tabela das 6 
 
 ## Não vender com este build
 
-Registro ANVISA fictício, sem nota fiscal, sem gateway, senha de admin no bundle, conta sem hash de senha. O rodapé já diz que é protótipo.
+Registro ANVISA fictício, sem nota fiscal, sem gateway, conta da loja sem hash de senha. A senha do admin saiu do bundle e ficou em `ADMIN_PASSWORD`. O rodapé já diz que é protótipo.

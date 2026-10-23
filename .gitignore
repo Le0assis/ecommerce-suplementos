@@ -15,6 +15,7 @@ blob-report
 .env.local
 .env.*.local
 apps/web/.env
+apps/web/.data/
 apps/api/.env
 npm-debug.log*
 pnpm-debug.log*
