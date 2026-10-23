@@ -43,4 +43,20 @@ describe("schema", () => {
     expect(sql).toContain("citacao_lateral");
     expect(sql).toContain("create index if not exists post_blocks_post_idx");
   });
+
+  it("guarda a lista de espera com consentimento e rotina de apagar", () => {
+    const sql = readFileSync(resolve(sqlDir, "005_drops.sql"), "utf8");
+    expect(sql).toContain("create table if not exists drops");
+    expect(sql).toContain("create table if not exists drop_waitlist");
+    expect(sql).toContain("consent boolean not null check (consent)");
+    expect(sql).toContain("consent_at timestamptz not null");
+    expect(sql).toContain("consent_origin");
+    expect(sql).toContain("anonymized_at");
+    expect(sql).toContain("where anonymized_at is null");
+    expect(sql).toContain("function erase_drop_waitlist");
+    expect(sql).toContain("function anonymize_drop_waitlist");
+    expect(sql).not.toContain("cpf");
+    expect(sql).not.toContain("phone");
+    expect(sql).not.toContain("user_agent");
+  });
 });

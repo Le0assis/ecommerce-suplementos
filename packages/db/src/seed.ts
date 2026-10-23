@@ -16,7 +16,7 @@ import {
   WELCOME_POINTS,
   freeShippingThresholdCents,
 } from "@pulso/domain";
-import { coupons, influencers, posts, products, reviews, ugc, videos } from "@pulso/data";
+import { coupons, influencers, posts, products, reviews, ugc, upcomingDrop, videos } from "@pulso/data";
 import type pg from "pg";
 import { loadEnv } from "./env";
 import { closePool, getPool } from "./pool";
@@ -609,6 +609,67 @@ async function seedContent(client: pg.PoolClient): Promise<void> {
   }
 }
 
+async function upsertDrop(
+  client: pg.PoolClient,
+  drop: {
+    id: string;
+    edition: string;
+    name: string | null;
+    productId: string | null;
+    flavorId: string | null;
+    endsAt: string;
+    unitsLeft: number | null;
+    story: string | null;
+    status: "em_breve" | "no_ar" | "encerrado";
+  },
+): Promise<void> {
+  await client.query(
+    `insert into drops (id, edition, name, product_id, flavor_id, ends_at, units_left, story, status, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+     on conflict (id) do update set
+       edition = excluded.edition,
+       name = excluded.name,
+       product_id = excluded.product_id,
+       flavor_id = excluded.flavor_id,
+       ends_at = excluded.ends_at,
+       units_left = excluded.units_left,
+       story = excluded.story,
+       status = excluded.status,
+       updated_at = now()`,
+    [drop.id, drop.edition, drop.name, drop.productId, drop.flavorId, drop.endsAt, drop.unitsLeft, drop.story, drop.status],
+  );
+}
+
+async function seedDrops(client: pg.PoolClient): Promise<void> {
+  for (const product of products) {
+    if (!product.drop) continue;
+    const flavor = product.flavors.find((item) => product.drop?.id.endsWith(`-${item.id}`));
+    await upsertDrop(client, {
+      id: product.drop.id,
+      edition: product.drop.edition,
+      name: flavor?.name ?? null,
+      productId: product.id,
+      flavorId: flavor ? `${product.id}__${flavor.id}` : null,
+      endsAt: product.drop.endsAt,
+      unitsLeft: product.drop.unitsLeft,
+      story: flavor?.tagline ?? product.tagline,
+      status: product.drop.teaser ? "em_breve" : "no_ar",
+    });
+  }
+
+  await upsertDrop(client, {
+    id: upcomingDrop.id,
+    edition: upcomingDrop.edition,
+    name: upcomingDrop.name,
+    productId: null,
+    flavorId: null,
+    endsAt: upcomingDrop.endsAt,
+    unitsLeft: null,
+    story: null,
+    status: upcomingDrop.teaser ? "em_breve" : "no_ar",
+  });
+}
+
 export async function seed(): Promise<void> {
   loadEnv();
   const pool = getPool();
@@ -618,6 +679,7 @@ export async function seed(): Promise<void> {
     await seedCatalog(client);
     await seedOperations(client);
     await seedContent(client);
+    await seedDrops(client);
     await client.query("commit");
   } catch (error) {
     await client.query("rollback");
