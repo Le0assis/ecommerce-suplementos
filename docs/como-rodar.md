@@ -19,7 +19,7 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
-No `.env`, `API_DATA_SOURCE=postgres` faz a API ler `products.payload`. A vitrine continua no mock até as páginas usarem `loadStorefront`.
+No `.env`, `API_DATA_SOURCE=postgres` faz a API montar o catálogo pelas tabelas (`product_flavors`, variantes, rótulo, fotos). `products.payload` não é mais a leitura. A vitrine continua no mock até as páginas usarem `loadStorefront`. A conta dono nasce com `pnpm --filter @pulso/db create-owner` (senha num arquivo fora do repo, variável `ADMIN_OWNER_PASSWORD_FILE`).
 
 ## Qualidade
 

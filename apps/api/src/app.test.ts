@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { app } from "./app";
+import { app, createApp } from "./app";
 
 afterEach(() => {
   delete process.env.DATABASE_URL;
@@ -61,6 +61,19 @@ describe("API", () => {
     expect(body.simulated).toBe(true);
     expect(body.quote.pixCents).toBeGreaterThan(0);
     expect(body.quote.totalCents).toBeGreaterThan(0);
+  });
+
+  it("recusa o login do admin sem segredo de sessão", async () => {
+    const previous = process.env.ADMIN_SESSION_SECRET;
+    delete process.env.ADMIN_SESSION_SECRET;
+    const bare = createApp();
+    const response = await bare.request("/v1/admin/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "dono@pulso.test", password: "senha-dona-pulso" }),
+    });
+    expect(response.status).toBe(503);
+    if (previous) process.env.ADMIN_SESSION_SECRET = previous;
   });
 
   it("abre cobrança sandbox de pix no Mercado Pago", async () => {

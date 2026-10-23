@@ -249,10 +249,10 @@ Abra o `.env` num editor de texto. Cada linha `NOME=valor` é uma variável. Lin
 | `NEXT_PUBLIC_FREE_SHIPPING_CENTS` | `29900` | Piso do frete PAC grátis em **centavos**. `29900` é R$ 299,00. Níveis Bruto e Lenda podem baixar esse piso na regra de domínio. |
 | `ADMIN_PASSWORD` | `pulso-admin` | Senha do `/admin`. **Só o servidor lê.** Não use o prefixo `NEXT_PUBLIC_`. O navegador manda a senha para o route handler e recebe um cookie httpOnly. Não reuse em produção. |
 | `API_PORT` | `8787` | Porta da API Hono. |
-| `API_DATA_SOURCE` | `mock` | `mock`: a API responde com o catálogo em memória. `postgres`: a API lê a coluna `products.payload`. Aí você precisa do Docker, da migração e do seed. |
+| `API_DATA_SOURCE` | `mock` | `mock`: a API responde com o catálogo em memória. `postgres`: a API monta o produto pelas tabelas normalizadas (`product_flavors`, `product_variants`, rótulo, fotos). A coluna `products.payload` deixa de ser a leitura. Aí você precisa do Docker, da migração e do seed. |
 | `DATABASE_URL` | `postgres://pulso:pulso@127.0.0.1:5432/pulso` | Conexão do Postgres local. Usuário `pulso`, senha `pulso`, banco `pulso`, porta `5432`. Só vale para esta máquina. |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Cache opcional da API (chave `catalog:products`, 60 segundos). Se apagar a linha, a API não tenta Redis. |
-| `ADMIN_SESSION_SECRET` | `pulso-dev-session-change-me` | Segredo que assina o cookie `pulso_admin_session` (12 horas). Só o servidor lê. Troque antes de publicar. |
+| `ADMIN_SESSION_SECRET` | `pulso-dev-session-change-me` | Segredo que assina a sessão do admin (12 horas). O site usa o cookie `pulso_admin_session`. A API usa o cookie `pulso_admin` e o mesmo valor como Bearer. Só o servidor lê. Troque antes de publicar. |
 | `PAYMENT_GATEWAY` | `auto` | Sandbox. `auto` manda Pix e boleto ao Mercado Pago e cartão à Pagar.me. `mercadopago` ou `pagarme` força o gateway. Não coloque token real. A confirmação mostra um id `mp_sandbox_` ou `pm_sandbox_`. |
 
 O arquivo `.env` está no `.gitignore`. Não faça commit dele.
@@ -311,9 +311,17 @@ O mesmo vale para o Redis (`6379:6379` vira `6380:6379` e `REDIS_URL=redis://127
 
 Só faça isto se o Postgres estiver no ar. No modo mock, pule a seção.
 
-A migração cria as tabelas com `packages/db/sql/001_init.sql`. O arquivo é idempotente (`create table if not exists`): rodar de novo não apaga dados.
+A migração aplica, em ordem, todos os arquivos `packages/db/sql/*.sql`. Eles são idempotentes (`create table if not exists`): rodar de novo não apaga dados.
 
-O seed grava produtos, cupons, atletas, posts e avaliações a partir do catálogo TypeScript.
+O seed grava produtos, cupons, atletas, posts e avaliações a partir do catálogo TypeScript, nas colunas normalizadas. A API, com `API_DATA_SOURCE=postgres`, lê essas colunas. Foto de mock fica com `url` nula e `fallback_hex` com a cor.
+
+A conta dono não entra no seed. Com o Postgres no ar, grave a senha num arquivo fora do repositório (modo 600) e rode o script que já existe:
+
+```bash
+pnpm --filter @pulso/db create-owner
+```
+
+Ele lê `ADMIN_OWNER_EMAIL`, `ADMIN_OWNER_NAME` e `ADMIN_OWNER_PASSWORD_FILE`. Não imprime a senha e não aceita senha na linha de comando.
 
 ```bash
 pnpm db:migrate

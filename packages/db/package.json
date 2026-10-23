@@ -6,7 +6,11 @@
   "exports": {
     ".": "./src/read.ts",
     "./env": "./src/env.ts",
-    "./pool": "./src/pool.ts"
+    "./pool": "./src/pool.ts",
+    "./sql": "./src/sql.ts",
+    "./audit": "./src/audit.ts",
+    "./catalog": "./src/catalog.ts",
+    "./password": "./src/password.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

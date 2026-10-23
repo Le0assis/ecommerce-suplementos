@@ -1,5 +1,7 @@
 import { products, type CatalogProduct } from "@pulso/data";
+import { readPublicProducts } from "@pulso/db/catalog";
 import { readProducts } from "@pulso/db";
+import type { Sql } from "@pulso/db/sql";
 import Redis from "ioredis";
 
 async function redisCommand<T>(fn: (client: Redis) => Promise<T>): Promise<T | null> {
@@ -21,7 +23,8 @@ async function redisCommand<T>(fn: (client: Redis) => Promise<T>): Promise<T | n
   }
 }
 
-export async function loadProducts(): Promise<{ source: string; products: CatalogProduct[] }> {
+export async function loadProducts(sql?: Sql): Promise<{ source: string; products: CatalogProduct[] }> {
+  if (sql) return { source: "postgres", products: await readPublicProducts(sql) };
   if (process.env.API_DATA_SOURCE !== "postgres") return { source: "mock", products };
   try {
     const cached = await redisCommand((client) => client.get("catalog:products"));
@@ -34,6 +37,10 @@ export async function loadProducts(): Promise<{ source: string; products: Catalo
     console.error(error);
     return { source: "mock-fallback", products };
   }
+}
+
+export async function invalidateCatalogCache(): Promise<void> {
+  await redisCommand((client) => client.del("catalog:products"));
 }
 
 export async function pingPostgres(): Promise<"skipped" | "up" | "down"> {

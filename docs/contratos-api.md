@@ -86,3 +86,21 @@ O servidor **recalcula**. Não confia em total mandado pelo cliente. A resposta 
 `checkout` passa por `validateCheckout`. No teste da API o body mínimo que passa é o usado em `apps/api/src/app.test.ts`.
 
 A vitrine não chama esta rota. Ela usa `quoteCart` localmente. Os dois compartilham o domínio.
+
+## Admin
+
+Rotas em `/v1/admin`. Não passam pelo CORS aberto nem pelo limite de 60 `POST` por minuto. Sem cabeçalho `Origin` a chamada segue. Origem precisa ser `NEXT_PUBLIC_SITE_URL`, `ADMIN_CORS_ORIGIN` ou, fora de produção, `localhost` / `127.0.0.1`. Outra origem devolve 403.
+
+A sessão dura 12 h. `POST /v1/admin/login` devolve `{ "token", "user": { "id", "email", "name", "role" } }` e grava o cookie `pulso_admin` (`HttpOnly`, `SameSite=Lax`, `Secure`, `Path=/`, `Max-Age=43200`). O painel manda esse token em `Authorization: Bearer`. Papéis no banco: `dono`, `editor`, `atendimento`. Sem `ADMIN_SESSION_SECRET` (mínimo 16 caracteres) o login responde 503.
+
+Cinco senhas erradas no mesmo e-mail travam `admin_users.locked_until` por 15 minutos. Trinta falhas no mesmo IP, na memória do processo, também respondem 429 com `Retry-After`. A senha não entra no `audit_log`.
+
+`GET /v1/admin/products` e `GET/POST/PATCH/DELETE /v1/admin/products/:id`, mais `POST /products/:id/duplicate` e filhos `flavors`, `variants`, `images`. `DELETE` arquiva (`status` `arquivado`, `active` false). O JSON usa `publicado`; a coluna guarda `ativo`. Foto: `url` pode ser `null` e `fallbackHex` guarda a cor. `GET /v1/products` com `API_DATA_SOURCE=postgres` monta o catálogo por essas tabelas, não por `products.payload`.
+
+`GET/POST/PATCH/DELETE /v1/admin/coupons/:code`. `DELETE` apaga de verdade só se `uses` é 0. Cupom já usado fica `active: false`.
+
+`POST /v1/admin/uploads` com `{ "contentType", "alt" }` devolve URL assinada do Blob (`pulso/<uuid>.ext`), JPG/PNG/WebP, até 5 MB. Sem `BLOB_READ_WRITE_TOKEN` responde 503 e cita a store `pulso-fotos`.
+
+`GET /v1/admin/audit-log` é só do `dono`.
+
+A conta dono não é semeada. Use `pnpm --filter @pulso/db create-owner`, com a senha em `ADMIN_OWNER_PASSWORD_FILE`, fora do repositório.

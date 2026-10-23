@@ -1,4 +1,7 @@
 import { coupons, getInfluencer, getPost, getReviews, influencers, posts, ugc } from "@pulso/data";
+import { couponBlockReason, getAdminCoupon, readPublicCoupons, type AdminCoupon } from "@pulso/db/catalog";
+import { getPool } from "@pulso/db/pool";
+import { fromPgPool, type Sql } from "@pulso/db/sql";
 import {
   creatinePlan,
   findCoupon,
@@ -9,6 +12,7 @@ import {
   shippingRates,
   validateCheckout,
   type CheckoutInput,
+  type Coupon,
   type GoalId,
   type PaymentGateway,
   type PaymentMethod,
@@ -18,6 +22,8 @@ import {
 } from "@pulso/domain";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { HttpError } from "./admin/http";
+import { mountAdmin, type AdminAppOptions } from "./admin/router";
 import { loadProducts, pingPostgres, pingRedis } from "./catalog-source";
 
 const hits = new Map<string, { count: number; reset: number }>();
@@ -33,16 +39,41 @@ function limited(key: string): boolean {
   return current.count > 60;
 }
 
-export const app = new Hono();
+async function couponSource(sql?: Sql): Promise<Coupon[]> {
+  if (sql) return readPublicCoupons(sql);
+  if (process.env.API_DATA_SOURCE === "postgres" && process.env.DATABASE_URL) return readPublicCoupons(fromPgPool(getPool()));
+  return coupons;
+}
 
-app.use("*", cors());
-
-app.use("*", async (c, next) => {
-  if (c.req.method === "POST" && limited(c.req.header("x-forwarded-for") ?? "local")) {
-    return c.json({ error: "Calma. Muitas tentativas por minuto." }, 429);
+function resolveCoupon(code: string, list: Coupon[], stored: AdminCoupon | null, now: Date): { coupon: Coupon | null; error?: string } {
+  if (stored) {
+    const reason = couponBlockReason(stored, now);
+    if (reason) return { coupon: null, error: reason };
   }
-  await next();
-});
+  return findCoupon(code, list);
+}
+
+export function createApp(options: AdminAppOptions = {}): Hono {
+  const app = new Hono();
+
+  app.use("*", async (c, next) => {
+    if (c.req.path.startsWith("/v1/admin")) return next();
+    return cors()(c, next);
+  });
+
+  app.use("*", async (c, next) => {
+    if (c.req.path.startsWith("/v1/admin")) return next();
+    if (c.req.method === "POST" && limited(c.req.header("x-forwarded-for") ?? "local")) {
+      return c.json({ error: "Calma. Muitas tentativas por minuto." }, 429);
+    }
+    await next();
+  });
+
+  app.onError((error, c) => {
+    if (error instanceof HttpError) return c.json({ error: error.message }, error.status);
+    console.error(error);
+    return c.json({ error: "Erro interno." }, 500);
+  });
 
 app.get("/health", async (c) => {
   const [postgres, redis] = await Promise.all([pingPostgres(), pingRedis()]);
@@ -55,21 +86,21 @@ app.get("/health", async (c) => {
   });
 });
 
-app.get("/v1/products", async (c) => {
-  const loaded = await loadProducts();
+  app.get("/v1/products", async (c) => {
+  const loaded = await loadProducts(options.sql);
   return c.json(loaded);
 });
 
 app.get("/v1/products/:slug", async (c) => {
-  const loaded = await loadProducts();
+  const loaded = await loadProducts(options.sql);
   const product = loaded.products.find((item) => item.slug === c.req.param("slug"));
   if (!product) return c.json({ error: "Produto não encontrado." }, 404);
   return c.json({ source: loaded.source, product, reviews: getReviews(product.slug) });
 });
 
-app.get("/v1/search", async (c) => {
+  app.get("/v1/search", async (c) => {
   const q = c.req.query("q") ?? "";
-  const loaded = await loadProducts();
+  const loaded = await loadProducts(options.sql);
   const normalized = q.trim().toLowerCase();
   const products = loaded.products.filter((product) =>
     `${product.name} ${product.line} ${product.flavors.map((flavor) => flavor.name).join(" ")}`.toLowerCase().includes(normalized),
@@ -90,9 +121,10 @@ app.get("/v1/posts/:slug", (c) => {
   return c.json({ post });
 });
 app.get("/v1/ugc", (c) => c.json({ ugc }));
-app.get("/v1/coupons", (c) =>
-  c.json({ coupons: coupons.filter((coupon) => coupon.active).map(({ code, label, kind, percent }) => ({ code, label, kind, percent })) }),
-);
+  app.get("/v1/coupons", async (c) => {
+    const list = await couponSource(options.sql);
+    return c.json({ coupons: list.filter((coupon) => coupon.active).map(({ code, label, kind, percent }) => ({ code, label, kind, percent })) });
+  });
 
 app.post("/v1/quotes/shipping", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -102,10 +134,12 @@ app.post("/v1/quotes/shipping", async (c) => {
   return c.json(rates);
 });
 
-app.post("/v1/coupons/validate", async (c) => {
+  app.post("/v1/coupons/validate", async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body.code !== "string") return c.json({ error: "Informe o cupom." }, 400);
-  const found = findCoupon(body.code, coupons);
+  const list = await couponSource(options.sql);
+  const stored = options.sql ? await getAdminCoupon(options.sql, body.code.trim().toUpperCase()) : null;
+  const found = resolveCoupon(body.code, list, stored, new Date());
   if (!found.coupon) return c.json({ error: found.error }, 404);
   return c.json({ coupon: found.coupon });
 });
@@ -158,7 +192,9 @@ app.post("/v1/checkout/simulate", async (c) => {
   if (!rates.ok) return c.json({ error: rates.error }, 400);
   const pac = rates.rates.find((rate) => rate.id === "pac")!;
   const sedex = rates.rates.find((rate) => rate.id === "sedex")!;
-  const coupon = body.couponCode ? findCoupon(String(body.couponCode), coupons).coupon : null;
+  const list = await couponSource(options.sql);
+  const stored = options.sql && body.couponCode ? await getAdminCoupon(options.sql, String(body.couponCode).trim().toUpperCase()) : null;
+  const coupon = body.couponCode ? resolveCoupon(String(body.couponCode), list, stored, new Date()).coupon : null;
   const quote = quoteCart({
     lines: body.lines as QuoteLine[],
     coupon,
@@ -176,3 +212,9 @@ app.post("/v1/checkout/simulate", async (c) => {
     quote,
   });
 });
+
+  mountAdmin(app, options);
+  return app;
+}
+
+export const app = createApp();

@@ -20,7 +20,9 @@ Definido em `packages/domain/src/types.ts`. O catálogo acrescenta `label`.
 | `hidden` | Some da vitrine pública |
 | `label` | Rótulo: `registration` `NI-DEMO-…`, porção, ingredientes, alergênicos, `nutrition`, advertências |
 
-`CatalogPatch` é o que o admin grava: `hidden`, `priceCents`, `name`. `applyCatalogPatches` aplica em cima do catálogo base.
+`CatalogPatch` é o que o admin antigo grava no navegador: `hidden`, `priceCents`, `name`. `applyCatalogPatches` aplica em cima do catálogo base.
+
+A API com Postgres não lê `products.payload`. Ela junta `products`, `product_flavors`, `product_variants`, `product_labels`, `nutrition_rows`, `product_images`, `product_goals`, `product_badges` e `kit_items`. Foto sem arquivo tem `url` nula e `fallback_hex` (`#rrggbb`). O estoque do sabor na vitrine é o menor estoque das variações daquele sabor, porque a tabela de sabor não tem coluna de estoque. `status` no banco é `rascunho`, `ativo`, `oculto` ou `arquivado`. O JSON do admin chama `ativo` de `publicado`, que é o valor da tela.
 
 ## Cupom
 
