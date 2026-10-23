@@ -35,7 +35,7 @@ export function CollectionScreen<T extends object>({
   removeLabel = "Apagar",
   validate,
   rowKey,
-  write = "patch",
+  listQuery = "",
   prepare,
   saveDraft,
 }: {
@@ -52,8 +52,9 @@ export function CollectionScreen<T extends object>({
   removeLabel?: string;
   validate?: (draft: T) => string | null;
   rowKey?: (item: T) => string;
-  /** `post` grava criação e edição no POST da coleção (upsert). `patch` usa PATCH /:id quando a linha já existe. */
+  /** Criar é POST. Editar é PATCH /:id. `post` fica só para quem ainda chama a prop. */
   write?: "post" | "patch";
+  listQuery?: string;
   prepare?: (draft: T, items: T[], exists: boolean) => T;
   saveDraft?: (draft: T, items: T[]) => Promise<void>;
 }) {
@@ -64,13 +65,14 @@ export function CollectionScreen<T extends object>({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [editingKey, setEditingKey] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const list = await adminFetch<AdminList<T>>(`${resource}?q=${encodeURIComponent(applied)}&pageSize=100`);
+        const list = await adminFetch<AdminList<T>>(`${resource}?q=${encodeURIComponent(applied)}&pageSize=100${listQuery ? `&${listQuery}` : ""}`);
         if (!cancelled) setItems(list.items);
       } catch (caught) {
         if (!cancelled) setError(caught instanceof AdminApiError ? caught.message : "Não deu para listar.");
@@ -82,14 +84,14 @@ export function CollectionScreen<T extends object>({
     return () => {
       cancelled = true;
     };
-  }, [applied, resource]);
+  }, [applied, listQuery, resource]);
 
   function update(patch: Partial<T>) {
     setDraft((current) => (current ? { ...current, ...patch } : current));
   }
 
   async function reload() {
-    const list = await adminFetch<AdminList<T>>(`${resource}?q=${encodeURIComponent(applied)}&pageSize=100`);
+    const list = await adminFetch<AdminList<T>>(`${resource}?q=${encodeURIComponent(applied)}&pageSize=100${listQuery ? `&${listQuery}` : ""}`);
     setItems(list.items);
   }
 
@@ -104,15 +106,14 @@ export function CollectionScreen<T extends object>({
     }
     setError(null);
     setNotice(null);
-    const key = rowId(draft, rowKey);
-    const exists = Boolean(key) && items.some((item) => rowId(item, rowKey) === key);
+    const exists = Boolean(editingKey);
     const ready = prepare ? prepare(draft, items, exists) : draft;
     try {
       if (saveDraft) await saveDraft(ready, items);
-      else if (write === "post" || !exists) {
+      else if (!exists) {
         await adminFetch<AdminOne<T>>(resource, { method: "POST", body: JSON.stringify(omitEmptyIds(ready)) });
       } else {
-        await adminFetch<AdminOne<T>>(`${resource}/${encodeURIComponent(key)}`, { method: "PATCH", body: JSON.stringify(ready) });
+        await adminFetch<AdminOne<T>>(`${resource}/${encodeURIComponent(editingKey)}`, { method: "PATCH", body: JSON.stringify(omitEmptyIds(ready)) });
       }
       setDraft(null);
       setNotice("Salvo.");
@@ -153,7 +154,7 @@ export function CollectionScreen<T extends object>({
         {newHref ? (
           <Button asChild className="rounded-full"><Link href={newHref}>Novo</Link></Button>
         ) : blank ? (
-          <Button type="button" className="rounded-full" onClick={() => { setDraft(blank()); setNotice(null); setError(null); }}>Novo</Button>
+          <Button type="button" className="rounded-full" onClick={() => { setDraft(blank()); setEditingKey(""); setNotice(null); setError(null); }}>Novo</Button>
         ) : null}
       </div>
       <form className="mt-4 flex gap-2" onSubmit={(event) => { event.preventDefault(); setApplied(query); }}>
@@ -180,7 +181,7 @@ export function CollectionScreen<T extends object>({
                   <div className="flex flex-wrap gap-2">
                     {editHref ? <Button asChild size="sm" variant="outline"><Link href={editHref(item)}>Editar</Link></Button> : null}
                     {!editHref && (fields || renderEditor) ? (
-                      <Button size="sm" variant="outline" type="button" onClick={() => { setDraft(item); setNotice(null); setError(null); }}>Editar</Button>
+                      <Button size="sm" variant="outline" type="button" onClick={() => { setDraft(item); setEditingKey(rowId(item, rowKey)); setNotice(null); setError(null); }}>Editar</Button>
                     ) : null}
                     {removeLabel ? (
                       confirmId === rowId(item, rowKey) ? (

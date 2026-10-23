@@ -97,12 +97,8 @@ export function InfluencerEditor({ influencerId }: { influencerId: string }) {
         setCoupons(couponList.items);
         setKnownSlugs(people.items.map((item) => item.slug));
         if (!isNew) {
-          const found = people.items.find((item) => item.id === influencerId || item.slug === influencerId);
-          if (!found) {
-            setError("A API não tem GET /v1/admin/influencers/:id. Esse influencer não está na lista.");
-            return;
-          }
-          setPerson(found);
+          const one = await adminFetch<AdminOne<AdminInfluencer>>(`influencers/${encodeURIComponent(influencerId)}`);
+          if (!cancelled) setPerson(one.item);
         }
       } catch (caught) {
         if (!cancelled) setError(caught instanceof AdminApiError ? caught.message : "Não deu para abrir o influencer.");
@@ -132,7 +128,9 @@ export function InfluencerEditor({ influencerId }: { influencerId: string }) {
     setError(null);
     setNotice(null);
     try {
-      const saved = await adminFetch<AdminOne<AdminInfluencer>>("influencers", { method: "POST", body: JSON.stringify(payload) });
+      const saved = isNew || !person.id
+        ? await adminFetch<AdminOne<AdminInfluencer>>("influencers", { method: "POST", body: JSON.stringify(payload) })
+        : await adminFetch<AdminOne<AdminInfluencer>>(`influencers/${encodeURIComponent(influencerId)}`, { method: "PATCH", body: JSON.stringify(payload) });
       if (isNew || !person.id) {
         router.push(`/admin/influencers/${saved.item.id || saved.item.slug}`);
         router.refresh();
@@ -244,12 +242,8 @@ export function PostEditor({ postId }: { postId: string }) {
         setInfluencers(people.items);
         setKnownSlugs(posts.items.map((item) => item.slug));
         if (!isNew) {
-          const found = posts.items.find((item) => item.id === postId || item.slug === postId);
-          if (!found) {
-            setError("A API não tem GET /v1/admin/posts/:slug. Esse post não está na lista.");
-            return;
-          }
-          setPost(found);
+          const one = await adminFetch<AdminOne<AdminPost>>(`posts/${encodeURIComponent(postId)}`);
+          if (!cancelled) setPost(one.item);
         }
       } catch (caught) {
         if (!cancelled) setError(caught instanceof AdminApiError ? caught.message : "Não deu para abrir o post.");
@@ -283,7 +277,9 @@ export function PostEditor({ postId }: { postId: string }) {
     });
     setError(null);
     try {
-      const saved = await adminFetch<AdminOne<AdminPost>>("posts", { method: "POST", body: JSON.stringify(payload) });
+      const saved = isNew || !post.id
+        ? await adminFetch<AdminOne<AdminPost>>("posts", { method: "POST", body: JSON.stringify(payload) })
+        : await adminFetch<AdminOne<AdminPost>>(`posts/${encodeURIComponent(postId)}`, { method: "PATCH", body: JSON.stringify(payload) });
       if (isNew || !post.id) {
         router.push(`/admin/blog/${saved.item.id || saved.item.slug}`);
         router.refresh();
@@ -351,15 +347,9 @@ export function OrderEditor({ orderId }: { orderId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    void adminFetch<AdminList<AdminOrder>>("orders")
+    void adminFetch<AdminOne<AdminOrder>>(`orders/${encodeURIComponent(orderId)}`)
       .then((result) => {
-        if (cancelled) return;
-        const found = result.items.find((item) => item.id === orderId);
-        if (!found) {
-          setError("A API não tem GET /v1/admin/orders/:id. Esse pedido não está na lista.");
-          return;
-        }
-        setOrder(found);
+        if (!cancelled) setOrder(result.item);
       })
       .catch((caught) => {
         if (!cancelled) setError(caught instanceof AdminApiError ? caught.message : "Não deu para abrir o pedido.");

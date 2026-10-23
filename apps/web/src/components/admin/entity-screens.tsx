@@ -166,7 +166,7 @@ export function KitsScreen() {
 function NamedCollection({ resource, eyebrow, title, description }: { resource: "categories" | "goals"; eyebrow: string; title: string; description: string }) {
   const fields: FieldSpec<AdminNamed>[] = [
     { kind: "text", key: "name", label: "Nome" },
-    { kind: "text", key: "slug", label: "Slug", hint: "Letras minúsculas e hífen. Vazio, sai do nome. A API não tem PATCH: gravar de novo usa o mesmo slug." },
+    { kind: "text", key: "slug", label: "Slug", hint: "Letras minúsculas e hífen. Vazio, sai do nome. Depois de gravar, o slug não muda." },
     { kind: "number", key: "position", label: "Ordem" },
     { kind: "text", key: "imageUrl", label: "Imagem (https)" },
     { kind: "textarea", key: "blurb", label: "Texto curto" },
@@ -178,6 +178,7 @@ function NamedCollection({ resource, eyebrow, title, description }: { resource: 
       description={description}
       resource={resource}
       write="post"
+      listQuery={resource === "categories" ? "kind=categoria" : ""}
       rowKey={(item) => item.slug}
       prepare={(draft, items, exists) => ({
         ...draft,
@@ -277,7 +278,7 @@ export function PromotionsScreen() {
   useEffect(() => {
     void Promise.all([
       adminFetch<AdminList<AdminProduct>>("products?status=todos&pageSize=100"),
-      adminFetch<AdminList<AdminNamed>>("categories?pageSize=100"),
+      adminFetch<AdminList<AdminNamed>>("categories?kind=categoria&pageSize=100"),
     ]).then(([productList, categoryList]) => {
       setProducts(productList.items);
       setCategories(categoryList.items);
@@ -702,27 +703,19 @@ export function CustomersScreen() {
       <CollectionScreen<AdminCustomer>
         eyebrow="Operação"
         title="Clientes"
-        description="O saldo muda por um delta em /customers/:id/points. A assinatura usa /subscriptions/:id. Não há PATCH do cliente inteiro."
+        description="Saldo, pontos acumulados e assinatura vão no PATCH /customers/:id."
         resource="customers"
         removeLabel=""
-        saveDraft={async (draft, items) => {
-          const previous = items.find((item) => item.id === draft.id);
-          if (!previous) throw new AdminApiError(404, "A API não tem GET de cliente por id. Esse cliente não está na lista.");
-          const delta = Math.trunc(draft.pointsBalance) - previous.pointsBalance;
-          if (delta !== 0) {
-            await adminFetch(`customers/${encodeURIComponent(draft.id)}/points`, {
-              method: "PATCH",
-              body: JSON.stringify({ delta, reason: "Ajuste no painel" }),
-            });
-          }
-          for (const subscription of draft.subscriptions) {
-            const before = previous.subscriptions.find((item) => item.id === subscription.id);
-            if (!before || before.status === subscription.status) continue;
-            await adminFetch(`subscriptions/${encodeURIComponent(subscription.id)}`, {
-              method: "PATCH",
-              body: JSON.stringify({ status: subscription.status }),
-            });
-          }
+        saveDraft={async (draft) => {
+          await adminFetch(`customers/${encodeURIComponent(draft.id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              pointsBalance: Math.trunc(draft.pointsBalance),
+              pointsLifetime: Math.trunc(draft.pointsLifetime),
+              marketingOptIn: draft.marketingOptIn,
+              subscriptions: draft.subscriptions.map((item) => ({ id: item.id, status: item.status })),
+            }),
+          });
         }}
         columns={[
           { header: "Nome", cell: (item) => item.name },
@@ -733,7 +726,7 @@ export function CustomersScreen() {
           <div className="space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
               <Field label="Pontos na conta"><Input aria-label="Pontos na conta" type="number" min={0} value={draft.pointsBalance} onChange={(event) => update({ pointsBalance: Number(event.target.value) })} /></Field>
-              <Field label="Pontos acumulados" hint="A API não altera este total."><Input aria-label="Pontos acumulados" value={draft.pointsLifetime} readOnly /></Field>
+              <Field label="Pontos acumulados"><Input aria-label="Pontos acumulados" type="number" min={0} value={draft.pointsLifetime} onChange={(event) => update({ pointsLifetime: Number(event.target.value) })} /></Field>
             </div>
             {draft.subscriptions.map((subscription) => (
               <SelectField key={subscription.id} label={subscription.name} value={subscription.status} onChange={(status) => update({ subscriptions: draft.subscriptions.map((item) => item.id === subscription.id ? { ...item, status: status as AdminCustomer["subscriptions"][number]["status"] } : item) })}>
@@ -766,7 +759,7 @@ export function BannersScreen() {
       <CollectionScreen
         eyebrow="Home"
         title="Vitrine"
-        description="Hero, faixa e destaques. A home lê GET /v1/banners. Criar e editar usam POST; a API não tem PATCH nem GET por id."
+        description="Hero, faixa e destaques. A home lê GET /v1/banners. Criar é POST. Editar é PATCH /banners/:id."
         resource="banners"
         write="post"
         validate={(draft) => bannerHrefError(draft.href)}
