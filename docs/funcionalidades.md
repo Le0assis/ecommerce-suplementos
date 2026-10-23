@@ -74,7 +74,7 @@ Código do pedido. Demo: `PLDEMOANA`, objeto `PL123456789BR`.
 
 ## Drops `/drops`
 
-Countdown e lista. A fase sai de `dropPhase` (`no-ar`, `encerrado`, `data-invalida`) em `packages/domain/src/drops.ts`. O relógio só lê a hora no cliente. O formulário desta página ainda guarda o e-mail no navegador. A API, com banco, recebe a lista em `POST /v1/drops/:id/waitlist` (consentimento explícito) e apaga em `POST /v1/drops/waitlist/erase`. O Drop 05 é teaser (`upcomingDrop.teaser`).
+O hero usa a cor do sabor, o nome da edição e o relógio em dias, horas, minutos e segundos. O relógio só lê a hora no cliente e não corre se a pessoa pedir menos movimento. O que resta sai do estoque do sabor (ou da soma dos sabores, quando a edição não tem um sabor só). A barra “de Y” só aparece quando o lote total existe e não é menor que o estoque. Sem lote, a página diz “Restam X” e não inventa o total. Esgotado é estoque zero. Em breve borra o teaser e pede e-mail com consentimento. No ar tem o botão de compra. Encerrado vai para o arquivo. A lista passa por `POST /api/drops/:id/waitlist`, que chama `POST /v1/drops/:id/waitlist` e, se a API responder 503 ou não estiver no ar, grava só e-mail, consentimento e origem em `apps/web/.data/drop-waitlist.json`. `POST /api/drops/waitlist/erase` tira o e-mail. O número “pessoas na lista” é a contagem desse arquivo, porque a rota pública não devolve a lista. Avaliações de edições anteriores só entram quando o drop está encerrado.
 
 ## Atletas `/atletas` e `/atletas/[slug]`
 
