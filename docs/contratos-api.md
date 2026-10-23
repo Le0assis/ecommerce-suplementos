@@ -101,7 +101,7 @@ Cada tentativa reserva o IP antes do scrypt. Com `REDIS_URL`, a reserva é `INCR
 
 `POST /v1/admin/uploads` com `{ "contentType", "alt" }` devolve URL assinada do Blob (`pulso/<uuid>.jpg|jpeg|png|webp`), até 5 MB. O upload direto do cliente só passa se o caminho for `pulso/<arquivo>` com uma dessas extensões, sem `..`. Sem `BLOB_READ_WRITE_TOKEN` responde 503 e cita a store `pulso-fotos`.
 
-`GET /v1/admin/audit` é só do `dono`, com `page`, `pageSize`, `actor`, `entity`, `entityId`, `from` e `to`. `GET /v1/admin/audit-log` é o mesmo handler. O contrato da página está em [api.md](api.md).
+`GET /v1/admin/audit` é só do `dono`, com `page`, `pageSize`, `actor`, `entity`, `entityId`, `from` e `to`. `GET /v1/admin/audit-log` é o mesmo handler. A tabela de todas as rotas do admin, com o identificador de cada recurso, está em [api.md](api.md).
 
 A conta dono não é semeada. Use `pnpm --filter @pulso/db create-owner`, com a senha em `ADMIN_OWNER_PASSWORD_FILE`, fora do repositório.
 

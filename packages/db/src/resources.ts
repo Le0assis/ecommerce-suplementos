@@ -778,20 +778,97 @@ export async function listSubscriptions(sql: Sql) {
     id: string;
     customer_id: string;
     product_slug: string;
-    status: string;
+    variant_id: string;
     quantity: number;
+    unit_price_cents: number;
+    status: string;
     interval_days: number;
     next_charge_on: Date | string;
-  }>("select id, customer_id, product_slug, status, quantity, interval_days, next_charge_on from subscriptions order by next_charge_on asc");
+  }>(
+    `select id, customer_id, product_slug, variant_id, quantity, unit_price_cents, status, interval_days, next_charge_on
+     from subscriptions order by next_charge_on asc`,
+  );
   return rows.rows.map((row) => ({
     id: row.id,
     customerId: row.customer_id,
     productSlug: row.product_slug,
-    status: row.status,
+    variantId: row.variant_id,
     quantity: num(row.quantity),
+    unitPriceCents: num(row.unit_price_cents),
+    status: row.status,
     intervalDays: num(row.interval_days),
     nextChargeOn: iso(row.next_charge_on)?.slice(0, 10) ?? null,
   }));
+}
+
+export async function listAdminCustomers(sql: Sql) {
+  const people = await listCustomers(sql);
+  const flags = await sql.query<{ id: string; marketing_opt_in: boolean }>("select id, marketing_opt_in from customers");
+  const optIn = new Map(flags.rows.map((row) => [row.id, row.marketing_opt_in]));
+  const subscriptions = await listSubscriptions(sql);
+  return people.map((person) => ({
+    ...person,
+    marketingOptIn: optIn.get(person.id) ?? false,
+    subscriptions: subscriptions
+      .filter((item) => item.customerId === person.id)
+      .map((item) => ({
+        id: item.id,
+        productId: item.productSlug,
+        variantId: item.variantId,
+        name: item.productSlug,
+        quantity: item.quantity,
+        unitPriceCents: item.unitPriceCents,
+        intervalDays: item.intervalDays,
+        status: item.status,
+        nextChargeOn: item.nextChargeOn ?? "",
+      })),
+  }));
+}
+
+export async function getOrderDetail(sql: Sql, id: string) {
+  const order = (await listOrders(sql)).find((row) => row.id === id);
+  if (!order) return null;
+  const full = await sql.query<{
+    customer_id: string | null;
+    subtotal_cents: number;
+    discount_cents: number;
+    pix_cents: number;
+    shipping_cents: number;
+    points_earned: number;
+  }>("select customer_id, subtotal_cents, discount_cents, pix_cents, shipping_cents, points_earned from orders where id = $1", [id]);
+  const row = full.rows[0];
+  const lines = await sql.query<{
+    id: string;
+    product_slug: string;
+    variant_id: string;
+    name: string;
+    quantity: number;
+    unit_price_cents: number;
+  }>("select id, product_slug, variant_id, name, quantity, unit_price_cents from order_lines where order_id = $1", [id]);
+  const payment = await sql.query<{ status: string }>("select status from payments where order_id = $1 order by created_at desc limit 1", [id]);
+  const shipment = await sql.query<{ method: string }>("select method from shipments where order_id = $1 limit 1", [id]);
+  return {
+    ...order,
+    customerId: row?.customer_id ?? null,
+    paymentStatus: payment.rows[0]?.status ?? "simulado",
+    subtotalCents: num(row?.subtotal_cents),
+    discountCents: num(row?.discount_cents),
+    pixCents: num(row?.pix_cents),
+    shippingCents: num(row?.shipping_cents),
+    pointsEarned: num(row?.points_earned),
+    shippingMethod: shipment.rows[0]?.method ?? "",
+    trackingCode: order.trackingCode ?? "",
+    shipmentStatus: order.shipmentStatus ?? "",
+    createdAt: order.createdAt ?? "",
+    lines: lines.rows.map((line) => ({
+      id: line.id,
+      productId: line.product_slug,
+      variantId: line.variant_id,
+      name: line.name,
+      quantity: num(line.quantity),
+      unitPriceCents: num(line.unit_price_cents),
+    })),
+  };
 }
 
 export async function patchSubscription(sql: Sql, id: string, status: "ativa" | "pausada" | "cancelada") {

@@ -180,5 +180,80 @@ describe("promoções, quiz, ajustes e papéis", () => {
     const quizId = (await quiz.json()).item.id as string;
     const dropped = await app.request(`/v1/admin/quiz/${quizId}`, { method: "DELETE", headers });
     expect(dropped.status).toBe(200);
+    const bannerId = (await path.json()).item.id as string;
+    const bannerGet = await app.request(`/v1/admin/banners/${bannerId}`, { headers });
+    expect(bannerGet.status).toBe(200);
+    const bannerPatch = await app.request(`/v1/admin/banners/${bannerId}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ id: bannerId, slot: "hero", title: "Faixa nova", href: "/loja" }),
+    });
+    expect(bannerPatch.status).toBe(200);
+    expect((await bannerPatch.json()).item.title).toBe("Faixa nova");
+    const bannerMissing = await app.request("/v1/admin/banners/nao-existe", { headers });
+    expect(bannerMissing.status).toBe(404);
+    const byId = await app.request("/v1/admin/categories", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ id: "faixa-teste", name: "Faixa", kind: "categoria" }),
+    });
+    expect(byId.status).toBe(201);
+    expect((await byId.json()).item).toMatchObject({ id: "faixa-teste", slug: "faixa-teste", kind: "categoria" });
+    const renamed = await app.request("/v1/admin/categories/faixa-teste", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ id: "faixa-teste", name: "Faixa nova", kind: "categoria" }),
+    });
+    expect(renamed.status).toBe(200);
+    expect((await renamed.json()).item.name).toBe("Faixa nova");
+    const goal = await app.request("/v1/admin/categories", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ slug: "sono", name: "Sono", kind: "objetivo" }),
+    });
+    expect(goal.status).toBe(201);
+    const goalPatch = await app.request("/v1/admin/categories/sono", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ slug: "sono", name: "Sono melhor", kind: "objetivo" }),
+    });
+    expect(goalPatch.status).toBe(200);
+    const goalList = await app.request("/v1/admin/categories?kind=objetivo", { headers });
+    const goals = ((await goalList.json()).items as { slug: string; kind: string }[]).filter((item) => item.slug === "sono");
+    expect(goals).toEqual([expect.objectContaining({ slug: "sono", kind: "objetivo", name: "Sono melhor" })]);
+    const slugLock = await app.request("/v1/admin/categories/sono", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ slug: "outro-sono", name: "Sono" }),
+    });
+    expect(slugLock.status).toBe(409);
+    const gone = await app.request("/v1/admin/categories/sono", { method: "DELETE", headers });
+    expect(gone.status).toBe(200);
+    const support = await login(app, "atendimento@pulso.test", "senha-atendimento", "203.0.113.55");
+    const denied = await app.request("/v1/admin/banners", { headers: auth(support.token, "203.0.113.55") });
+    expect(denied.status).toBe(403);
+  });
+
+  it("monta o kit curto do painel e arquiva", async () => {
+    const app = createAdminApp(sql);
+    const editor = await login(app, "editor@pulso.test", "senha-editor-pulso", "203.0.113.56");
+    const headers = auth(editor.token, "203.0.113.56");
+    const product = await app.request("/v1/admin/products", { method: "POST", headers, body: JSON.stringify(sampleProduct()) });
+    expect(product.status).toBe(201);
+    const kit = await app.request("/v1/admin/kits", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "Stack teste", discountPercent: 12, kitItems: [{ productId: "caos-teste", quantity: 1 }] }),
+    });
+    expect(kit.status).toBe(201);
+    const item = (await kit.json()).item as { id: string; isKit: boolean };
+    expect(item.isKit).toBe(true);
+    const opened = await app.request(`/v1/admin/kits/${item.id}`, { headers });
+    expect(opened.status).toBe(200);
+    const removed = await app.request(`/v1/admin/kits/${item.id}`, { method: "DELETE", headers });
+    expect(removed.status).toBe(200);
+    expect((await removed.json()).item.status).toBe("arquivado");
+    const missing = await app.request("/v1/admin/kits/nao-existe", { method: "DELETE", headers });
+    expect(missing.status).toBe(404);
   });
 });

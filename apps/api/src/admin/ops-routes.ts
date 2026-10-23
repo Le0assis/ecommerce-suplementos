@@ -1,14 +1,15 @@
 import { writeAudit } from "@pulso/db/audit";
-import { getAdminProduct, listAdminProducts, saveAdminProduct, type AdminProduct } from "@pulso/db/catalog";
+import { archiveAdminProduct, getAdminProduct, listAdminProducts, saveAdminProduct, type AdminProduct } from "@pulso/db/catalog";
 import {
   adjustPoints,
   archiveBanner,
   archivePromotion,
   archiveScratch,
+  getOrderDetail,
   hideUgc,
   hideVideo,
+  listAdminCustomers,
   listBanners,
-  listCustomers,
   deleteNamed,
   deleteQuizQuestion,
   listNamed,
@@ -33,10 +34,13 @@ import {
   saveUgc,
   saveVideo,
   type LoyaltySettings,
+  type NamedRow,
+  type ReviewAdmin,
 } from "@pulso/db/resources";
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import { z } from "zod";
+import { invalidateCatalogCache } from "../catalog-source";
 import { guard, HttpError, parseInput, raiseCatalog, readJson, requireActor, type Actor, type AdminRuntime } from "./http";
 import { toStoredProduct } from "./product-routes";
 import { productSchema } from "./schemas";
@@ -63,14 +67,6 @@ const httpsUrl = z
   ])
   .optional()
   .transform((value) => (value ? value : null));
-
-const namedSchema = z.object({
-  slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "O slug usa letras minúsculas e hífen."),
-  name: z.string().trim().min(1).max(80),
-  blurb: z.string().trim().max(180).nullable().optional().default(null),
-  imageUrl: httpsUrl,
-  position: z.number().int().nonnegative().default(0),
-});
 
 const promotionSchema = z
   .object({
@@ -206,6 +202,15 @@ const pointsPatch = z.object({
   reason: z.string().trim().min(1).max(160),
 });
 
+const customerPatch = z.object({
+  pointsBalance: z.number().int().nonnegative().optional(),
+  pointsLifetime: z.number().int().nonnegative().optional(),
+  marketingOptIn: z.boolean().optional(),
+  subscriptions: z
+    .array(z.object({ id: z.string().trim().min(1), status: z.enum(["ativa", "pausada", "cancelada"]) }))
+    .optional(),
+});
+
 const subscriptionPatch = z.object({
   status: z.enum(["ativa", "pausada", "cancelada"]),
 });
@@ -222,33 +227,160 @@ function isSafeBannerHref(value: string): boolean {
 
 async function audit(ctx: AdminRuntime, actor: Actor, action: string, entity: string, entityId: string, after: unknown, before?: unknown) {
   await writeAudit(ctx.sql, { actorId: actor.id, action, entity, entityId, before, after });
+  await invalidateCatalogCache();
+}
+
+const slugField = z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "O slug usa letras minúsculas e hífen.");
+
+const namedSchema = z.object({
+  slug: slugField.optional(),
+  id: slugField.optional(),
+  name: z.string().trim().min(1).max(80),
+  blurb: z
+    .union([z.string().trim().max(180), z.null()])
+    .optional()
+    .transform((value) => value || null),
+  imageUrl: httpsUrl,
+  position: z.number().int().nonnegative().default(0),
+  kind: z.enum(["categoria", "objetivo"]).optional(),
+});
+
+function namedSlug(body: { slug?: string; id?: string }): string {
+  const slug = body.slug || body.id;
+  if (!slug) throw new HttpError(400, "Informe o slug.");
+  return slug;
+}
+
+function presentNamed(row: NamedRow, kind: "categoria" | "objetivo") {
+  return { id: row.slug, slug: row.slug, kind, name: row.name, blurb: row.blurb ?? "", imageUrl: row.imageUrl, position: row.position };
+}
+
+async function locateNamed(sql: AdminRuntime["sql"], key: string) {
+  for (const table of ["categories", "goals"] as const) {
+    const row = (await listNamed(sql, table)).find((item) => item.slug === key);
+    if (row) return { table, row, kind: table === "categories" ? ("categoria" as const) : ("objetivo" as const) };
+  }
+  return null;
+}
+
+function presentReview(row: ReviewAdmin) {
+  return {
+    ...row,
+    productId: row.productSlug,
+    handle: row.handle ?? "",
+    title: row.title ?? "",
+    body: row.body ?? "",
+    reply: row.reply ?? "",
+    createdAt: row.createdAt ?? "",
+  };
+}
+
+function lockedId(urlId: string, bodyId: string | undefined) {
+  if (bodyId && bodyId !== urlId) throw new HttpError(409, "O identificador não muda.");
 }
 
 export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
-  for (const table of ["categories", "goals"] as const) {
-    const resource = table === "categories" ? "categories" : "categories";
-    admin.get(`/${table}`, async (c) => {
-      const ctx = runtime();
-      await requireActor(c, ctx, resource);
-      return c.json({ items: await listNamed(ctx.sql, table) });
-    });
-    admin.post(`/${table}`, async (c) => {
-      const ctx = runtime();
-      const actor = await requireActor(c, ctx, resource);
-      const body = parseInput(namedSchema, await readJson(c));
-      const saved = await guard(() => saveNamed(ctx.sql, table, body));
-      await audit(ctx, actor, `${table}.save`, table, saved.slug, saved);
-      return c.json({ item: saved }, 201);
-    });
-    admin.delete(`/${table}/:slug`, async (c) => {
-      const ctx = runtime();
-      const actor = await requireActor(c, ctx, resource);
-      const slug = c.req.param("slug");
-      await guard(() => deleteNamed(ctx.sql, table, slug));
-      await audit(ctx, actor, `${table}.delete`, table, slug, { deleted: true });
-      return c.json({ ok: true });
-    });
-  }
+  admin.get("/categories", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "categories");
+    const kind = c.req.query("kind");
+    const q = (c.req.query("q") ?? "").trim().toLowerCase();
+    const categories = kind === "objetivo" ? [] : (await listNamed(ctx.sql, "categories")).map((row) => presentNamed(row, "categoria"));
+    const goals = kind === "categoria" ? [] : (await listNamed(ctx.sql, "goals")).map((row) => presentNamed(row, "objetivo"));
+    const items = [...categories, ...goals].filter((item) => !q || `${item.name} ${item.slug} ${item.blurb}`.toLowerCase().includes(q));
+    return c.json({ items, total: items.length, page: 1, pageSize: items.length || 1 });
+  });
+  admin.post("/categories", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "categories");
+    const body = parseInput(namedSchema, await readJson(c));
+    const slug = namedSlug(body);
+    const table = body.kind === "objetivo" ? "goals" : "categories";
+    if (await locateNamed(ctx.sql, slug)) throw new HttpError(409, "Já existe uma categoria ou objetivo com esse slug.");
+    const saved = await guard(() => saveNamed(ctx.sql, table, { slug, name: body.name, blurb: body.blurb ?? null, imageUrl: body.imageUrl ?? null, position: body.position }));
+    const item = presentNamed(saved, table === "goals" ? "objetivo" : "categoria");
+    await audit(ctx, actor, `${table}.save`, table, saved.slug, item);
+    return c.json({ item }, 201);
+  });
+  admin.get("/categories/:slug", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "categories");
+    const found = await locateNamed(ctx.sql, c.req.param("slug"));
+    if (!found) throw new HttpError(404, "Categoria não encontrada.");
+    return c.json({ item: presentNamed(found.row, found.kind) });
+  });
+  admin.patch("/categories/:slug", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "categories");
+    const found = await locateNamed(ctx.sql, c.req.param("slug"));
+    if (!found) throw new HttpError(404, "Categoria não encontrada.");
+    const body = parseInput(namedSchema, await readJson(c));
+    const slug = namedSlug({ slug: body.slug, id: body.id ?? found.row.slug });
+    if (slug !== found.row.slug) throw new HttpError(409, "O slug não muda.");
+    if (body.kind && (body.kind === "objetivo") !== (found.table === "goals")) throw new HttpError(409, "O tipo não muda.");
+    const saved = await guard(() =>
+      saveNamed(ctx.sql, found.table, { slug, name: body.name, blurb: body.blurb ?? null, imageUrl: body.imageUrl ?? null, position: body.position }),
+    );
+    const item = presentNamed(saved, found.kind);
+    await audit(ctx, actor, `${found.table}.update`, found.table, saved.slug, item, presentNamed(found.row, found.kind));
+    return c.json({ item });
+  });
+  admin.delete("/categories/:slug", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "categories");
+    const found = await locateNamed(ctx.sql, c.req.param("slug"));
+    if (!found) throw new HttpError(404, "Categoria não encontrada.");
+    await guard(() => deleteNamed(ctx.sql, found.table, found.row.slug));
+    await audit(ctx, actor, `${found.table}.delete`, found.table, found.row.slug, { deleted: true }, presentNamed(found.row, found.kind));
+    return c.json({ ok: true });
+  });
+
+  admin.get("/goals", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "categories");
+    const items = (await listNamed(ctx.sql, "goals")).map((row) => presentNamed(row, "objetivo"));
+    return c.json({ items, total: items.length });
+  });
+  admin.post("/goals", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "categories");
+    const body = parseInput(namedSchema, await readJson(c));
+    const slug = namedSlug(body);
+    if (await locateNamed(ctx.sql, slug)) throw new HttpError(409, "Já existe uma categoria ou objetivo com esse slug.");
+    const saved = await guard(() => saveNamed(ctx.sql, "goals", { slug, name: body.name, blurb: body.blurb ?? null, imageUrl: body.imageUrl ?? null, position: body.position }));
+    const item = presentNamed(saved, "objetivo");
+    await audit(ctx, actor, "goals.save", "goals", saved.slug, item);
+    return c.json({ item }, 201);
+  });
+  admin.get("/goals/:slug", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "categories");
+    const found = await locateNamed(ctx.sql, c.req.param("slug"));
+    if (!found || found.table !== "goals") throw new HttpError(404, "Objetivo não encontrado.");
+    return c.json({ item: presentNamed(found.row, "objetivo") });
+  });
+  admin.patch("/goals/:slug", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "categories");
+    const slug = c.req.param("slug");
+    const current = (await listNamed(ctx.sql, "goals")).find((row) => row.slug === slug);
+    if (!current) throw new HttpError(404, "Objetivo não encontrado.");
+    const body = parseInput(namedSchema, await readJson(c));
+    if (namedSlug({ slug: body.slug, id: body.id ?? slug }) !== slug) throw new HttpError(409, "O slug não muda.");
+    const saved = await guard(() => saveNamed(ctx.sql, "goals", { slug, name: body.name, blurb: body.blurb ?? null, imageUrl: body.imageUrl ?? null, position: body.position }));
+    const item = presentNamed(saved, "objetivo");
+    await audit(ctx, actor, "goals.update", "goals", slug, item, presentNamed(current, "objetivo"));
+    return c.json({ item });
+  });
+  admin.delete("/goals/:slug", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "categories");
+    const slug = c.req.param("slug");
+    if (!(await listNamed(ctx.sql, "goals")).some((row) => row.slug === slug)) throw new HttpError(404, "Objetivo não encontrado.");
+    await guard(() => deleteNamed(ctx.sql, "goals", slug));
+    await audit(ctx, actor, "goals.delete", "goals", slug, { deleted: true });
+    return c.json({ ok: true });
+  });
 
   admin.get("/promotions", async (c) => {
     const ctx = runtime();
@@ -271,6 +403,33 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
     );
     await audit(ctx, actor, "promotion.save", "promotion", saved.id, saved);
     return c.json({ item: saved }, 201);
+  });
+  admin.get("/promotions/:id", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "promotions");
+    const item = (await listPromotions(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!item) throw new HttpError(404, "Promoção não encontrada.");
+    return c.json({ item });
+  });
+  admin.patch("/promotions/:id", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "promotions");
+    const current = (await listPromotions(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!current) throw new HttpError(404, "Promoção não encontrada.");
+    const body = parseInput(promotionSchema, await readJson(c));
+    lockedId(current.id, body.id);
+    const saved = await guard(() =>
+      savePromotion(ctx.sql, {
+        ...body,
+        id: current.id,
+        productId: body.targetType === "produto" ? body.productId : null,
+        categoryId: body.targetType === "categoria" ? body.categoryId : null,
+        startsAt: body.startsAt ?? null,
+        endsAt: body.endsAt ?? null,
+      }),
+    );
+    await audit(ctx, actor, "promotion.update", "promotion", saved.id, saved, current);
+    return c.json({ item: saved });
   });
   admin.delete("/promotions/:id", async (c) => {
     const ctx = runtime();
@@ -306,6 +465,38 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
     );
     await audit(ctx, actor, "quiz.save", "quiz_question", saved.id, saved);
     return c.json({ item: saved }, 201);
+  });
+  admin.get("/quiz/:id", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "quiz");
+    const item = (await listQuiz(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!item) throw new HttpError(404, "Pergunta não encontrada.");
+    return c.json({ item });
+  });
+  admin.patch("/quiz/:id", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "quiz");
+    const current = (await listQuiz(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!current) throw new HttpError(404, "Pergunta não encontrada.");
+    const body = parseInput(quizSchema, await readJson(c));
+    lockedId(current.id, body.id);
+    const saved = await guard(() =>
+      saveQuizQuestion(ctx.sql, {
+        id: current.id,
+        prompt: body.prompt,
+        answerKey: body.answerKey,
+        position: body.position,
+        options: body.options.map((option, index) => ({
+          id: option.id || "",
+          label: option.label,
+          value: option.value,
+          position: option.position ?? index,
+          weights: option.weights,
+        })),
+      }),
+    );
+    await audit(ctx, actor, "quiz.update", "quiz_question", saved.id, saved, current);
+    return c.json({ item: saved });
   });
   admin.delete("/quiz/:id", async (c) => {
     const ctx = runtime();
@@ -343,6 +534,24 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
     await audit(ctx, actor, "scratch.save", "scratch_prize", saved.id, saved);
     return c.json({ item: saved }, 201);
   });
+  admin.get("/scratch-prizes/:id", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "scratch-prizes");
+    const item = (await listScratch(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!item) throw new HttpError(404, "Prêmio não encontrado.");
+    return c.json({ item });
+  });
+  admin.patch("/scratch-prizes/:id", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "scratch-prizes");
+    const current = (await listScratch(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!current) throw new HttpError(404, "Prêmio não encontrado.");
+    const body = parseInput(scratchSchema, await readJson(c));
+    lockedId(current.id, body.id);
+    const saved = await guard(() => saveScratch(ctx.sql, { ...body, id: current.id, couponCode: body.couponCode ? body.couponCode.toUpperCase() : null }));
+    await audit(ctx, actor, "scratch.update", "scratch_prize", saved.id, saved, current);
+    return c.json({ item: saved });
+  });
   admin.delete("/scratch-prizes/:id", async (c) => {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "scratch-prizes");
@@ -366,6 +575,26 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
     await audit(ctx, actor, "banner.save", "banner", saved.id, saved);
     return c.json({ item: saved }, 201);
   });
+  admin.get("/banners/:id", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "banners");
+    const item = (await listBanners(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!item) throw new HttpError(404, "Banner não encontrado.");
+    return c.json({ item });
+  });
+  admin.patch("/banners/:id", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "banners");
+    const current = (await listBanners(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!current) throw new HttpError(404, "Banner não encontrado.");
+    const body = parseInput(bannerSchema, await readJson(c));
+    lockedId(current.id, body.id);
+    const saved = await guard(() =>
+      saveBanner(ctx.sql, { ...body, id: current.id, startsAt: body.startsAt ?? null, endsAt: body.endsAt ?? null }),
+    );
+    await audit(ctx, actor, "banner.update", "banner", saved.id, saved, current);
+    return c.json({ item: saved });
+  });
   admin.delete("/banners/:id", async (c) => {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "banners");
@@ -386,6 +615,24 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
     const saved = await guard(() => saveUgc(ctx.sql, { ...body, id: body.id || randomUUID() }));
     await audit(ctx, actor, "ugc.save", "ugc", saved.id, saved);
     return c.json({ item: saved }, 201);
+  });
+  admin.get("/ugc/:id", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "ugc");
+    const item = (await listUgc(ctx.sql, true)).find((row) => row.id === c.req.param("id"));
+    if (!item) throw new HttpError(404, "Post social não encontrado.");
+    return c.json({ item });
+  });
+  admin.patch("/ugc/:id", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "ugc");
+    const current = (await listUgc(ctx.sql, true)).find((row) => row.id === c.req.param("id"));
+    if (!current) throw new HttpError(404, "Post social não encontrado.");
+    const body = parseInput(ugcSchema, await readJson(c));
+    lockedId(current.id, body.id);
+    const saved = await guard(() => saveUgc(ctx.sql, { ...body, id: current.id }));
+    await audit(ctx, actor, "ugc.update", "ugc", saved.id, saved, current);
+    return c.json({ item: saved });
   });
   admin.delete("/ugc/:id", async (c) => {
     const ctx = runtime();
@@ -408,6 +655,27 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
     await audit(ctx, actor, "video.save", "video", saved.id, saved);
     return c.json({ item: saved }, 201);
   });
+  admin.get("/videos/:id", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "videos");
+    const key = c.req.param("id");
+    const item = (await listVideos(ctx.sql, true)).find((row) => row.id === key || row.slug === key);
+    if (!item) throw new HttpError(404, "Vídeo não encontrado.");
+    return c.json({ item });
+  });
+  admin.patch("/videos/:id", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "videos");
+    const key = c.req.param("id");
+    const current = (await listVideos(ctx.sql, true)).find((row) => row.id === key || row.slug === key);
+    if (!current) throw new HttpError(404, "Vídeo não encontrado.");
+    const body = parseInput(videoSchema, await readJson(c));
+    lockedId(current.id, body.id);
+    if (body.slug !== current.slug) throw new HttpError(409, "O slug não muda.");
+    const saved = await guard(() => saveVideo(ctx.sql, { ...body, id: current.id }));
+    await audit(ctx, actor, "video.update", "video", saved.id, saved, current);
+    return c.json({ item: saved });
+  });
   admin.delete("/videos/:id", async (c) => {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "videos");
@@ -420,15 +688,23 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
     const ctx = runtime();
     await requireActor(c, ctx, "reviews");
     const status = c.req.query("status");
-    return c.json({ items: await listReviews(ctx.sql, status || undefined) });
+    const items = (await listReviews(ctx.sql, status || undefined)).map(presentReview);
+    return c.json({ items, total: items.length });
+  });
+  admin.get("/reviews/:id", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "reviews");
+    const item = (await listReviews(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!item) throw new HttpError(404, "Avaliação não encontrada.");
+    return c.json({ item: presentReview(item) });
   });
   admin.patch("/reviews/:id", async (c) => {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "reviews");
     const body = parseInput(reviewPatch, await readJson(c));
     const saved = await guard(() => patchReview(ctx.sql, c.req.param("id"), body));
-    await audit(ctx, actor, "review.update", "review", saved.id, saved);
-    return c.json({ item: saved });
+    await audit(ctx, actor, "review.update", "review", saved.id, presentReview(saved));
+    return c.json({ item: presentReview(saved) });
   });
   admin.delete("/reviews/:id", async (c) => {
     const ctx = runtime();
@@ -441,13 +717,23 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
   admin.get("/orders", async (c) => {
     const ctx = runtime();
     await requireActor(c, ctx, "orders");
-    return c.json({ items: await listOrders(ctx.sql) });
+    const items = await listOrders(ctx.sql);
+    return c.json({ items, total: items.length });
+  });
+  admin.get("/orders/:id", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "orders");
+    const item = await getOrderDetail(ctx.sql, c.req.param("id"));
+    if (!item) throw new HttpError(404, "Pedido não encontrado.");
+    return c.json({ item });
   });
   admin.patch("/orders/:id", async (c) => {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "orders");
     const body = parseInput(orderPatch, await readJson(c));
-    const saved = await guard(() => patchOrder(ctx.sql, c.req.param("id"), body));
+    await guard(() => patchOrder(ctx.sql, c.req.param("id"), body));
+    const saved = await getOrderDetail(ctx.sql, c.req.param("id"));
+    if (!saved) throw new HttpError(404, "Pedido não encontrado.");
     await audit(ctx, actor, "order.update", "order", saved.id, saved);
     return c.json({ item: saved });
   });
@@ -455,7 +741,42 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
   admin.get("/customers", async (c) => {
     const ctx = runtime();
     await requireActor(c, ctx, "customers");
-    return c.json({ items: await listCustomers(ctx.sql) });
+    const items = await listAdminCustomers(ctx.sql);
+    return c.json({ items, total: items.length });
+  });
+  admin.get("/customers/:id", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "customers");
+    const item = (await listAdminCustomers(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!item) throw new HttpError(404, "Cliente não encontrado.");
+    return c.json({ item });
+  });
+  admin.patch("/customers/:id", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "customers");
+    const current = (await listAdminCustomers(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!current) throw new HttpError(404, "Cliente não encontrado.");
+    const body = parseInput(customerPatch, await readJson(c));
+    if (body.pointsBalance !== undefined && body.pointsBalance !== current.pointsBalance) {
+      await guard(() => adjustPoints(ctx.sql, current.id, body.pointsBalance! - current.pointsBalance, "ajuste do painel"));
+    }
+    if (body.pointsLifetime !== undefined) {
+      if (body.pointsLifetime < (body.pointsBalance ?? current.pointsBalance)) {
+        throw new HttpError(400, "Os pontos acumulados não ficam abaixo do saldo.");
+      }
+      await ctx.sql.query("update customers set points_lifetime = $2 where id = $1", [current.id, body.pointsLifetime]);
+    }
+    if (typeof body.marketingOptIn === "boolean") {
+      await ctx.sql.query("update customers set marketing_opt_in = $2 where id = $1", [current.id, body.marketingOptIn]);
+    }
+    for (const subscription of body.subscriptions ?? []) {
+      if (!current.subscriptions.some((item) => item.id === subscription.id)) throw new HttpError(404, "Assinatura não encontrada.");
+      await guard(() => patchSubscription(ctx.sql, subscription.id, subscription.status));
+    }
+    const saved = (await listAdminCustomers(ctx.sql)).find((row) => row.id === current.id);
+    if (!saved) throw new HttpError(404, "Cliente não encontrado.");
+    await audit(ctx, actor, "customer.update", "customer", saved.id, saved, current);
+    return c.json({ item: saved });
   });
   admin.patch("/customers/:id/points", async (c) => {
     const ctx = runtime();
@@ -496,7 +817,10 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
   admin.post("/kits", async (c) => {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "kits");
-    const body = parseInput(productSchema, await readJson(c));
+    const json = await readJson(c);
+    const hasSlug = typeof json === "object" && json !== null && "slug" in json && typeof json.slug === "string";
+    const body = hasSlug ? parseInput(productSchema, json) : await kitFromShort(ctx, json);
+    if (await getAdminProduct(ctx.sql, body.slug)) throw new HttpError(409, "Já existe um produto com esse slug.");
     let saved: AdminProduct;
     try {
       saved = await saveAdminProduct(ctx.sql, toStoredProduct({ ...body, isKit: true }));
@@ -512,5 +836,108 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
     const item = await getAdminProduct(ctx.sql, c.req.param("id"));
     if (!item?.isKit) throw new HttpError(404, "Kit não encontrado.");
     return c.json({ item });
+  });
+  admin.patch("/kits/:id", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "kits");
+    const current = await getAdminProduct(ctx.sql, c.req.param("id"));
+    if (!current?.isKit) throw new HttpError(404, "Kit não encontrado.");
+    const body = parseInput(productSchema, await readJson(c));
+    if (body.slug !== current.slug) throw new HttpError(409, "O slug não muda.");
+    lockedId(current.id, body.id);
+    let saved: AdminProduct;
+    try {
+      saved = await saveAdminProduct(ctx.sql, toStoredProduct({ ...body, isKit: true }, current.id));
+    } catch (error) {
+      raiseCatalog(error);
+    }
+    await audit(ctx, actor, "kit.update", "product", saved.id, saved, current);
+    return c.json({ item: saved });
+  });
+  admin.delete("/kits/:id", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "kits");
+    const current = await getAdminProduct(ctx.sql, c.req.param("id"));
+    if (!current?.isKit) throw new HttpError(404, "Kit não encontrado.");
+    let saved: AdminProduct;
+    try {
+      saved = await archiveAdminProduct(ctx.sql, current.id);
+    } catch (error) {
+      raiseCatalog(error);
+    }
+    await audit(ctx, actor, "kit.archive", "product", saved.id, saved, current);
+    return c.json({ item: saved, archived: true });
+  });
+}
+
+const shortKitSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  discountPercent: z.number().int().min(0).max(12).default(0),
+  kitItems: z.array(z.object({ productId: z.string().trim().min(1).max(80), quantity: z.number().int().positive() })).min(1).max(12),
+});
+
+function kitSlug(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72);
+}
+
+async function kitFromShort(ctx: AdminRuntime, json: unknown) {
+  const input = parseInput(shortKitSchema, json);
+  const seen = new Set<string>();
+  const rows = [];
+  for (const item of input.kitItems) {
+    if (seen.has(item.productId)) throw new HttpError(400, "O mesmo produto entrou duas vezes no kit.");
+    seen.add(item.productId);
+    const product = await getAdminProduct(ctx.sql, item.productId);
+    if (!product || product.isKit) throw new HttpError(400, "O kit só aponta para produto que não é kit.");
+    if (!product.variants.length) throw new HttpError(400, `${product.name} não tem preço.`);
+    rows.push({ product, quantity: item.quantity });
+  }
+  const sum = rows.reduce((total, item) => total + Math.min(...item.product.variants.map((variant) => variant.priceCents)) * item.quantity, 0);
+  const priceCents = Math.round((sum * (100 - input.discountPercent)) / 100);
+  const stock = Math.min(
+    ...rows.map((item) => Math.floor(item.product.flavors.reduce((total, flavor) => total + flavor.stock, 0) / item.quantity)),
+  );
+  const slug = kitSlug(input.name);
+  if (!slug) throw new HttpError(400, "O kit precisa de nome.");
+  const sku = `KIT-${slug}`.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 48);
+  return parseInput(productSchema, {
+    slug,
+    name: input.name,
+    line: "Kit",
+    description: "Kit montado no admin.",
+    categoryId: "kit",
+    status: "rascunho",
+    isKit: true,
+    kitItems: rows.map((item) => ({ productId: item.product.id, quantity: item.quantity })),
+    flavors: [{ id: "combo", name: "Combo", tagline: "Montado no admin.", hex: "#d6ff3c", family: "neutro", stock: Math.max(0, stock) }],
+    variants: [
+      {
+        flavorId: "combo",
+        size: "Kit",
+        sku,
+        priceCents,
+        compareAtCents: input.discountPercent > 0 ? sum : null,
+        stock: Math.max(0, stock),
+        weightGrams: 0,
+        servings: 1,
+      },
+    ],
+    label: {
+      registration: "NI-DEMO-KIT",
+      category: "Suplemento alimentar",
+      serving: "Conforme cada produto do kit",
+      servingsPerContainer: 1,
+      ingredients: "Ver o rótulo de cada produto do kit.",
+      allergens: "Ver alergênicos de cada produto do kit.",
+      warnings: ["Este produto não é um medicamento."],
+      nutrition: [],
+      manufacturer: "PULSO Indústria de Alimentos Ltda. (empresa fictícia deste protótipo).",
+    },
   });
 }

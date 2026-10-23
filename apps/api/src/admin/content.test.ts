@@ -123,4 +123,103 @@ describe("autores, blocos e fotos do influencer", () => {
     });
     expect(blocked.status).toBe(403);
   });
+
+  it("abre e atualiza influencer, autor e post pelo id, com 404 e 409", async () => {
+    const app = createAdminApp(sql);
+    const editor = await login(app, "editor@pulso.test", "senha-editor-pulso", "203.0.113.62");
+    const headers = auth(editor.token, "203.0.113.62");
+    const missing = await app.request("/v1/admin/posts/nao-existe", { headers });
+    expect(missing.status).toBe(404);
+    const author = await app.request("/v1/admin/authors", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ id: "casa", name: "Casa", bio: "Bio curta." }),
+    });
+    expect(author.status).toBe(201);
+    const authorAgain = await app.request("/v1/admin/authors", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ id: "casa", name: "Outra" }),
+    });
+    expect(authorAgain.status).toBe(409);
+    const authorPatch = await app.request("/v1/admin/authors/casa", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ id: "casa", name: "Casa PULSO", bio: "Bio nova." }),
+    });
+    expect(authorPatch.status).toBe(200);
+    expect((await authorPatch.json()).item).toMatchObject({ id: "casa", name: "Casa PULSO", bio: "Bio nova." });
+    const moved = await app.request("/v1/admin/authors/casa", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ id: "outro", name: "Casa" }),
+    });
+    expect(moved.status).toBe(409);
+    const influencer = await app.request("/v1/admin/influencers", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ slug: "luna-ficha", name: "Luna Ficha", handle: "@lunaficha", accent: "#ff5cae" }),
+    });
+    expect(influencer.status).toBe(201);
+    const one = await app.request("/v1/admin/influencers/luna-ficha", { headers });
+    expect(one.status).toBe(200);
+    const patched = await app.request("/v1/admin/influencers/luna-ficha", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ slug: "luna-ficha", name: "Luna Atualizada", handle: "@lunaficha", accent: "#101012", bio: "Nova bio." }),
+    });
+    expect(patched.status).toBe(200);
+    expect((await patched.json()).item.name).toBe("Luna Atualizada");
+    const duplicate = await app.request("/v1/admin/influencers", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ slug: "luna-ficha", name: "Outra", handle: "@outra", accent: "#ff5cae" }),
+    });
+    expect(duplicate.status).toBe(409);
+    const post = await app.request("/v1/admin/posts", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        slug: "ficha-aberta",
+        title: "Ficha",
+        authorId: "casa",
+        status: "rascunho",
+        blocks: [{ type: "paragrafo", text: "Primeira versão." }],
+      }),
+    });
+    expect(post.status).toBe(201);
+    const opened = await app.request("/v1/admin/posts/ficha-aberta", { headers });
+    expect(opened.status).toBe(200);
+    expect((await opened.json()).item).toMatchObject({ id: "ficha-aberta", slug: "ficha-aberta", title: "Ficha" });
+    const updated = await app.request("/v1/admin/posts/ficha-aberta", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({
+        slug: "ficha-aberta",
+        title: "Ficha atualizada",
+        publishedAt: "2026-10-23T15:00:00-03:00",
+        status: "publicado",
+        blocks: [{ type: "paragrafo", text: "Segunda versão." }],
+      }),
+    });
+    expect(updated.status).toBe(200);
+    expect((await updated.json()).item).toMatchObject({ title: "Ficha atualizada", publishedAt: "2026-10-23" });
+    const slugChange = await app.request("/v1/admin/posts/ficha-aberta", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ slug: "outro-slug", title: "Não", blocks: [{ type: "paragrafo", text: "Não." }] }),
+    });
+    expect(slugChange.status).toBe(409);
+    const again = await app.request("/v1/admin/posts", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ slug: "ficha-aberta", title: "De novo", blocks: [] }),
+    });
+    expect(again.status).toBe(409);
+    const audit = await sql.query("select action from audit_log where entity = 'post' and entity_id = 'ficha-aberta' order by created_at");
+    expect(audit.rows.map((row) => row.action)).toEqual(["post.save", "post.update"]);
+    const support = await login(app, "atendimento@pulso.test", "senha-atendimento", "203.0.113.63");
+    const denied = await app.request("/v1/admin/posts/ficha-aberta", { headers: auth(support.token, "203.0.113.63") });
+    expect(denied.status).toBe(403);
+  });
 });

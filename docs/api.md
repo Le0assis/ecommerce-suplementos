@@ -104,6 +104,49 @@ O site não conta falha de login. `POST /api/admin/session` repassa o status, o 
 
 O arquivo `apps/web/.data/admin-mock.json` continua existindo para o CRUD de teste quando a API está fora. Sem a API não dá para obter sessão, então o painel não abre por esse arquivo.
 
+## Rotas do admin
+
+Todas ficam em `/v1/admin`. Sem sessão, `401`. Papel sem permissão, `403` `{ "error": "Seu papel não faz isso." }`. Registro ausente, `404`. Identificador repetido, slug que mudaria, ou apagar algo em uso, `409`. O corpo do `PATCH` é o registro inteiro, no mesmo formato do `POST`. Gravação escreve `audit_log` (antes e depois) e apaga a chave `catalog:products` no Redis.
+
+O identificador da URL é o da coluna abaixo. Onde o painel chama o campo de `id`, a resposta manda `id` com esse valor. Categoria e objetivo também mandam `slug`.
+
+| Recurso | Identificador | Lista | Um | Cria | Atualiza | Apaga | Papel |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Sessão | — | — | `GET /me` | `POST /login` | — | `POST /logout` | público no login |
+| Auditoria | query | `GET /audit` e `GET /audit-log` | — | — | — | — | dono |
+| Produtos | `id` (o slug) | `GET /products` | `GET /products/:id` | `POST /products` | `PATCH /products/:id` | `DELETE /products/:id` arquiva | editor |
+| Sabores, variações, fotos | `id` do filho | — | — | `POST /products/:id/flavors\|variants\|images` | `PATCH` sabor e variação | `DELETE` os três | editor |
+| Cópia | `id` | — | — | `POST /products/:id/duplicate` | — | — | editor |
+| Kits | `id` do produto | `GET /kits` | `GET /kits/:id` | `POST /kits` | `PATCH /kits/:id` | `DELETE /kits/:id` arquiva | editor |
+| Cupons | `code` (a resposta usa esse valor em `id`) | `GET /coupons` | `GET /coupons/:code` | `POST /coupons` | `PATCH /coupons/:code` | `DELETE /coupons/:code` | editor |
+| Categorias | `slug` | `GET /categories` | `GET /categories/:slug` | `POST /categories` | `PATCH /categories/:slug` | `DELETE /categories/:slug` | editor |
+| Objetivos | `slug` | `GET /goals` e `GET /categories?kind=objetivo` | `GET /goals/:slug` ou `GET /categories/:slug` | `POST /goals` ou `POST /categories` com `kind: "objetivo"` | `PATCH` nos dois caminhos | `DELETE` nos dois caminhos | editor |
+| Influencers | `slug` (igual a `id`) | `GET /influencers` | `GET /influencers/:slug` | `POST /influencers` | `PATCH /influencers/:slug` | `DELETE /influencers/:slug` desativa | editor |
+| Autores | `id` | `GET /authors` | `GET /authors/:id` | `POST /authors` | `PATCH /authors/:id` | `DELETE /authors/:id` | editor |
+| Posts | `slug` (igual a `id`) | `GET /posts` | `GET /posts/:slug` | `POST /posts` | `PATCH /posts/:slug` | `DELETE /posts/:slug` arquiva | editor |
+| Promoções | `id` | `GET /promotions` | `GET /promotions/:id` | `POST /promotions` | `PATCH /promotions/:id` | `DELETE /promotions/:id` desativa | editor |
+| Drops | `id` | `GET /drops` | `GET /drops/:id` | `POST /drops` | `PATCH /drops/:id` | `DELETE /drops/:id` encerra | editor |
+| Lista de espera | `id` do drop ou e-mail | `GET /drops/:id/waitlist` | — | — | — | `POST /drops/waitlist/anonymize` e `POST /drops/waitlist/erase` | editor |
+| Quiz | `id` | `GET /quiz` | `GET /quiz/:id` | `POST /quiz` | `PATCH /quiz/:id` | `DELETE /quiz/:id` | editor |
+| Avaliações | `id` | `GET /reviews` | `GET /reviews/:id` | — | `PATCH /reviews/:id` | `DELETE /reviews/:id` oculta | atendimento |
+| UGC | `id` | `GET /ugc` | `GET /ugc/:id` | `POST /ugc` | `PATCH /ugc/:id` | `DELETE /ugc/:id` oculta | editor |
+| Vídeos | `id` ou `slug` | `GET /videos` | `GET /videos/:id` | `POST /videos` | `PATCH /videos/:id` | `DELETE /videos/:id` oculta | editor |
+| Raspadinha | `id` | `GET /scratch-prizes` | `GET /scratch-prizes/:id` | `POST /scratch-prizes` | `PATCH /scratch-prizes/:id` | `DELETE /scratch-prizes/:id` desativa | editor |
+| Banners | `id` | `GET /banners` | `GET /banners/:id` | `POST /banners` | `PATCH /banners/:id` | `DELETE /banners/:id` desativa | editor |
+| Pedidos | `id` | `GET /orders` | `GET /orders/:id` | — | `PATCH /orders/:id` | — | atendimento |
+| Clientes | `id` | `GET /customers` | `GET /customers/:id` | — | `PATCH /customers/:id` e `PATCH /customers/:id/points` | — | atendimento |
+| Assinaturas | `id` | `GET /subscriptions` | — | — | `PATCH /subscriptions/:id` | `DELETE /subscriptions/:id` cancela | atendimento |
+| Fidelidade | fixo `settings/loyalty` | — | `GET /settings/loyalty` | — | `PATCH /settings/loyalty` | — | dono |
+| Upload | — | — | — | `POST /uploads` | — | — | editor |
+
+`GET /categories` devolve categorias e objetivos juntos. Cada item traz `id`, `slug` e `kind` (`categoria` ou `objetivo`). `?kind=categoria` ou `?kind=objetivo` filtra. O `POST` aceita `slug` ou `id` no JSON; os dois são o slug. `PATCH` e `DELETE /categories/:slug` acham a linha na tabela `categories` ou em `goals`. O slug não muda: outro valor responde `409` `{ "error": "O slug não muda." }`. Apagar uma categoria em uso responde `409`.
+
+`POST /kits` aceita o corpo completo de produto, com `isKit: true`, ou o formulário curto do painel: `{ "name", "discountPercent", "kitItems": [{ "productId", "quantity" }] }`. O desconto do kit fica entre 0% e 12%.
+
+Pedido, cliente e avaliação não nascem no admin. A avaliação se aprova, responde ou oculta. O cliente ajusta pontos e o status da assinatura. O pedido muda status e rastreio. `GET /orders/:id` inclui `lines`. `GET /customers` inclui `subscriptions`.
+
+`POST` de um slug ou id que já existe responde `409`, não grava por cima. A atualização é o `PATCH`.
+
 ## Rotas públicas de collab e post
 
 Com `API_DATA_SOURCE=postgres` e banco, a leitura é a tabela. Sem banco, a resposta usa `@pulso/data` e `source` é `mock`. Influencer inativo e post rascunho, arquivado ou agendado para o futuro não entram. Post `publicado`, ou `agendado` com `publishedAt` até hoje, entra.

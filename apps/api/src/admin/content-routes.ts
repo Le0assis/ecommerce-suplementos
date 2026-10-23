@@ -3,7 +3,8 @@ import { archiveInfluencer, archivePost, deleteAuthor, listAuthors, listInfluenc
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import { z } from "zod";
-import { guard, parseInput, readJson, requireActor, type AdminRuntime } from "./http";
+import { invalidateCatalogCache } from "../catalog-source";
+import { guard, HttpError, parseInput, readJson, requireActor, type Actor, type AdminRuntime } from "./http";
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "A cor precisa ser um hex de 6 dígitos.");
 const httpsOrNull = z
@@ -83,13 +84,41 @@ const postSchema = z.object({
   authorId: z.string().trim().min(1).nullable().optional().default(null),
   influencerId: z.string().trim().min(1).nullable().optional().default(null),
   status: z.enum(["rascunho", "agendado", "publicado", "arquivado"]).default("rascunho"),
-  publishedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().default(null),
+  publishedAt: z
+    .union([z.string(), z.null(), z.literal("")])
+    .optional()
+    .transform((value, ctx) => {
+      if (value === undefined || value === null || value === "") return null;
+      const match = /^(\d{4}-\d{2}-\d{2})/.exec(value.trim());
+      if (!match?.[1]) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Data inválida." });
+        return z.NEVER;
+      }
+      return match[1];
+    }),
   readMinutes: z.number().int().positive().default(4),
   seoTitle: z.string().trim().max(160).default(""),
   seoDescription: z.string().trim().max(240).default(""),
   shareImageUrl: httpsOrNull,
   blocks: z.array(blockSchema).max(40).default([]),
 });
+
+async function changed(
+  ctx: AdminRuntime,
+  actor: Actor,
+  action: string,
+  entity: string,
+  entityId: string,
+  after: unknown,
+  before?: unknown,
+) {
+  await writeAudit(ctx.sql, { actorId: actor.id, action, entity, entityId, before, after });
+  await invalidateCatalogCache();
+}
+
+function lockedId(urlId: string, bodyId: string | undefined) {
+  if (bodyId && bodyId !== urlId) throw new HttpError(409, "O identificador não muda.");
+}
 
 export function mountContent(admin: Hono, runtime: () => AdminRuntime): void {
   admin.get("/influencers", async (c) => {
@@ -101,31 +130,38 @@ export function mountContent(admin: Hono, runtime: () => AdminRuntime): void {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "influencers");
     const body = parseInput(influencerSchema, await readJson(c));
-    const saved = await guard(() =>
-      saveInfluencer(ctx.sql, {
-        ...body,
-        id: body.slug,
-        couponCode: body.couponCode ? body.couponCode.toUpperCase() : null,
-        quotes: body.quotes.map((quote, index) => ({ id: quote.id || "", body: quote.body, position: quote.position ?? index })),
-        images: body.images.map((image, index) => ({
-          id: image.id || "",
-          url: image.url ?? null,
-          alt: image.alt,
-          caption: image.caption,
-          instagramPostUrl: image.instagramPostUrl ?? null,
-          fallbackHex: image.fallbackHex,
-          position: image.position ?? index,
-        })),
-      }),
-    );
-    await writeAudit(ctx.sql, { actorId: actor.id, action: "influencer.save", entity: "influencer", entityId: saved.slug, after: saved });
+    if ((await listInfluencers(ctx.sql, true)).some((item) => item.slug === body.slug || item.id === body.slug)) {
+      throw new HttpError(409, "Já existe um influencer com esse slug.");
+    }
+    const saved = await guard(() => saveInfluencer(ctx.sql, influencerInput(body)));
+    await changed(ctx, actor, "influencer.save", "influencer", saved.slug, saved);
     return c.json({ item: saved }, 201);
+  });
+  admin.get("/influencers/:slug", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "influencers");
+    const item = await influencerBy(ctx, c.req.param("slug"));
+    if (!item) throw new HttpError(404, "Influencer não encontrado.");
+    return c.json({ item });
+  });
+  admin.patch("/influencers/:slug", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "influencers");
+    const current = await influencerBy(ctx, c.req.param("slug"));
+    if (!current) throw new HttpError(404, "Influencer não encontrado.");
+    const body = parseInput(influencerSchema, await readJson(c));
+    if (body.slug !== current.slug) throw new HttpError(409, "O slug não muda.");
+    const saved = await guard(() => saveInfluencer(ctx.sql, { ...influencerInput(body), id: current.id }));
+    await changed(ctx, actor, "influencer.update", "influencer", saved.slug, saved, current);
+    return c.json({ item: saved });
   });
   admin.delete("/influencers/:slug", async (c) => {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "influencers");
-    const saved = await guard(() => archiveInfluencer(ctx.sql, c.req.param("slug")));
-    await writeAudit(ctx.sql, { actorId: actor.id, action: "influencer.archive", entity: "influencer", entityId: saved.slug, after: saved });
+    const current = await influencerBy(ctx, c.req.param("slug"));
+    if (!current) throw new HttpError(404, "Influencer não encontrado.");
+    const saved = await guard(() => archiveInfluencer(ctx.sql, current.slug));
+    await changed(ctx, actor, "influencer.archive", "influencer", saved.slug, saved, current);
     return c.json({ item: saved, archived: true });
   });
 
@@ -138,16 +174,39 @@ export function mountContent(admin: Hono, runtime: () => AdminRuntime): void {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "authors");
     const body = parseInput(authorSchema, await readJson(c));
-    const saved = await guard(() => saveAuthor(ctx.sql, { ...body, id: body.id || randomUUID() }));
-    await writeAudit(ctx.sql, { actorId: actor.id, action: "author.save", entity: "author", entityId: saved.id, after: saved });
+    const id = body.id || randomUUID();
+    if ((await listAuthors(ctx.sql)).some((item) => item.id === id)) throw new HttpError(409, "Já existe um autor com esse id.");
+    const saved = await guard(() => saveAuthor(ctx.sql, { ...body, id }));
+    await changed(ctx, actor, "author.save", "author", saved.id, saved);
     return c.json({ item: saved }, 201);
+  });
+  admin.get("/authors/:id", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "authors");
+    const item = (await listAuthors(ctx.sql)).find((row) => row.id === c.req.param("id"));
+    if (!item) throw new HttpError(404, "Autor não encontrado.");
+    return c.json({ item });
+  });
+  admin.patch("/authors/:id", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "authors");
+    const id = c.req.param("id");
+    const current = (await listAuthors(ctx.sql)).find((row) => row.id === id);
+    if (!current) throw new HttpError(404, "Autor não encontrado.");
+    const body = parseInput(authorSchema, await readJson(c));
+    lockedId(id, body.id);
+    const saved = await guard(() => saveAuthor(ctx.sql, { ...body, id }));
+    await changed(ctx, actor, "author.update", "author", saved.id, saved, current);
+    return c.json({ item: saved });
   });
   admin.delete("/authors/:id", async (c) => {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "authors");
     const id = c.req.param("id");
+    const current = (await listAuthors(ctx.sql)).find((row) => row.id === id);
+    if (!current) throw new HttpError(404, "Autor não encontrado.");
     await guard(() => deleteAuthor(ctx.sql, id));
-    await writeAudit(ctx.sql, { actorId: actor.id, action: "author.delete", entity: "author", entityId: id, after: { deleted: true } });
+    await changed(ctx, actor, "author.delete", "author", id, { deleted: true }, current);
     return c.json({ ok: true });
   });
 
@@ -160,27 +219,79 @@ export function mountContent(admin: Hono, runtime: () => AdminRuntime): void {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "posts");
     const body = parseInput(postSchema, await readJson(c));
-    const authors = await listAuthors(ctx.sql);
-    const authorName = authors.find((author) => author.id === body.authorId)?.name ?? "Redação PULSO";
-    const saved = await guard(() =>
-      savePost(
-        ctx.sql,
-        {
-          ...body,
-          id: body.slug,
-          blocks: body.blocks.map((block) => ({ ...block, id: block.id || "" })),
-        },
-        authorName,
-      ),
-    );
-    await writeAudit(ctx.sql, { actorId: actor.id, action: "post.save", entity: "post", entityId: saved.slug, after: saved });
+    if ((await listPosts(ctx.sql)).some((item) => item.slug === body.slug || item.id === body.slug)) {
+      throw new HttpError(409, "Já existe um texto com esse slug.");
+    }
+    const name = await authorName(ctx, body.authorId);
+    const saved = await guard(() => savePost(ctx.sql, postInput(body), name));
+    await changed(ctx, actor, "post.save", "post", saved.slug, saved);
     return c.json({ item: saved }, 201);
+  });
+  admin.get("/posts/:slug", async (c) => {
+    const ctx = runtime();
+    await requireActor(c, ctx, "posts");
+    const item = await postBy(ctx, c.req.param("slug"));
+    if (!item) throw new HttpError(404, "Texto não encontrado.");
+    return c.json({ item });
+  });
+  admin.patch("/posts/:slug", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "posts");
+    const current = await postBy(ctx, c.req.param("slug"));
+    if (!current) throw new HttpError(404, "Texto não encontrado.");
+    const body = parseInput(postSchema, await readJson(c));
+    if (body.slug !== current.slug) throw new HttpError(409, "O slug não muda.");
+    const name = await authorName(ctx, body.authorId);
+    const saved = await guard(() => savePost(ctx.sql, { ...postInput(body), id: current.id }, name));
+    await changed(ctx, actor, "post.update", "post", saved.slug, saved, current);
+    return c.json({ item: saved });
   });
   admin.delete("/posts/:slug", async (c) => {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "posts");
-    const saved = await guard(() => archivePost(ctx.sql, c.req.param("slug")));
-    await writeAudit(ctx.sql, { actorId: actor.id, action: "post.archive", entity: "post", entityId: saved.slug, after: saved });
+    const current = await postBy(ctx, c.req.param("slug"));
+    if (!current) throw new HttpError(404, "Texto não encontrado.");
+    const saved = await guard(() => archivePost(ctx.sql, current.slug));
+    await changed(ctx, actor, "post.archive", "post", saved.slug, saved, current);
     return c.json({ item: saved, archived: true });
   });
+}
+
+function influencerInput(body: z.infer<typeof influencerSchema>) {
+  return {
+    ...body,
+    id: body.slug,
+    couponCode: body.couponCode ? body.couponCode.toUpperCase() : null,
+    quotes: body.quotes.map((quote, index) => ({ id: quote.id || "", body: quote.body, position: quote.position ?? index })),
+    images: body.images.map((image, index) => ({
+      id: image.id || "",
+      url: image.url ?? null,
+      alt: image.alt,
+      caption: image.caption,
+      instagramPostUrl: image.instagramPostUrl ?? null,
+      fallbackHex: image.fallbackHex,
+      position: image.position ?? index,
+    })),
+  };
+}
+
+async function influencerBy(ctx: AdminRuntime, key: string) {
+  return (await listInfluencers(ctx.sql, true)).find((item) => item.slug === key || item.id === key) ?? null;
+}
+
+async function authorName(ctx: AdminRuntime, authorId: string | null) {
+  const authors = await listAuthors(ctx.sql);
+  return authors.find((author) => author.id === authorId)?.name ?? "Redação PULSO";
+}
+
+function postInput(body: z.infer<typeof postSchema>) {
+  return {
+    ...body,
+    id: body.slug,
+    blocks: body.blocks.map((block) => ({ ...block, id: block.id || "" })),
+  };
+}
+
+async function postBy(ctx: AdminRuntime, key: string) {
+  return (await listPosts(ctx.sql)).find((item) => item.slug === key || item.id === key) ?? null;
 }
