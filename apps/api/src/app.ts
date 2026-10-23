@@ -122,10 +122,12 @@ app.get("/health", async (c) => {
 
   app.get("/v1/products", async (c) => {
   const loaded = await loadProducts(options.sql);
+  c.header("Cache-Control", "no-store");
   return c.json(loaded);
 });
 
 app.get("/v1/products/:slug", async (c) => {
+  c.header("Cache-Control", "no-store");
   const loaded = await loadProducts(options.sql);
   const product = loaded.products.find((item) => item.slug === c.req.param("slug"));
   if (!product) return c.json({ error: "Produto não encontrado." }, 404);
@@ -137,6 +139,7 @@ app.get("/v1/products/:slug", async (c) => {
   app.get("/v1/search", async (c) => {
   const q = c.req.query("q") ?? "";
   const loaded = await loadProducts(options.sql);
+  c.header("Cache-Control", "no-store");
   const normalized = q.trim().toLowerCase();
   const products = loaded.products.filter((product) =>
     `${product.name} ${product.line} ${product.flavors.map((flavor) => flavor.name).join(" ")}`.toLowerCase().includes(normalized),

@@ -222,4 +222,64 @@ describe("autores, blocos e fotos do influencer", () => {
     const denied = await app.request("/v1/admin/posts/ficha-aberta", { headers: auth(support.token, "203.0.113.63") });
     expect(denied.status).toBe(403);
   });
+
+  it("desfaz o post inteiro quando o id do bloco colide e aceita o mesmo uuid em outro post", async () => {
+    const app = createAdminApp(sql);
+    const editor = await login(app, "editor@pulso.test", "senha-editor-pulso", "203.0.113.64");
+    const headers = auth(editor.token, "203.0.113.64");
+    const blockId = "6f1e8c2a-9b34-4d5e-8f70-1a2b3c4d5e6f";
+    const created = await app.request("/v1/admin/posts", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        slug: "texto-antigo",
+        title: "Versão antiga",
+        status: "rascunho",
+        blocks: [{ id: blockId, type: "paragrafo", text: "Corpo antigo." }],
+      }),
+    });
+    expect(created.status).toBe(201);
+    expect((await created.json()).item.blocks).toEqual([{ id: blockId, type: "paragrafo", text: "Corpo antigo." }]);
+    const collision = await app.request("/v1/admin/posts/texto-antigo", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({
+        slug: "texto-antigo",
+        title: "Versão que não pode ficar",
+        status: "publicado",
+        publishedAt: "2026-10-23",
+        blocks: [
+          { id: blockId, type: "paragrafo", text: "Corpo novo." },
+          { id: blockId, type: "paragrafo", text: "Id repetido." },
+        ],
+      }),
+    });
+    expect(collision.status).toBe(409);
+    const kept = await app.request("/v1/admin/posts/texto-antigo", { headers });
+    expect((await kept.json()).item).toMatchObject({
+      title: "Versão antiga",
+      status: "rascunho",
+      blocks: [{ id: blockId, type: "paragrafo", text: "Corpo antigo." }],
+    });
+    const row = await sql.query<{ title: string; status: string }>("select title, status from posts where slug = 'texto-antigo'");
+    expect(row.rows[0]).toEqual({ title: "Versão antiga", status: "rascunho" });
+    const blocks = await sql.query<{ id: string }>("select id from post_blocks where post_id = 'texto-antigo' order by position");
+    expect(blocks.rows.map((item) => item.id)).toEqual([blockId]);
+    const other = await app.request("/v1/admin/posts", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        slug: "outro-texto",
+        title: "Outro post",
+        status: "rascunho",
+        blocks: [{ id: blockId, type: "paragrafo", text: "Mesmo uuid, outro post." }],
+      }),
+    });
+    expect(other.status).toBe(201);
+    expect((await other.json()).item.blocks[0]).toMatchObject({ id: blockId, text: "Mesmo uuid, outro post." });
+    const still = await sql.query<{ title: string }>("select title from posts where slug = 'texto-antigo'");
+    expect(still.rows[0]?.title).toBe("Versão antiga");
+    const both = await sql.query<{ post_id: string }>("select post_id from post_blocks where id = $1 order by post_id", [blockId]);
+    expect(both.rows.map((item) => item.post_id)).toEqual(["outro-texto", "texto-antigo"]);
+  });
 });

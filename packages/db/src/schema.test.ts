@@ -66,4 +66,15 @@ describe("schema", () => {
     expect(sql).toContain("revoked_at");
     expect(sql).toContain("alter table posts alter column published_at drop not null");
   });
+
+  it("troca a chave do bloco para o par post e id, sem editar o 004", () => {
+    const files = migrationFiles(sqlDir);
+    expect(files.indexOf("007_blocos_post.sql")).toBeGreaterThan(files.indexOf("006_sessoes.sql"));
+    const original = readFileSync(resolve(sqlDir, "004_conteudo.sql"), "utf8");
+    expect(original).toContain("id text primary key");
+    const sql = readFileSync(resolve(sqlDir, "007_blocos_post.sql"), "utf8");
+    expect(sql).toContain("primary key (post_id, id)");
+    expect(sql).toContain("post_blocks_pkey");
+    expect(sql).not.toContain("drop table");
+  });
 });

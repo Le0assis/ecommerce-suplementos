@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import type { Influencer, Post } from "@pulso/domain";
 import { CatalogError } from "./catalog";
-import type { Sql } from "./sql";
+import { withTx, type Sql, type SqlClient } from "./sql";
 
 function iso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
@@ -369,56 +370,63 @@ export async function listPosts(sql: Sql, influencer?: string): Promise<PostAdmi
   }));
 }
 
-export async function savePost(sql: Sql, input: PostAdmin, authorName: string): Promise<PostAdmin> {
-  const published = input.publishedAt || null;
-  await sql.query(
-    `insert into posts (
-       slug, title, published_at, payload, excerpt, category, cover_url, cover_hex, author_name, influencer_id,
-       status, read_minutes, author_id, seo_title, seo_description, share_image_url, updated_at
-     ) values (
-       $1, $2, $3, '{}'::jsonb, $4, $5, $6, $7, $8, $9,
-       $10, $11, $12, $13, $14, $15, now()
-     )
-     on conflict (slug) do update set
-       title = excluded.title, published_at = excluded.published_at, excerpt = excluded.excerpt, category = excluded.category,
-       cover_url = excluded.cover_url, cover_hex = excluded.cover_hex, author_name = excluded.author_name,
-       influencer_id = excluded.influencer_id, status = excluded.status, read_minutes = excluded.read_minutes,
-       author_id = excluded.author_id, seo_title = excluded.seo_title, seo_description = excluded.seo_description,
-       share_image_url = excluded.share_image_url, updated_at = now()`,
-    [
-      input.slug,
-      input.title,
-      published,
-      input.excerpt,
-      input.category,
-      input.coverUrl,
-      input.coverHex,
-      authorName,
-      input.influencerId,
-      input.status,
-      input.readMinutes,
-      input.authorId,
-      input.seoTitle,
-      input.seoDescription,
-      input.shareImageUrl,
-    ],
-  );
-  await sql.query("delete from post_blocks where post_id = $1", [input.slug]);
-  for (const [index, block] of input.blocks.entries()) {
-    await sql.query("insert into post_blocks (id, post_id, position, type, content) values ($1, $2, $3, $4, $5::jsonb)", [
-      block.id || `${input.slug}__b${index}`,
-      input.slug,
-      index,
-      block.type,
-      JSON.stringify(blockContent(block)),
-    ]);
-  }
-  const saved = (await listPosts(sql)).find((row) => row.slug === input.slug);
-  if (!saved) throw new CatalogError(500, "Post não voltou depois de gravar.", "SAVE");
-  return saved;
+function blockKey(id: string): string {
+  const trimmed = id.trim();
+  return trimmed || randomUUID();
 }
 
-export async function archivePost(sql: Sql, slug: string): Promise<PostAdmin> {
+export async function savePost(sql: SqlClient, input: PostAdmin, authorName: string): Promise<PostAdmin> {
+  const published = input.publishedAt || null;
+  return withTx(sql, async () => {
+    await sql.query(
+      `insert into posts (
+         slug, title, published_at, payload, excerpt, category, cover_url, cover_hex, author_name, influencer_id,
+         status, read_minutes, author_id, seo_title, seo_description, share_image_url, updated_at
+       ) values (
+         $1, $2, $3, '{}'::jsonb, $4, $5, $6, $7, $8, $9,
+         $10, $11, $12, $13, $14, $15, now()
+       )
+       on conflict (slug) do update set
+         title = excluded.title, published_at = excluded.published_at, excerpt = excluded.excerpt, category = excluded.category,
+         cover_url = excluded.cover_url, cover_hex = excluded.cover_hex, author_name = excluded.author_name,
+         influencer_id = excluded.influencer_id, status = excluded.status, read_minutes = excluded.read_minutes,
+         author_id = excluded.author_id, seo_title = excluded.seo_title, seo_description = excluded.seo_description,
+         share_image_url = excluded.share_image_url, updated_at = now()`,
+      [
+        input.slug,
+        input.title,
+        published,
+        input.excerpt,
+        input.category,
+        input.coverUrl,
+        input.coverHex,
+        authorName,
+        input.influencerId,
+        input.status,
+        input.readMinutes,
+        input.authorId,
+        input.seoTitle,
+        input.seoDescription,
+        input.shareImageUrl,
+      ],
+    );
+    await sql.query("delete from post_blocks where post_id = $1", [input.slug]);
+    for (const [index, block] of input.blocks.entries()) {
+      await sql.query("insert into post_blocks (id, post_id, position, type, content) values ($1, $2, $3, $4, $5::jsonb)", [
+        blockKey(block.id),
+        input.slug,
+        index,
+        block.type,
+        JSON.stringify(blockContent(block)),
+      ]);
+    }
+    const saved = (await listPosts(sql)).find((row) => row.slug === input.slug);
+    if (!saved) throw new CatalogError(500, "Post não voltou depois de gravar.", "SAVE");
+    return saved;
+  });
+}
+
+export async function archivePost(sql: SqlClient, slug: string): Promise<PostAdmin> {
   const current = (await listPosts(sql)).find((row) => row.slug === slug);
   if (!current) throw new CatalogError(404, "Texto não encontrado.", "NOT_FOUND");
   const author = current.authorId ? (await listAuthors(sql)).find((row) => row.id === current.authorId) : undefined;

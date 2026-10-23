@@ -80,6 +80,46 @@ describe("produtos, cupons e fotos", () => {
     expect(bad.status).toBe(400);
   });
 
+  it("lista na vitrine o produto publicado do admin e esconde rascunho, oculto e arquivo", async () => {
+    const app = createAdminApp(sql);
+    const owner = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.42");
+    const headers = auth(owner.token, "203.0.113.42");
+    const create = (slug: string, status: string) =>
+      app.request("/v1/admin/products", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ ...sampleProduct(slug), name: slug, status }),
+      });
+    expect((await create("na-prateleira", "ativo")).status).toBe(201);
+    expect((await create("ja-publicado", "publicado")).status).toBe(201);
+    expect((await create("ainda-rascunho", "rascunho")).status).toBe(201);
+    expect((await create("fora-da-loja", "oculto")).status).toBe(201);
+    expect((await create("no-arquivo", "arquivado")).status).toBe(201);
+    const listed = await app.request("/v1/products");
+    expect(listed.headers.get("cache-control")).toBe("no-store");
+    const catalog = await listed.json();
+    const slugs = catalog.products.map((product: { slug: string }) => product.slug);
+    expect(slugs).toEqual(expect.arrayContaining(["na-prateleira", "ja-publicado"]));
+    expect(slugs).not.toContain("ainda-rascunho");
+    expect(slugs).not.toContain("fora-da-loja");
+    expect(slugs).not.toContain("no-arquivo");
+    const shelf = catalog.products.find((product: { slug: string }) => product.slug === "na-prateleira");
+    expect(shelf).toMatchObject({ name: "na-prateleira", hidden: false });
+    expect(shelf.flavors[0].stock).toBe(10);
+    const hidden = await app.request("/v1/products/ainda-rascunho");
+    expect(hidden.status).toBe(404);
+    const drafted = await app.request("/v1/admin/products/na-prateleira", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ ...sampleProduct("na-prateleira"), name: "na-prateleira", status: "rascunho" }),
+    });
+    expect(drafted.status).toBe(200);
+    const after = await app.request("/v1/products");
+    const left = await after.json();
+    expect(left.products.some((product: { slug: string }) => product.slug === "na-prateleira")).toBe(false);
+    expect(left.products.some((product: { slug: string }) => product.slug === "ja-publicado")).toBe(true);
+  });
+
   it("apaga cupom sem uso e arquiva cupom usado", async () => {
     const app = createAdminApp(sql);
     const owner = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.41");

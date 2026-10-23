@@ -23,10 +23,11 @@ export interface StorefrontSnapshot {
 export async function loadStorefront(): Promise<StorefrontSnapshot> {
   if (process.env.DATA_SOURCE === "api") {
     try {
-      const response = await fetch(`${process.env.API_URL ?? "http://127.0.0.1:8787"}/v1/products`);
+      const response = await fetch(`${process.env.API_URL ?? "http://127.0.0.1:8787"}/v1/products`, { cache: "no-store" });
       if (response.ok) {
-        const body = (await response.json()) as { products: CatalogProduct[] };
-        return { source: "api", products: body.products };
+        const body = (await response.json()) as { products?: CatalogProduct[] };
+        const list = Array.isArray(body.products) ? body.products.filter((product) => product.hidden !== true) : [];
+        return { source: "api", products: list };
       }
     } catch {
       return { source: "mock", products };

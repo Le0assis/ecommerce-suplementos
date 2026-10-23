@@ -149,6 +149,14 @@ Pedido, cliente e avaliação não nascem no admin. A avaliação se aprova, res
 
 `POST` de um slug ou id que já existe responde `409`, não grava por cima. A atualização é o `PATCH`.
 
+## Vitrine (`GET /v1/products`)
+
+É a lista da loja. A resposta é `{ "source", "products" }`. `GET /v1/products/:slug` devolve `{ "source", "product", "reviews" }` ou `404` `{ "error": "Produto não encontrado." }`. Os dois mandam `Cache-Control: no-store`.
+
+Entra produto com `status = 'ativo'` e `active = true`. No JSON do admin isso é `publicado`. O painel também manda `ativo`, e a API grava os dois como `ativo`. `rascunho`, `oculto` e `arquivado` ficam de fora, e o `GET` por slug desses responde `404`. Cada item da lista sai com `hidden: false`. O nome, o sabor e o estoque vêm das tabelas, não de `products.payload`.
+
+Com `API_DATA_SOURCE=postgres` e `REDIS_URL`, a lista fica 60 segundos na chave `catalog:products`. Criar, atualizar ou arquivar produto ou kit apaga essa chave, então o próximo `GET` lê o banco de novo. Cache que não é uma lista é ignorado. Produto com `hidden: true` não volta nem do cache. Sem Redis, cada `GET` lê o banco. Sem `API_DATA_SOURCE=postgres`, `source` é `mock` e a lista é `@pulso/data`. Banco no ar sem nenhum produto `ativo` responde `source: mock-fallback` com esse mesmo catálogo. Falha de banco também cai nesse fallback.
+
 ## Rotas públicas de collab e post
 
 Com `API_DATA_SOURCE=postgres` e banco, a leitura é a tabela. Sem banco, a resposta usa `@pulso/data` e `source` é `mock`. Influencer inativo e post rascunho, arquivado ou agendado para o futuro não entram. Post `publicado`, ou `agendado` com `publishedAt` até hoje, entra.
