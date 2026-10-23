@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminApiError, uploadAdminImage } from "@/lib/admin-fetch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { parseBRLToCents } from "@pulso/domain";
@@ -90,8 +91,36 @@ export function Notice({ tone, children }: { tone: "ok" | "warn" | "error"; chil
 }
 
 export function StatusPill({ status }: { status: string }) {
-  const tone = status === "publicado" ? "bg-lime text-primary-foreground" : status === "arquivado" || status === "oculto" ? "bg-pink text-white" : "bg-white/10 text-foreground";
-  return <span className={`rounded-full px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${tone}`}>{status}</span>;
+  const live = status === "publicado" || status === "ativo" || status === "no_ar" || status === "aprovada" || status === "ativa" || status === "pago" || status === "entregue";
+  const closed = status === "arquivado" || status === "oculto" || status === "oculta" || status === "cancelado" || status === "encerrado" || status === "cancelada";
+  const tone = live ? "bg-lime text-primary-foreground" : closed ? "bg-pink text-white" : "bg-white/10 text-foreground";
+  return <span className={`rounded-full px-2 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${tone}`}>{status.replaceAll("_", " ")}</span>;
+}
+
+export function ImageUrlField({ label, url, alt, onChange }: { label: string; url: string; alt: string; onChange: (url: string) => void }) {
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <Field label={label} hint={error ?? "JPG, PNG ou WebP. Sem Blob, até 300 KB. A cor continua como reserva."}>
+      <Input aria-label={label} value={url} placeholder="https://" onChange={(event) => onChange(event.target.value)} />
+      <input
+        aria-label={`Enviar ${label}`}
+        className="mt-2 block text-xs"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file) return;
+          void uploadAdminImage(file, alt || label)
+            .then((saved) => {
+              setError(null);
+              onChange(saved.url);
+            })
+            .catch((caught) => setError(caught instanceof AdminApiError ? caught.message : "Não deu para enviar a foto."));
+        }}
+      />
+    </Field>
+  );
 }
 
 export function CheckRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {

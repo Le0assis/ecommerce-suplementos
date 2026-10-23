@@ -2,13 +2,13 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Badge, FlavorFamily, GoalId } from "@pulso/domain";
 import { CATEGORIES, GOALS } from "@pulso/domain";
-import type { AdminCoupon, AdminFlavor, AdminImage, AdminInfluencerRef, AdminKitItem, AdminLabel, AdminProduct, AdminVariant, ProductStatus } from "@/lib/admin-types";
+import type { AdminCoupon, AdminFlavor, AdminImage, AdminInfluencer, AdminKitItem, AdminLabel, AdminProduct, AdminVariant, ProductStatus } from "@/lib/admin-types";
 import { slugify } from "@/lib/admin-types";
-import { seedAdminDb, type AdminDb } from "@/server/admin-seed";
+import { migrateAdminDb, seedAdminDb, type AdminDb } from "@/server/admin-seed";
 
 const FAMILIES: FlavorFamily[] = ["citrica", "doce", "fruta", "neutro", "chocolate"];
 const BADGES: Badge[] = ["drop", "limited", "bestseller", "novo", "collab"];
-const STATUSES: ProductStatus[] = ["rascunho", "publicado", "oculto", "arquivado"];
+const STATUSES: ProductStatus[] = ["rascunho", "ativo", "oculto", "arquivado"];
 const GOALS_IDS = GOALS.map((goal) => goal.id);
 const CATEGORY_IDS = CATEGORIES.map((category) => category.id);
 const LOCAL_IMAGE_BYTES = 300 * 1024;
@@ -29,11 +29,11 @@ function storeFile(): string {
 export function readAdminDb(): AdminDb {
   const file = storeFile();
   try {
-    const parsed = JSON.parse(readFileSync(/*turbopackIgnore: true*/ file, "utf8")) as AdminDb;
-    if (parsed.version !== 1 || !Array.isArray(parsed.products) || !Array.isArray(parsed.coupons) || !Array.isArray(parsed.influencers)) {
-      throw new AdminRuleError(500, "arquivo do adaptador inválido");
-    }
-    return parsed;
+    const parsed = JSON.parse(readFileSync(/*turbopackIgnore: true*/ file, "utf8")) as unknown;
+    const migrated = migrateAdminDb(parsed);
+    if (!migrated) throw new AdminRuleError(500, "arquivo do adaptador inválido");
+    if (!isRecord(parsed) || parsed.version !== 2) writeAdminDb(migrated);
+    return migrated;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     const reset = code === "ENOENT" || error instanceof SyntaxError || (error instanceof AdminRuleError && error.message === "arquivo do adaptador inválido");
@@ -133,6 +133,10 @@ function parseVariant(input: unknown, flavors: AdminFlavor[]): AdminVariant {
   if (compareAtCents !== null && compareAtCents < 0) throw new AdminRuleError(400, "O preço riscado não pode ser negativo.");
   const id = text(input.id) || `${flavorId}__${slugify(size)}`;
   return { id, flavorId, size, sku, priceCents, compareAtCents, stock, weightGrams, servings };
+}
+
+export function acceptableImageUrl(url: string): boolean {
+  return safeImageUrl(url);
 }
 
 function safeImageUrl(url: string): boolean {
@@ -488,7 +492,7 @@ export function deleteCoupon(db: AdminDb, id: string): AdminDb {
   return { ...db, coupons: db.coupons.filter((item) => item.id !== id) };
 }
 
-export function listInfluencers(db: AdminDb): AdminInfluencerRef[] {
+export function listInfluencers(db: AdminDb): AdminInfluencer[] {
   return db.influencers;
 }
 

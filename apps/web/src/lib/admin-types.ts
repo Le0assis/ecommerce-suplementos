@@ -9,7 +9,12 @@ export type AdminRole = "dono" | "editor" | "atendimento";
 
 export type AdminDataSource = "api" | "adapter";
 
-export type ProductStatus = "rascunho" | "publicado" | "oculto" | "arquivado";
+export type ProductStatus = "rascunho" | "ativo" | "oculto" | "arquivado";
+export type PostStatus = "rascunho" | "agendado" | "publicado" | "arquivado";
+export type DropStatus = "em_breve" | "no_ar" | "encerrado";
+export type ReviewStatus = "pendente" | "aprovada" | "oculta";
+export type OrderStatus = "pagamento_pendente" | "pago" | "separando" | "enviado" | "entregue" | "cancelado";
+export type SubscriptionStatus = "ativa" | "pausada" | "cancelada";
 
 export type AdminResource =
   | "products"
@@ -148,6 +153,267 @@ export interface AdminInfluencerRef {
   handle: string;
 }
 
+export interface AdminCategory {
+  id: string;
+  kind: "categoria" | "objetivo";
+  name: string;
+  blurb: string;
+  imageUrl: string | null;
+  position: number;
+}
+
+export interface AdminQuote {
+  id: string;
+  body: string;
+  position: number;
+}
+
+export interface AdminInfluencerImage {
+  id: string;
+  url: string | null;
+  alt: string;
+  caption: string;
+  instagramPostUrl: string | null;
+  fallbackHex: string | null;
+  position: number;
+}
+
+export interface AdminInfluencer extends AdminInfluencerRef {
+  instagramUrl: string | null;
+  city: string;
+  sport: string;
+  bio: string;
+  story: string;
+  followers: string;
+  accent: string;
+  discountPercent: number | null;
+  active: boolean;
+  couponCode: string | null;
+  productIds: string[];
+  quotes: AdminQuote[];
+  images: AdminInfluencerImage[];
+}
+
+export interface AdminAuthor {
+  id: string;
+  name: string;
+  photoUrl: string | null;
+  bio: string;
+  influencerId: string | null;
+}
+
+export type AdminPostBlock =
+  | { id: string; type: "paragrafo"; text: string }
+  | { id: string; type: "titulo"; text: string }
+  | { id: string; type: "imagem"; url: string; alt: string; caption: string }
+  | { id: string; type: "citacao_lateral"; text: string; side: "esquerda" | "direita" }
+  | { id: string; type: "produto"; productId: string };
+
+export interface AdminPost {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  category: string;
+  coverUrl: string | null;
+  coverHex: string | null;
+  authorId: string | null;
+  influencerId: string | null;
+  status: PostStatus;
+  publishedAt: string | null;
+  readMinutes: number;
+  seoTitle: string;
+  seoDescription: string;
+  shareImageUrl: string | null;
+  blocks: AdminPostBlock[];
+}
+
+export interface AdminPromotion {
+  id: string;
+  name: string;
+  kind: "percent" | "fixed_cents" | "compare_at";
+  value: number;
+  targetType: "produto" | "categoria";
+  productId: string | null;
+  categoryId: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  badge: string | null;
+  active: boolean;
+}
+
+export interface AdminDrop {
+  id: string;
+  edition: string;
+  name: string;
+  productId: string | null;
+  flavorId: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  unitsTotal: number | null;
+  unitsLeft: number | null;
+  teaser: string;
+  heroImageUrl: string | null;
+  story: string;
+  status: DropStatus;
+}
+
+export interface AdminQuizOption {
+  id: string;
+  label: string;
+  value: string;
+  position: number;
+  weights: Record<string, number>;
+}
+
+export interface AdminQuizQuestion {
+  id: string;
+  prompt: string;
+  answerKey: string;
+  position: number;
+  options: AdminQuizOption[];
+}
+
+export interface AdminReview {
+  id: string;
+  productId: string;
+  author: string;
+  handle: string;
+  rating: number;
+  title: string;
+  body: string;
+  verified: boolean;
+  helpful: number;
+  status: ReviewStatus;
+  reply: string;
+  createdAt: string;
+}
+
+export interface AdminUgc {
+  id: string;
+  author: string;
+  handle: string;
+  caption: string;
+  likes: number;
+  accent: string;
+  productId: string | null;
+  position: number;
+  hidden: boolean;
+}
+
+export interface AdminVideo {
+  id: string;
+  slug: string;
+  title: string;
+  caption: string;
+  duration: string;
+  frames: [string, string, string];
+  transcript: string[];
+  position: number;
+  hidden: boolean;
+}
+
+export interface AdminScratchPrize {
+  id: string;
+  label: string;
+  detail: string;
+  weight: number;
+  couponCode: string | null;
+  points: number | null;
+  active: boolean;
+  position: number;
+}
+
+export interface AdminLoyaltyLevel {
+  id: string;
+  name: string;
+  minPoints: number;
+  multiplier: number;
+  perks: string[];
+}
+
+export interface AdminLoyalty {
+  id: "loja";
+  pointsPerReal: number;
+  pixPointsBonus: number;
+  pointValueCents: number;
+  maxPointsRedeemRatio: number;
+  welcomePoints: number;
+  freeShippingCents: number;
+  pixDiscountPercent: number;
+  kitDiscountPercent: number;
+  subscriptionDefaultPercent: number;
+  referrerPoints: number;
+  referredPoints: number;
+  levels: AdminLoyaltyLevel[];
+}
+
+export interface AdminBanner {
+  id: string;
+  slot: "hero" | "marquee" | "destaque";
+  title: string;
+  subtitle: string;
+  href: string;
+  imageUrl: string | null;
+  accent: string;
+  position: number;
+  active: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+}
+
+export interface AdminOrderLine {
+  id: string;
+  productId: string;
+  variantId: string;
+  name: string;
+  quantity: number;
+  unitPriceCents: number;
+}
+
+export interface AdminOrder {
+  id: string;
+  code: string;
+  customerId: string | null;
+  email: string;
+  status: OrderStatus;
+  paymentMethod: "pix" | "boleto" | "card";
+  paymentStatus: string;
+  subtotalCents: number;
+  discountCents: number;
+  pixCents: number;
+  shippingCents: number;
+  totalCents: number;
+  pointsEarned: number;
+  shippingMethod: string;
+  trackingCode: string;
+  shipmentStatus: string;
+  createdAt: string;
+  lines: AdminOrderLine[];
+}
+
+export interface AdminSubscription {
+  id: string;
+  productId: string;
+  variantId: string;
+  name: string;
+  quantity: number;
+  unitPriceCents: number;
+  intervalDays: number;
+  status: SubscriptionStatus;
+  nextChargeOn: string;
+}
+
+export interface AdminCustomer {
+  id: string;
+  email: string;
+  name: string;
+  pointsBalance: number;
+  pointsLifetime: number;
+  marketingOptIn: boolean;
+  subscriptions: AdminSubscription[];
+}
+
 export interface AdminList<T> {
   source: AdminDataSource;
   items: T[];
@@ -203,14 +469,44 @@ export const ROLE_LABEL: Record<AdminRole, string> = {
 export const ADMIN_NAV: AdminNavItem[] = [
   { href: "/admin", label: "Painel", resource: null },
   { href: "/admin/produtos", label: "Produtos", resource: "products" },
+  { href: "/admin/kits", label: "Kits", resource: "kits" },
+  { href: "/admin/categorias", label: "Categorias", resource: "categories" },
+  { href: "/admin/influencers", label: "Influencers", resource: "influencers" },
+  { href: "/admin/blog", label: "Blog", resource: "posts" },
   { href: "/admin/cupons", label: "Cupons", resource: "coupons" },
+  { href: "/admin/promocoes", label: "Promoções", resource: "promotions" },
+  { href: "/admin/drops", label: "Drops", resource: "drops" },
+  { href: "/admin/quiz", label: "Quiz", resource: "quiz" },
+  { href: "/admin/avaliacoes", label: "Avaliações", resource: "reviews" },
+  { href: "/admin/social", label: "Social", resource: "ugc" },
+  { href: "/admin/raspadinha", label: "Raspadinha", resource: "scratch-prizes" },
+  { href: "/admin/fidelidade", label: "Fidelidade", resource: "loyalty" },
+  { href: "/admin/pedidos", label: "Pedidos", resource: "orders" },
+  { href: "/admin/clientes", label: "Clientes", resource: "customers" },
+  { href: "/admin/vitrine", label: "Vitrine", resource: "banners" },
 ];
 
 export const PRODUCT_STATUSES: { id: ProductStatus; label: string }[] = [
   { id: "rascunho", label: "Rascunho" },
-  { id: "publicado", label: "Publicado" },
+  { id: "ativo", label: "Ativo" },
   { id: "oculto", label: "Oculto" },
   { id: "arquivado", label: "Arquivado" },
+];
+
+export const POST_STATUSES: { id: PostStatus; label: string }[] = [
+  { id: "rascunho", label: "Rascunho" },
+  { id: "agendado", label: "Agendado" },
+  { id: "publicado", label: "Publicado" },
+  { id: "arquivado", label: "Arquivado" },
+];
+
+export const ORDER_STATUSES: { id: OrderStatus; label: string }[] = [
+  { id: "pagamento_pendente", label: "Pagamento pendente" },
+  { id: "pago", label: "Pago" },
+  { id: "separando", label: "Separando" },
+  { id: "enviado", label: "Enviado" },
+  { id: "entregue", label: "Entregue" },
+  { id: "cancelado", label: "Cancelado" },
 ];
 
 export function slugify(value: string): string {

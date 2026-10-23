@@ -82,7 +82,7 @@ export function ProductList() {
         <select aria-label="Filtrar status" value={status} onChange={(event) => { setPage(1); setStatus(event.target.value); }} className="h-9 rounded-md border border-input bg-transparent px-3 text-sm">
           <option value="ativos">Em linha</option>
           <option value="todos">Todos</option>
-          <option value="publicado">Publicados</option>
+          <option value="ativo">Ativos</option>
           <option value="oculto">Ocultos</option>
           <option value="rascunho">Rascunhos</option>
           <option value="arquivado">Arquivados</option>
@@ -119,8 +119,8 @@ export function ProductList() {
                       <Button asChild size="sm" variant="outline"><Link href={`/admin/produtos/${product.id}`}>Editar</Link></Button>
                       <Button size="sm" variant="outline" type="button" disabled={pendingId === product.id} onClick={() => void duplicate(product.id)}>Duplicar</Button>
                       {product.status !== "arquivado" ? (
-                        <Button size="sm" variant="outline" type="button" disabled={pendingId === product.id} onClick={() => void patchStatus(product, product.status === "oculto" ? "publicado" : "oculto")}>
-                          {product.status === "oculto" ? "Publicar" : "Ocultar"}
+                        <Button size="sm" variant="outline" type="button" disabled={pendingId === product.id} onClick={() => void patchStatus(product, product.status === "oculto" ? "ativo" : "oculto")}>
+                          {product.status === "oculto" ? "Ativar" : "Ocultar"}
                         </Button>
                       ) : null}
                       {product.status !== "arquivado" ? (

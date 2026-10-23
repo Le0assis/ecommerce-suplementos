@@ -98,7 +98,7 @@ Spots em `packages/data/src/videos.ts`. O player troca de quadro e mostra a tran
 
 ## Admin `/admin`
 
-Login no servidor. A senha é `ADMIN_PASSWORD` (sem prefixo `NEXT_PUBLIC_`). `POST /api/admin/session` compara essa senha, ou `POST /v1/admin/login` quando a API responder, e grava o cookie httpOnly `pulso_admin_session` por 12 horas, assinado com `ADMIN_SESSION_SECRET`. Papéis: dono, editor e atendimento. Nesta fase o painel edita produtos (incluindo sabores, variantes, rótulo e fotos) e cupons. Enquanto a API não tem essas rotas, um adaptador grava em `apps/web/.data/admin-mock.json`, fora do Git. Produto se arquiva. Cupom só se apaga se o uso for zero.
+Login no servidor. A senha é `ADMIN_PASSWORD` (sem prefixo `NEXT_PUBLIC_`). `POST /api/admin/session` compara essa senha, ou `POST /v1/admin/login` quando a API responder, e grava o cookie httpOnly `pulso_admin_session` por 12 horas, assinado com `ADMIN_SESSION_SECRET`. Papéis: dono (tudo), editor (catálogo, conteúdo, quiz, raspadinha e vitrine) e atendimento (pedidos, avaliações e clientes). O painel cobre produtos, kits, categorias, influencers, blog, cupons, promoções, drops, quiz, avaliações, social, raspadinha, fidelidade, pedidos, clientes e vitrine. Enquanto a API não tem essas rotas, um adaptador grava em `apps/web/.data/admin-mock.json`, fora do Git. Produto e post se arquivam. Cupom só se apaga se o uso for zero. A loja pública ainda lê `@pulso/data`.
 
 ## Privacidade na conta
 

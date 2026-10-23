@@ -31,12 +31,12 @@ export function AdminShell({ session, children }: { session: AdminSessionView; c
   return (
     <SessionContext.Provider value={session}>
     <div className="min-h-screen bg-background md:grid md:grid-cols-[240px_1fr]">
-      <aside className="border-b border-white/10 bg-card md:sticky md:top-0 md:h-screen md:border-b-0 md:border-r">
+      <aside className="border-b border-white/10 bg-card md:sticky md:top-0 md:flex md:h-screen md:flex-col md:border-b-0 md:border-r">
         <div className="flex items-center justify-between px-4 py-4 md:block">
           <Link href="/admin" className="inline-flex"><Logo /></Link>
           <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Painel</p>
         </div>
-        <nav className="flex gap-2 overflow-x-auto px-3 pb-3 md:flex-col md:overflow-visible" aria-label="Seções do admin">
+        <nav className="flex gap-2 overflow-x-auto px-3 pb-3 md:flex-1 md:flex-col md:overflow-y-auto" aria-label="Seções do admin">
           {items.map((item) => {
             const active = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);
             return (

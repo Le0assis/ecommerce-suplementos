@@ -1,5 +1,6 @@
 import type { AdminPublicUser, AdminResource, AdminRole } from "@/lib/admin-types";
 import { canAccess } from "@/lib/admin-types";
+import { dispatchRecords } from "@/server/admin-records";
 import type { SessionPayload } from "@/server/admin-session";
 import {
   addFlavor,
@@ -17,7 +18,6 @@ import {
   getProduct,
   inspectLocalUpload,
   listCoupons,
-  listInfluencers,
   listProducts,
   readAdminDb,
   updateCoupon,
@@ -113,8 +113,23 @@ async function tryRemote(session: SessionPayload, method: string, segments: stri
 
 const RESOURCE: Record<string, AdminResource> = {
   products: "products",
+  kits: "kits",
   coupons: "coupons",
+  categories: "categories",
   influencers: "influencers",
+  authors: "authors",
+  posts: "posts",
+  promotions: "promotions",
+  drops: "drops",
+  quiz: "quiz",
+  reviews: "reviews",
+  ugc: "ugc",
+  videos: "videos",
+  "scratch-prizes": "scratch-prizes",
+  banners: "banners",
+  orders: "orders",
+  customers: "customers",
+  settings: "loyalty",
   uploads: "uploads",
 };
 
@@ -135,10 +150,6 @@ function localDispatch(method: string, segments: string[], search: URLSearchPara
   if (resource === "uploads" && id === "local" && method === "POST") {
     const file = inspectLocalUpload(body);
     return done(200, { mode: "local", url: file.url, alt: file.alt });
-  }
-  if (resource === "influencers" && method === "GET" && !id) {
-    const items = listInfluencers(db);
-    return done(200, { items, total: items.length, page: 1, pageSize: Math.max(items.length, 1) });
   }
   if (resource === "products" && !id && method === "GET") return done(200, listProducts(db, search));
   if (resource === "products" && !id && method === "POST") {
@@ -202,6 +213,8 @@ function localDispatch(method: string, segments: string[], search: URLSearchPara
   if (resource === "coupons" && id && method === "DELETE") {
     return done(200, { ok: true }, deleteCoupon(db, id));
   }
+  const extra = dispatchRecords(db, method, segments, search, body);
+  if (extra) return done(extra.status, extra.body, extra.next);
   throw new AdminRuleError(404, "Rota admin não encontrada.");
 }
 
@@ -209,9 +222,6 @@ export async function handleAdminData(session: SessionPayload, method: string, s
   const resource = RESOURCE[segments[0] ?? ""];
   if (!resource) return { status: 404, body: { error: "Rota admin não encontrada.", source: "adapter" } };
   if (!canAccess(session.role, resource)) return { status: 403, body: { error: "Seu papel não faz isso.", source: session.src } };
-  if (segments[0] === "influencers" && method !== "GET") {
-    return { status: 405, body: { error: "A edição de influencers entra na próxima fase.", source: "adapter" } };
-  }
   const remote = await tryRemote(session, method, segments, search, body);
   if (remote) return remote;
   try {

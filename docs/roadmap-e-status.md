@@ -17,7 +17,7 @@ Atualizado na etapa 1 (fundação). As referências de mercado e a tabela das 6 
 | --- | --- |
 | `DATA_SOURCE=api` | Função `loadStorefront` pronta. Páginas ainda importam `@pulso/data` |
 | Pedido, cliente, pontos, wishlist, assinatura | Funcionam no `localStorage`. Tabelas SQL existem vazias |
-| Admin | Login com cookie httpOnly. Produtos e cupons no adaptador local até a API `/v1/admin` existir |
+| Admin | Login com cookie httpOnly. Telas do catálogo, conteúdo e operação no adaptador local até a API `/v1/admin` existir. A vitrine ainda não lê esse adaptador |
 | CEP e frete | Tabela demo. Contrato de função estável para trocar pela ViaCEP |
 | Pagamento | UI completa, cobrança falsa, marcada na confirmação |
 | Raspadinha | Uma por dia no navegador. Prêmio não persiste no servidor |
