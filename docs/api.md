@@ -128,7 +128,7 @@ O identificador da URL é o da coluna abaixo. Onde o painel chama o campo de `id
 | Posts | `slug` (igual a `id`) | `GET /posts` | `GET /posts/:slug` | `POST /posts` | `PATCH /posts/:slug` | `DELETE /posts/:slug` arquiva | editor |
 | Promoções | `id` | `GET /promotions` | `GET /promotions/:id` | `POST /promotions` | `PATCH /promotions/:id` | `DELETE /promotions/:id` desativa | editor |
 | Drops | `id` | `GET /drops` | `GET /drops/:id` | `POST /drops` | `PATCH /drops/:id` | `DELETE /drops/:id` encerra | editor |
-| Lista de espera | `id` do drop ou e-mail | `GET /drops/:id/waitlist` | — | — | — | `POST /drops/waitlist/anonymize` e `POST /drops/waitlist/erase` | editor |
+| Lista de espera | `id` da inscrição, ou e-mail | `GET /drops/:id/waitlist` | — | — | — | `DELETE /drops/waitlist/:id` apaga uma inscrição. `POST /drops/waitlist/erase` apaga o e-mail em todos os drops. `POST /drops/waitlist/anonymize` | exclusão: dono e atendimento. Lista e anonimização: editor |
 | Quiz | `id` | `GET /quiz` | `GET /quiz/:id` | `POST /quiz` | `PATCH /quiz/:id` | `DELETE /quiz/:id` | editor |
 | Avaliações | `id` | `GET /reviews` | `GET /reviews/:id` | — | `PATCH /reviews/:id` | `DELETE /reviews/:id` oculta | atendimento |
 | UGC | `id` | `GET /ugc` | `GET /ugc/:id` | `POST /ugc` | `PATCH /ugc/:id` | `DELETE /ugc/:id` oculta | editor |
@@ -288,7 +288,7 @@ O card da home lê esse `unitsLeft` (o do drop, ou o mínimo do sabor). Não usa
 
 `POST /v1/drops/:id/waitlist` com `{ "email", "consent": true, "consentOrigin"? }` grava a lista. Sem `consent: true`, `400`. E-mail novo e e-mail que já estava respondem a mesma coisa: `200` `{ "ok": true }`. Sem banco, `503`.
 
-`POST /v1/drops/waitlist/erase` responde sempre `200` `{ "ok": true }` e não apaga, não anonimiza e não diz se o e-mail estava na lista. Quem quer sair pede ao suporte. O atendimento apaga ou anonimiza com `POST /v1/admin/drops/waitlist/erase` e `POST /v1/admin/drops/waitlist/anonymize`. A confirmação por link no e-mail fica para o Léo decidir.
+`POST /v1/drops/waitlist/erase` responde `410` `{ "error": "A saída da lista é só pelo atendimento." }`. Não apaga, não anonimiza e não diz se o e-mail estava na lista. Quem quer sair pede ao suporte. O dono ou o atendimento apaga uma inscrição com `DELETE /v1/admin/drops/waitlist/:id` (o `id` da linha) ou todas as inscrições ativas daquele e-mail com `POST /v1/admin/drops/waitlist/erase`. Os dois gravam `audit_log` com a ação `waitlist.erase`, sem o e-mail. Editor recebe `403`. Sem sessão, `401`. Inscrição ausente, `404`. Anonimizar continua `POST /v1/admin/drops/waitlist/anonymize`, papel de editor. A confirmação por link no e-mail fica para o Léo decidir.
 
 ## Variação sem porção
 

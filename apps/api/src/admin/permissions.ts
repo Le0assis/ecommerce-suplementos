@@ -11,6 +11,7 @@ export const RESOURCES = [
   "coupons",
   "promotions",
   "drops",
+  "waitlist",
   "quiz",
   "reviews",
   "ugc",
@@ -44,7 +45,7 @@ const EDITOR: readonly Resource[] = [
   "uploads",
 ];
 
-const ATENDIMENTO: readonly Resource[] = ["orders", "reviews", "customers"];
+const ATENDIMENTO: readonly Resource[] = ["orders", "reviews", "customers", "waitlist"];
 
 export function isRole(value: string): value is Role {
   return (ROLES as readonly string[]).includes(value);

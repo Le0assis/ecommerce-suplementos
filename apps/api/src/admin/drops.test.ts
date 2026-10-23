@@ -173,8 +173,8 @@ describe("drops e lista de espera", () => {
       headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.75" },
       body: JSON.stringify({ email: "ana@pulso.test" }),
     });
-    expect(erased.status).toBe(200);
-    expect(await erased.json()).toEqual({ ok: true });
+    expect(erased.status).toBe(410);
+    expect(await erased.json()).toEqual({ error: "A saída da lista é só pelo atendimento." });
     const kept = await sql.query("select id from drop_waitlist");
     expect(kept.rows).toHaveLength(1);
 
@@ -188,14 +188,42 @@ describe("drops e lista de espera", () => {
       headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.77" },
       body: JSON.stringify({ email: "bia@pulso.test" }),
     });
-    expect(await ignored.json()).toEqual({ ok: true });
+    expect(ignored.status).toBe(410);
     expect((await sql.query("select email from drop_waitlist where anonymized_at is null")).rows).toHaveLength(1);
-    const gone = await app.request("/v1/admin/drops/waitlist/erase", {
+    const listed = await app.request("/v1/admin/drops/drop-espera/waitlist", { headers });
+    const entry = ((await listed.json()) as { items: { id: string; email: string }[] }).items.find((item) => item.email === "bia@pulso.test");
+    expect(entry?.id).toBeTruthy();
+    const editorErase = await app.request(`/v1/admin/drops/waitlist/${entry?.id}`, { method: "DELETE", headers });
+    expect(editorErase.status).toBe(403);
+    expect((await sql.query("select email from drop_waitlist where email = 'bia@pulso.test'")).rows).toHaveLength(1);
+    const support = await login(app, "atendimento@pulso.test", "senha-atendimento", "203.0.113.80");
+    const supportHeaders = auth(support.token, "203.0.113.80");
+    const missing = await app.request("/v1/admin/drops/waitlist/nao-existe", { method: "DELETE", headers: supportHeaders });
+    expect(missing.status).toBe(404);
+    const gone = await app.request(`/v1/admin/drops/waitlist/${entry?.id}`, { method: "DELETE", headers: supportHeaders });
+    expect(gone.status).toBe(200);
+    expect(await gone.json()).toEqual({ ok: true, id: entry?.id });
+    expect((await sql.query("select email from drop_waitlist where email = 'bia@pulso.test'")).rows).toHaveLength(0);
+    const eraseAudit = await sql.query<{ entity_id: string; before_data: unknown; after_data: unknown }>(
+      "select entity_id, before_data, after_data from audit_log where action = 'waitlist.erase' and entity_id = $1",
+      [entry?.id],
+    );
+    expect(eraseAudit.rows).toHaveLength(1);
+    expect(JSON.stringify(eraseAudit.rows[0])).not.toContain("bia@pulso.test");
+    expect(eraseAudit.rows[0]?.before_data).toMatchObject({ id: entry?.id, dropId: "drop-espera" });
+    const owner = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.81");
+    await app.request("/v1/drops/drop-espera/waitlist", {
       method: "POST",
-      headers,
-      body: JSON.stringify({ email: "bia@pulso.test" }),
+      headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.82" },
+      body: JSON.stringify({ email: "caio@pulso.test", consent: true }),
     });
-    expect((await gone.json()).removed).toBe(1);
+    const byEmail = await app.request("/v1/admin/drops/waitlist/erase", {
+      method: "POST",
+      headers: auth(owner.token, "203.0.113.81"),
+      body: JSON.stringify({ email: "caio@pulso.test" }),
+    });
+    expect(byEmail.status).toBe(200);
+    expect((await byEmail.json()).removed).toBe(1);
     const left = await sql.query<{ email: string }>("select email from drop_waitlist");
     expect(left.rows).toHaveLength(1);
 

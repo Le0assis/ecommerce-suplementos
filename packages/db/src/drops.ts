@@ -365,6 +365,15 @@ export async function eraseWaitlist(sql: Sql, email: string): Promise<number> {
   return waitlistCount(sql, "erase_drop_waitlist", email);
 }
 
+export async function eraseWaitlistEntry(sql: Sql, id: string): Promise<{ id: string; dropId: string } | null> {
+  const found = await sql.query<{ id: string; drop_id: string }>("select id, drop_id from drop_waitlist where id = $1", [id]);
+  const row = found.rows[0];
+  if (!row) return null;
+  const removed = await sql.query<{ removed: number | string }>("select erase_drop_waitlist_entry($1)::int as removed", [id]);
+  if ((intOrNull(removed.rows[0]?.removed) ?? 0) < 1) return null;
+  return { id: row.id, dropId: row.drop_id };
+}
+
 export async function anonymizeWaitlist(sql: Sql, email: string): Promise<number> {
   return waitlistCount(sql, "anonymize_drop_waitlist", email);
 }

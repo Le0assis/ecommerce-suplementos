@@ -38,7 +38,7 @@ export async function joinDropWaitlist(dropId: string, input: { email?: unknown;
   return { status: 200, body: { ok: true } };
 }
 
-export async function eraseDropWaitlist(input: { email?: unknown }): Promise<{ status: number; body: { ok: true } }> {
+export async function eraseDropWaitlist(input: { email?: unknown }): Promise<{ status: number; body: { error: string } }> {
   void input;
-  return { status: 200, body: { ok: true } };
+  return { status: 410, body: { error: "A saída da lista é só pelo atendimento." } };
 }

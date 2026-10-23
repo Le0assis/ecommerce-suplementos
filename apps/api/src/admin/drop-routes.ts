@@ -4,6 +4,7 @@ import {
   archiveDrop,
   dropState,
   eraseWaitlist,
+  eraseWaitlistEntry,
   getDrop,
   getPublicDrop,
   joinWaitlist,
@@ -240,7 +241,7 @@ export function mountDrops(admin: Hono, runtime: () => AdminRuntime): void {
 
   admin.post("/drops/waitlist/erase", async (c) => {
     const ctx = runtime();
-    const actor = await requireActor(c, ctx, "drops");
+    const actor = await requireActor(c, ctx, "waitlist");
     const body = parseInput(emailSchema, await readJson(c));
     const removed = await guard(() => eraseWaitlist(ctx.sql, body.email));
     await writeAudit(ctx.sql, {
@@ -251,6 +252,22 @@ export function mountDrops(admin: Hono, runtime: () => AdminRuntime): void {
       after: { removed },
     });
     return c.json({ ok: true, removed });
+  });
+
+  admin.delete("/drops/waitlist/:entryId", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "waitlist");
+    const removed = await guard(() => eraseWaitlistEntry(ctx.sql, c.req.param("entryId")));
+    if (!removed) throw new HttpError(404, "Inscrição não encontrada.");
+    await writeAudit(ctx.sql, {
+      actorId: actor.id,
+      action: "waitlist.erase",
+      entity: "drop_waitlist",
+      entityId: removed.id,
+      before: { id: removed.id, dropId: removed.dropId },
+      after: { deleted: true },
+    });
+    return c.json({ ok: true, id: removed.id });
   });
 }
 
@@ -276,9 +293,8 @@ export function mountPublicDrops(app: Hono, resolveSql: () => Sql | null, now: (
     return c.json({ drop, source: "postgres" });
   });
 
-  app.post("/v1/drops/waitlist/erase", async (c) => {
-    await c.req.json().catch(() => null);
-    return c.json({ ok: true });
+  app.post("/v1/drops/waitlist/erase", (c) => {
+    return c.json({ error: "A saída da lista é só pelo atendimento." }, 410);
   });
 
   app.post("/v1/drops/:id/waitlist", async (c) => {

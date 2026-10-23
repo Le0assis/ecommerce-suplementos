@@ -168,8 +168,10 @@ test("a lista não grava e-mail local e a resposta não diz se já estava", asyn
     globalThis.fetch = previousFetch;
   }
   const erased = await eraseDropWaitlist({ email: "lista@pulso.dev" });
-  assert.deepEqual(erased.body, { ok: true });
+  assert.equal(erased.status, 410);
+  assert.deepEqual(erased.body, { error: "A saída da lista é só pelo atendimento." });
   assert.equal(existsSync(file), false);
   const stranger = await eraseDropWaitlist({ email: "outra@pulso.dev" });
-  assert.deepEqual(stranger.body, { ok: true });
+  assert.equal(stranger.status, 410);
+  assert.deepEqual(stranger.body, erased.body);
 });
