@@ -17,7 +17,7 @@ Atualizado na etapa 1 (fundação). As referências de mercado e a tabela das 6 
 | --- | --- |
 | `DATA_SOURCE=api` | Função `loadStorefront` pronta. Páginas ainda importam `@pulso/data` |
 | Pedido, cliente, pontos, wishlist, assinatura | Funcionam no `localStorage`. Tabelas SQL existem vazias |
-| Admin | Login com cookie httpOnly. Telas do catálogo, conteúdo e operação no adaptador local até a API `/v1/admin` existir. Collab e post publicado leem o arquivo local; o resto da vitrine ainda não |
+| Admin | Login pela API (`pulso_admin`). Telas caem no adaptador local se a rota de dado falhar. Collab e post publicado leem o arquivo local; o resto da vitrine ainda não |
 | CEP e frete | Tabela demo. Contrato de função estável para trocar pela ViaCEP |
 | Pagamento | UI completa, cobrança falsa, marcada na confirmação |
 | Raspadinha | Uma por dia no navegador. Prêmio não persiste no servidor |
@@ -33,4 +33,4 @@ Atualizado na etapa 1 (fundação). As referências de mercado e a tabela das 6 
 
 ## Não vender com este build
 
-Registro ANVISA fictício, sem nota fiscal, sem gateway, conta da loja sem hash de senha. A senha do admin saiu do bundle e ficou em `ADMIN_PASSWORD`. O rodapé já diz que é protótipo.
+Registro ANVISA fictício, sem nota fiscal, sem gateway, conta da loja sem hash de senha. O admin usa a conta da API, com hash no banco. O rodapé já diz que é protótipo.

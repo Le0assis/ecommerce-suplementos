@@ -50,7 +50,7 @@ Ainda não há Dockerfile de app nem projeto na Vercel. Quando for publicar:
 2. API: processo Node `pnpm --filter @pulso/api start`, `API_PORT` atrás do proxy.
 3. Postgres gerenciado. Rode `pnpm db:migrate` e `pnpm db:seed` uma vez. Não use a senha `pulso` fora da máquina local.
 4. Redis gerenciado, ou apague `REDIS_URL` para seguir sem cache.
-5. Defina `ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET` no servidor, diferentes dos exemplos. Os dois não usam prefixo `NEXT_PUBLIC_`. O cookie da sessão já é httpOnly. A API de produção exige `API_DATA_SOURCE=postgres`.
+5. Defina `ADMIN_SESSION_SECRET` na API (mínimo 16 caracteres, diferente do exemplo em produção) e crie o dono com `pnpm --filter @pulso/db create-owner`. O cookie `pulso_admin` é httpOnly. O site não tem senha própria. A API de produção exige `API_DATA_SOURCE=postgres`.
 6. Domínio e `NEXT_PUBLIC_SITE_URL` iguais, senão o sitemap aponta para o localhost.
 
 Até a fase 3 do roadmap, o deploy continua sendo uma vitrine de demonstração: Pix não liquida.

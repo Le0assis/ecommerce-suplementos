@@ -14,6 +14,7 @@ export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T
   try {
     response = await fetch(`/api/admin/data/${path}`, {
       ...init,
+      credentials: "same-origin",
       headers: {
         accept: "application/json",
         ...(init?.body ? { "content-type": "application/json" } : {}),

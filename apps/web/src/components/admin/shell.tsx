@@ -2,7 +2,7 @@
 
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
-import { ADMIN_NAV, canAccess, ROLE_LABEL, type AdminSessionView } from "@/lib/admin-types";
+import { ADMIN_NAV, canAccess, navResource, ROLE_LABEL, type AdminSessionView } from "@/lib/admin-types";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useState, type ReactNode } from "react";
@@ -20,10 +20,11 @@ export function AdminShell({ session, children }: { session: AdminSessionView; c
   const router = useRouter();
   const [leaving, setLeaving] = useState(false);
   const items = ADMIN_NAV.filter((item) => canAccess(session.user.role, item.resource));
+  const allowed = canAccess(session.user.role, navResource(pathname));
 
   async function logout() {
     setLeaving(true);
-    await fetch("/api/admin/session", { method: "DELETE" });
+    await fetch("/api/admin/session", { method: "DELETE", credentials: "same-origin" });
     router.push("/admin/login");
     router.refresh();
   }
@@ -55,23 +56,15 @@ export function AdminShell({ session, children }: { session: AdminSessionView; c
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3 md:px-6">
           <div>
             <p className="text-sm">{session.user.email}</p>
-            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{ROLE_LABEL[session.user.role]} · {session.source === "api" ? "API" : "adaptador local"}</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{ROLE_LABEL[session.user.role]}</p>
           </div>
           <Button type="button" variant="outline" className="rounded-full" onClick={() => void logout()} disabled={leaving}>
             Sair
           </Button>
         </header>
-        {session.source === "adapter" ? (
-          <p className="border-b border-white/10 px-4 py-2 text-xs text-muted-foreground md:px-6">
-            A API ainda não publicou `/v1/admin`. As mudanças ficam no adaptador do servidor, fora do Git, até o backend assumir.
-          </p>
-        ) : null}
-        {session.devSecret ? (
-          <p className="border-b border-white/10 px-4 py-2 text-xs text-pink md:px-6">
-            Defina `ADMIN_SESSION_SECRET` no servidor antes de publicar. O cookie está assinado com o segredo de desenvolvimento.
-          </p>
-        ) : null}
-        <div className="px-4 py-6 md:px-6">{children}</div>
+        <div className="px-4 py-6 md:px-6">
+          {allowed ? children : <p className="text-sm text-muted-foreground">Seu papel não faz isso.</p>}
+        </div>
       </div>
     </div>
     </SessionContext.Provider>
