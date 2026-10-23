@@ -78,7 +78,7 @@ Countdown e lista. A fase sai de `dropPhase` (`no-ar`, `encerrado`, `data-invali
 
 ## Atletas `/atletas` e `/atletas/[slug]`
 
-Página de atleta é Server Component com `generateStaticParams`. Cupom da pessoa pode ser aplicado dali.
+A lista segue o catálogo. A página da collab é um retrato de 280 px ao lado do nome, @, esporte e seguidores. A história substitui a bio quando existe. Até quatro frases giram devagar (param se a pessoa pedir menos movimento). O carrossel usa a foto ou a cor reserva, e cada foto abre o post do Instagram. O botão “Seguir no Instagram” fica fixo no celular. O cupom fica abaixo das fotos e os posts ligados ao influencer fecham a página. Sem arquivo do adaptador, a página usa `@pulso/data` e não inventa frase nem foto. Com o arquivo, lê a ficha salva no admin. Influencer inativo não abre. A vitrine ainda não lê a API.
 
 ## Indicação `/conta/indicar`
 
@@ -94,11 +94,11 @@ Spots em `packages/data/src/videos.ts`. O player troca de quadro e mostra a tran
 
 ## Blog e institucionais
 
-`/blog`, `/blog/[slug]`, `/social`, `/sobre`, `/privacidade`, `/entrega`, `/trocas`, `/rotulos`, `/ajuda`. Textos em `info-page.tsx` e `content.ts`.
+`/blog`, `/blog/[slug]`, `/social`, `/sobre`, `/privacidade`, `/entrega`, `/trocas`, `/rotulos`, `/ajuda`. Textos em `info-page.tsx` e `content.ts`. O post publicado mostra o card do autor. Se o adaptador tiver o post como `publicado`, os blocos (parágrafo, subtítulo, imagem, citação, produto) substituem a lista de parágrafos e o autor pode levar à collab. Post arquivado deixa de abrir. Sem o arquivo, o blog continua no catálogo.
 
 ## Admin `/admin`
 
-Login no servidor. A senha é `ADMIN_PASSWORD` (sem prefixo `NEXT_PUBLIC_`). `POST /api/admin/session` compara essa senha, ou `POST /v1/admin/login` quando a API responder, e grava o cookie httpOnly `pulso_admin_session` por 12 horas, assinado com `ADMIN_SESSION_SECRET`. Papéis: dono (tudo), editor (catálogo, conteúdo, quiz, raspadinha e vitrine) e atendimento (pedidos, avaliações e clientes). O painel cobre produtos, kits, categorias, influencers, blog, cupons, promoções, drops, quiz, avaliações, social, raspadinha, fidelidade, pedidos, clientes e vitrine. Enquanto a API não tem essas rotas, um adaptador grava em `apps/web/.data/admin-mock.json`, fora do Git. Produto e post se arquivam. Cupom só se apaga se o uso for zero. A loja pública ainda lê `@pulso/data`.
+Login no servidor. A senha é `ADMIN_PASSWORD` (sem prefixo `NEXT_PUBLIC_`). `POST /api/admin/session` compara essa senha, ou `POST /v1/admin/login` quando a API responder, e grava o cookie httpOnly `pulso_admin_session` por 12 horas, assinado com `ADMIN_SESSION_SECRET`. Papéis: dono (tudo), editor (catálogo, conteúdo, quiz, raspadinha e vitrine) e atendimento (pedidos, avaliações e clientes). O painel cobre produtos, kits, categorias, influencers, blog, cupons, promoções, drops, quiz, avaliações, social, raspadinha, fidelidade, pedidos, clientes e vitrine. Enquanto a API não tem essas rotas, um adaptador grava em `apps/web/.data/admin-mock.json`, fora do Git. Produto e post se arquivam. Cupom só se apaga se o uso for zero. A collab e o post publicado leem esse arquivo quando ele existe. O resto da vitrine segue `@pulso/data`. O editor de blocos avisa que não há promessa de saúde.
 
 ## Privacidade na conta
 

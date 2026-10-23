@@ -225,7 +225,7 @@ export function BlogScreen() {
       <CollectionScreen<AdminPost>
         eyebrow="Conteúdo"
         title="Blog"
-        description="A ficha do post fica aqui. Os blocos (citação, imagem, produto) entram no editor da próxima etapa. Arquivar não apaga."
+        description="O editor abre título, blocos, autor e SEO. Arquivar não apaga o post."
         resource="posts"
         newHref="/admin/blog/novo"
         editHref={(item) => `/admin/blog/${item.id}`}

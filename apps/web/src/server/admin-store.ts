@@ -44,6 +44,16 @@ export function readAdminDb(): AdminDb {
   }
 }
 
+/** Leitura da vitrine. Não cria nem regrava o arquivo. */
+export function peekAdminDb(): AdminDb | null {
+  try {
+    const parsed = JSON.parse(readFileSync(/*turbopackIgnore: true*/ storeFile(), "utf8")) as unknown;
+    return migrateAdminDb(parsed);
+  } catch {
+    return null;
+  }
+}
+
 export function writeAdminDb(db: AdminDb): void {
   const file = storeFile();
   mkdirSync(path.dirname(file), { recursive: true });

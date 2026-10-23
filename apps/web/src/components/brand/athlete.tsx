@@ -6,6 +6,7 @@ export function AthletePoster({
   accent,
   city,
   variant = "luna",
+  compact = false,
   className,
 }: {
   name: string;
@@ -13,6 +14,7 @@ export function AthletePoster({
   accent: string;
   city: string;
   variant?: "luna" | "caio" | "nanda" | "theo";
+  compact?: boolean;
   className?: string;
 }) {
   return (
@@ -26,13 +28,15 @@ export function AthletePoster({
         {variant === "nanda" ? <Nanda accent={accent} /> : null}
         {variant === "theo" ? <Theo accent={accent} /> : null}
       </svg>
-      <figcaption className="absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-black via-black/70 to-transparent p-4">
-        <div>
-          <p className="font-display text-5xl leading-none text-white">{name}</p>
-          <p className="text-sm text-white/80">{handle} · {city}</p>
-        </div>
-        <span className="rounded-full bg-lime px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-primary-foreground">Collab</span>
-      </figcaption>
+      {compact ? null : (
+        <figcaption className="absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-black via-black/70 to-transparent p-4">
+          <div>
+            <p className="font-display text-5xl leading-none text-white">{name}</p>
+            <p className="text-sm text-white/80">{handle} · {city}</p>
+          </div>
+          <span className="rounded-full bg-lime px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-primary-foreground">Collab</span>
+        </figcaption>
+      )}
     </figure>
   );
 }

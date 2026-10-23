@@ -1,11 +1,13 @@
 "use client";
 
+import { BlockEditor } from "@/components/admin/block-editor";
 import { CheckRow, Field, ImageUrlField, Notice, Section, SelectField, TextArea } from "@/components/admin/fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError } from "@/lib/admin-fetch";
 import type { AdminAuthor, AdminCoupon, AdminInfluencer, AdminList, AdminOne, AdminOrder, AdminPost, AdminProduct } from "@/lib/admin-types";
 import { ORDER_STATUSES, POST_STATUSES, slugify } from "@/lib/admin-types";
+import { blockProblem, readyBlocks } from "@/lib/post-blocks";
 import { formatBRL } from "@pulso/domain";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -237,19 +239,28 @@ export function PostEditor({ postId }: { postId: string }) {
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!post) return;
-    const { blocks, ...meta } = post;
-    const payload = { ...meta, slug: post.slug || slugify(post.title), blocks: isNew ? blocks : undefined };
+    const problem = blockProblem(post.blocks);
+    if (problem) {
+      setNotice(null);
+      setError(problem);
+      return;
+    }
+    const payload = {
+      ...post,
+      slug: post.slug || slugify(post.title),
+      blocks: readyBlocks(post.blocks),
+    };
     setError(null);
     try {
       if (isNew || !post.id) {
-        const created = await adminFetch<AdminOne<AdminPost>>("posts", { method: "POST", body: JSON.stringify({ ...payload, blocks: [] }) });
+        const created = await adminFetch<AdminOne<AdminPost>>("posts", { method: "POST", body: JSON.stringify(payload) });
         router.push(`/admin/blog/${created.item.id}`);
         router.refresh();
         return;
       }
       const saved = await adminFetch<AdminOne<AdminPost>>(`posts/${post.id}`, { method: "PATCH", body: JSON.stringify(payload) });
       setPost(saved.item);
-      setNotice("Ficha salva. Os blocos continuam no lugar.");
+      setNotice("Post salvo.");
     } catch (caught) {
       setError(caught instanceof AdminApiError ? caught.message : "Não deu para salvar.");
     }
@@ -258,14 +269,18 @@ export function PostEditor({ postId }: { postId: string }) {
   if (!post) return error ? <Notice tone="error">{error}</Notice> : <p className="text-sm text-muted-foreground">Carregando…</p>;
 
   return (
-    <form className="mx-auto max-w-3xl space-y-4" onSubmit={(event) => void save(event)}>
+    <form className="mx-auto max-w-5xl space-y-4" onSubmit={(event) => void save(event)}>
       <Link href="/admin/blog" className="text-sm text-lime">Voltar</Link>
       <h1 className="font-display text-6xl leading-none">{isNew ? "Novo post" : post.title}</h1>
       <Notice tone="warn">Sem promessa de saúde, sem cura e sem número de registro real. O rótulo segue NI-DEMO.</Notice>
       {error ? <Notice tone="error">{error}</Notice> : null}
       {notice ? <Notice tone="ok">{notice}</Notice> : null}
       <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Título"><Input aria-label="Título" value={post.title} onChange={(event) => update({ title: event.target.value })} required /></Field>
+        <Field label="Título"><Input aria-label="Título" value={post.title} onChange={(event) => {
+          const title = event.target.value;
+          const auto = !post.slug || post.slug === slugify(post.title);
+          update({ title, slug: auto ? slugify(title) : post.slug });
+        }} required /></Field>
         <Field label="Slug"><Input aria-label="Slug" value={post.slug} onChange={(event) => update({ slug: slugify(event.target.value) })} /></Field>
         <Field label="Categoria"><Input aria-label="Categoria do post" value={post.category} onChange={(event) => update({ category: event.target.value })} /></Field>
         <SelectField label="Status" value={post.status} onChange={(status) => update({ status: status as AdminPost["status"] })}>
@@ -291,12 +306,7 @@ export function PostEditor({ postId }: { postId: string }) {
         <Field label="Imagem de compartilhamento"><Input aria-label="Imagem de compartilhamento" value={post.shareImageUrl ?? ""} onChange={(event) => update({ shareImageUrl: event.target.value || null })} /></Field>
       </Section>
       <Section title="Blocos">
-        <p className="text-sm text-muted-foreground">{post.blocks.length} bloco(s). O editor visual entra na etapa de collab e blog. Salvar esta ficha não apaga o que já está escrito.</p>
-        <ul className="space-y-1 text-sm">
-          {post.blocks.map((block) => (
-            <li key={block.id} className="text-muted-foreground">{block.type}{block.type === "paragrafo" || block.type === "titulo" || block.type === "citacao_lateral" ? ` — ${block.text.slice(0, 80)}` : ""}</li>
-          ))}
-        </ul>
+        <BlockEditor blocks={post.blocks} onChange={(blocks) => update({ blocks })} />
       </Section>
       <Button type="submit" className="rounded-full">Salvar</Button>
     </form>
