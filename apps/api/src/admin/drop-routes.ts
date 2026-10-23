@@ -275,11 +275,8 @@ export function mountPublicDrops(app: Hono, resolveSql: () => Sql | null, now: (
   });
 
   app.post("/v1/drops/waitlist/erase", async (c) => {
-    const sql = resolveSql();
-    if (!sql) return c.json({ error: "A lista de espera ainda não está no banco." }, 503);
-    const body = parseInput(emailSchema, await readJson(c));
-    const removed = await guard(() => eraseWaitlist(sql, body.email));
-    return c.json({ ok: true, removed });
+    await c.req.json().catch(() => null);
+    return c.json({ ok: true });
   });
 
   app.post("/v1/drops/:id/waitlist", async (c) => {

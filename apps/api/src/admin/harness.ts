@@ -76,7 +76,8 @@ export async function resetTables(sql: SqlClient): Promise<void> {
   await sql.query("update admin_users set failed_attempts = 0, locked_until = null");
   await sql.query(
     `truncate products, coupons, audit_log, orders, customers, influencers, posts, authors, promotions, quiz_questions,
-            scratch_prizes, banners, ugc_posts, video_spots, reviews, loyalty_settings, subscriptions, drops, drop_waitlist
+            scratch_prizes, banners, ugc_posts, video_spots, reviews, loyalty_settings, subscriptions, drops, drop_waitlist,
+            admin_sessions
      restart identity cascade`,
   );
 }
@@ -87,8 +88,10 @@ export async function login(app: ReturnType<typeof createAdminApp>, email: strin
     headers: { "content-type": "application/json", "x-forwarded-for": ip },
     body: JSON.stringify({ email, password }),
   });
-  const body = (await response.json()) as { token?: string; user?: { role: string }; error?: string };
-  return { response, body, token: body.token ?? "" };
+  const body = (await response.json()) as { user?: { role: string }; error?: string };
+  const cookie = response.headers.get("set-cookie") ?? "";
+  const match = /pulso_admin=([^;]+)/.exec(cookie);
+  return { response, body, token: match?.[1] ? decodeURIComponent(match[1]) : "" };
 }
 
 export function auth(token: string, ip = "203.0.113.10"): Record<string, string> {

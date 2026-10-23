@@ -10,6 +10,7 @@ export interface SessionClaims {
   name: string;
   role: Role;
   exp: number;
+  jti: string;
 }
 
 function b64url(value: Buffer | string): string {
@@ -31,7 +32,7 @@ export function readSession(token: string, secret: string, now = new Date()): Se
   if (left.length !== right.length || !timingSafeEqual(left, right)) return null;
   try {
     const claims = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as SessionClaims;
-    if (!claims.sub || !claims.email || !claims.role || !claims.exp) return null;
+    if (!claims.sub || !claims.email || !claims.role || !claims.exp || !claims.jti) return null;
     if (claims.exp * 1000 <= now.getTime()) return null;
     return claims;
   } catch {
@@ -54,9 +55,12 @@ export function cookieSecureFromEnv(env: NodeJS.ProcessEnv = process.env): boole
   return env.ADMIN_COOKIE_SECURE !== "false";
 }
 
+export const EXAMPLE_SESSION_SECRET = "pulso-dev-session-change-me";
+
 export function sessionSecret(env: NodeJS.ProcessEnv, override?: string): string | null {
   const secret = override ?? env.ADMIN_SESSION_SECRET;
   if (!secret || secret.length < 16) return null;
+  if (env.NODE_ENV === "production" && secret === EXAMPLE_SESSION_SECRET) return null;
   return secret;
 }
 

@@ -1,7 +1,8 @@
 import type { SqlClient } from "@pulso/db/sql";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { auth, createAdminApp, createTestDb, login, resetTables, sampleProduct } from "./harness";
-import type { SignedUpload } from "./uploads";
+import { HttpError } from "./http";
+import { assertUploadPath, type SignedUpload } from "./uploads";
 
 let sql: SqlClient;
 let close: () => Promise<void>;
@@ -30,6 +31,24 @@ describe("produtos, cupons e fotos", () => {
       body: JSON.stringify(sampleProduct()),
     });
     expect(created.status).toBe(201);
+    const again = await app.request("/v1/admin/products", {
+      method: "POST",
+      headers: auth(owner.token, "203.0.113.40"),
+      body: JSON.stringify(sampleProduct()),
+    });
+    expect(again.status).toBe(409);
+    const clash = await app.request("/v1/admin/products", {
+      method: "POST",
+      headers: auth(owner.token, "203.0.113.40"),
+      body: JSON.stringify({
+        ...sampleProduct("img-dup"),
+        images: [
+          { id: "foto-igual", flavorId: "limao", url: null, alt: "Pote verde", position: 0, isCover: true, fallbackHex: "#d6ff3c" },
+          { id: "foto-igual", flavorId: "limao", url: null, alt: "Outro ângulo", position: 1, isCover: false, fallbackHex: "#101012" },
+        ],
+      }),
+    });
+    expect(clash.status).toBe(409);
     const item = (await created.json()).item;
     expect(item.images[0]).toMatchObject({ url: null, fallbackHex: "#d6ff3c", alt: "Pote verde" });
     expect(item.status).toBe("publicado");
@@ -128,5 +147,12 @@ describe("produtos, cupons e fotos", () => {
       body: JSON.stringify({ contentType: "image/png", alt: "Pote" }),
     });
     expect(denied.status).toBe(403);
+    expect(() => assertUploadPath("pulso/foto.jpg")).not.toThrow();
+    expect(() => assertUploadPath("pulso/foto.jpeg")).not.toThrow();
+    expect(() => assertUploadPath("pulso/foto.png")).not.toThrow();
+    expect(() => assertUploadPath("pulso/foto.webp")).not.toThrow();
+    expect(() => assertUploadPath("pulso/../segredo.jpg")).toThrow(HttpError);
+    expect(() => assertUploadPath("../pulso/foto.jpg")).toThrow(HttpError);
+    expect(() => assertUploadPath("pulso/foto.gif")).toThrow(HttpError);
   });
 });

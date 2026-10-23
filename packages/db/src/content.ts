@@ -8,6 +8,10 @@ function iso(value: Date | string | null | undefined): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function pgCode(error: unknown): string {
+  return typeof error === "object" && error && "code" in error ? String((error as { code: unknown }).code) : "";
+}
+
 function num(value: unknown, fallback = 0): number {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -294,6 +298,17 @@ export async function saveAuthor(sql: Sql, input: AuthorRow): Promise<AuthorRow>
   return saved;
 }
 
+export async function deleteAuthor(sql: Sql, id: string): Promise<void> {
+  try {
+    const rows = await sql.query<{ id: string }>("delete from authors where id = $1 returning id", [id]);
+    if (!rows.rows.length) throw new CatalogError(404, "Autor não encontrado.", "NOT_FOUND");
+  } catch (error) {
+    if (error instanceof CatalogError) throw error;
+    if (pgCode(error) === "23503") throw new CatalogError(409, "Este autor está em uso.", "IN_USE");
+    throw error;
+  }
+}
+
 async function loadBlocks(sql: Sql, slugs: string[]): Promise<Map<string, PostBlock[]>> {
   const rows = await sql.query<{ id: string; post_id: string; position: number; type: string; content: Record<string, unknown> }>(
     "select id, post_id, position, type, content from post_blocks where post_id = any($1::text[]) order by position",
@@ -322,7 +337,7 @@ export async function listPosts(sql: Sql, influencer?: string): Promise<PostAdmi
     author_id: string | null;
     influencer_id: string | null;
     status: PostAdmin["status"];
-    published_at: Date | string;
+    published_at: Date | string | null;
     read_minutes: number | null;
     seo_title: string | null;
     seo_description: string | null;
@@ -330,7 +345,7 @@ export async function listPosts(sql: Sql, influencer?: string): Promise<PostAdmi
   }>(
     `select slug, title, excerpt, category, cover_url, cover_hex, author_id, influencer_id, status, published_at,
             read_minutes, seo_title, seo_description, share_image_url
-     from posts ${where} order by published_at desc`,
+     from posts ${where} order by published_at desc nulls last`,
     params,
   );
   const blocks = await loadBlocks(sql, rows.rows.map((row) => row.slug));
@@ -355,7 +370,7 @@ export async function listPosts(sql: Sql, influencer?: string): Promise<PostAdmi
 }
 
 export async function savePost(sql: Sql, input: PostAdmin, authorName: string): Promise<PostAdmin> {
-  const published = input.publishedAt ?? new Date().toISOString().slice(0, 10);
+  const published = input.publishedAt || null;
   await sql.query(
     `insert into posts (
        slug, title, published_at, payload, excerpt, category, cover_url, cover_hex, author_name, influencer_id,

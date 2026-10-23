@@ -10,7 +10,7 @@ A documentação para quem vai evoluir o código está em [docs/](docs/README.md
 
 O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 6, em cima das etapas 1 a 5.
 
-Operação: `/admin` entra com a senha do servidor (`ADMIN_PASSWORD`, padrão `pulso-admin` no `.env`) e edita produtos e cupons. A senha não vai para o JavaScript. Na conta, “Baixar meus dados” gera um JSON sem a senha. “Apagar conta neste aparelho” tira o usuário deste navegador. O guia de publicação está em [docs/deploy.md](docs/deploy.md).
+Operação: `/admin` entra com a senha do servidor (`ADMIN_PASSWORD`). O valor de exemplo `pulso-admin` não entra. A senha não vai para o JavaScript. Na conta, “Baixar meus dados” gera um JSON sem a senha. “Apagar conta neste aparelho” tira o usuário deste navegador. O guia de publicação está em [docs/deploy.md](docs/deploy.md).
 
 Conteúdo: `/conteudo` lista o que está publicado. Na home, a faixa “No ar” troca de quadro e mostra a transcrição do spot. A foto de avaliação abre num diálogo e é um bloco de cor, com texto alternativo.
 
@@ -32,7 +32,7 @@ O protótipo anterior já deixava a maior parte das telas navegáveis. Cada etap
 - O site em [http://127.0.0.1:43123](http://127.0.0.1:43123)
 - A API em [http://127.0.0.1:8787/health](http://127.0.0.1:8787/health), se você subir o backend
 - Uma conta de demonstração: `ana@pulso.dev` / `pulso123`
-- A tela `/admin` com a senha de `ADMIN_PASSWORD` (o exemplo local é `pulso-admin`)
+- A tela `/admin` com a senha de `ADMIN_PASSWORD` (troque o exemplo `pulso-admin`; ele é recusado)
 
 O site funciona **sem Docker e sem banco**. O catálogo mora no código. Postgres e Redis são opcionais e servem para a API ler os mesmos produtos de um banco de verdade.
 
@@ -247,12 +247,12 @@ Abra o `.env` num editor de texto. Cada linha `NOME=valor` é uma variável. Lin
 | `NEXT_PUBLIC_SITE_URL` | `http://127.0.0.1:43123` | URL pública do site, usada em SEO (sitemap, metadados). Se mudar `WEB_PORT`, mude aqui também. Variáveis `NEXT_PUBLIC_` entram no JavaScript do navegador. |
 | `NEXT_PUBLIC_PIX_DISCOUNT` | `10` | Porcentagem inteira do desconto de Pix **mostrada** na interface. A conta do carrinho usa a regra do pacote `@pulso/domain` (também 10%). |
 | `NEXT_PUBLIC_FREE_SHIPPING_CENTS` | `29900` | Piso do frete PAC grátis em **centavos**. `29900` é R$ 299,00. Níveis Bruto e Lenda podem baixar esse piso na regra de domínio. |
-| `ADMIN_PASSWORD` | `pulso-admin` | Senha do `/admin`. **Só o servidor lê.** Não use o prefixo `NEXT_PUBLIC_`. O navegador manda a senha para o route handler e recebe um cookie httpOnly. Não reuse em produção. |
+| `ADMIN_PASSWORD` | (defina uma senha) | Senha de fallback do `/admin` quando a API está fora. **Só o servidor lê.** Não use o prefixo `NEXT_PUBLIC_`. O valor de exemplo `pulso-admin` é recusado. O navegador manda a senha para o route handler e recebe um cookie httpOnly. |
 | `API_PORT` | `8787` | Porta da API Hono. |
 | `API_DATA_SOURCE` | `mock` | `mock`: a API responde com o catálogo em memória. `postgres`: a API monta o produto pelas tabelas normalizadas (`product_flavors`, `product_variants`, rótulo, fotos). A coluna `products.payload` deixa de ser a leitura. Aí você precisa do Docker, da migração e do seed. |
 | `DATABASE_URL` | `postgres://pulso:pulso@127.0.0.1:5432/pulso` | Conexão do Postgres local. Usuário `pulso`, senha `pulso`, banco `pulso`, porta `5432`. Só vale para esta máquina. |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Cache opcional da API (chave `catalog:products`, 60 segundos). Se apagar a linha, a API não tenta Redis. |
-| `ADMIN_SESSION_SECRET` | `pulso-dev-session-change-me` | Segredo que assina a sessão do admin (12 horas). O site usa o cookie `pulso_admin_session`. A API usa o cookie `pulso_admin` e o mesmo valor como Bearer. Só o servidor lê. Troque antes de publicar. |
+| `ADMIN_SESSION_SECRET` | (troque o exemplo) | Segredo que assina a sessão do admin (12 horas). O site usa o cookie `pulso_admin_session`. A API usa o cookie `pulso_admin`. O painel lê esse cookie e manda Bearer. Só o servidor lê. Em produção o valor `pulso-dev-session-change-me` não assina. |
 | `PAYMENT_GATEWAY` | `auto` | Sandbox. `auto` manda Pix e boleto ao Mercado Pago e cartão à Pagar.me. `mercadopago` ou `pagarme` força o gateway. Não coloque token real. A confirmação mostra um id `mp_sandbox_` ou `pm_sandbox_`. |
 
 O arquivo `.env` está no `.gitignore`. Não faça commit dele.
@@ -481,7 +481,7 @@ No Windows PowerShell: `Remove-Item -Recurse -Force apps/web/.next`.
 Esperado neste protótipo. As páginas leem `@pulso/data`. A função pronta para a troca é `loadStorefront` em `apps/web/src/server/catalog.ts`. A API, sim, obedece `API_DATA_SOURCE`.
 
 **`/admin` recusa a senha.**  
-A senha é `ADMIN_PASSWORD` no `.env` da raiz, lida só pelo servidor. Reinicie `pnpm dev` depois de editar. O exemplo é `pulso-admin`. O cookie da sessão precisa de `ADMIN_SESSION_SECRET`.
+A senha é `ADMIN_PASSWORD` no `.env` da raiz, lida só pelo servidor. Reinicie `pnpm dev` depois de editar. O exemplo `pulso-admin` não entra: troque por outra senha. O cookie da sessão precisa de `ADMIN_SESSION_SECRET` diferente do exemplo antes de publicar.
 
 **Carrinho ou login “fantasma”.**  
 O estado fica no `localStorage`, chave `pulso-store`. Limpe o armazenamento do site no navegador (seção 10).

@@ -39,6 +39,8 @@ test("a senha do adaptador só confere com ADMIN_PASSWORD", () => {
   assert.equal(adapterPasswordOk("outra").ok, false);
   delete process.env.ADMIN_PASSWORD;
   assert.equal(adapterPasswordOk("pulso-teste").ok, false);
+  process.env.ADMIN_PASSWORD = "pulso-admin";
+  assert.equal(adapterPasswordOk("pulso-admin").ok, false);
   if (previous === undefined) delete process.env.ADMIN_PASSWORD;
   else process.env.ADMIN_PASSWORD = previous;
 });

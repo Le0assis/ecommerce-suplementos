@@ -59,4 +59,11 @@ describe("schema", () => {
     expect(sql).not.toContain("phone");
     expect(sql).not.toContain("user_agent");
   });
+
+  it("revoga a sessão do admin e deixa o rascunho sem data", () => {
+    const sql = readFileSync(resolve(sqlDir, "006_sessoes.sql"), "utf8");
+    expect(sql).toContain("create table if not exists admin_sessions");
+    expect(sql).toContain("revoked_at");
+    expect(sql).toContain("alter table posts alter column published_at drop not null");
+  });
 });

@@ -128,4 +128,57 @@ describe("promoções, quiz, ajustes e papéis", () => {
     const pub = await app.request("/v1/settings/loyalty");
     expect((await pub.json()).item.freeShippingCents).toBe(29900);
   });
+
+  it("aceita só link seguro no banner e apaga categoria sem uso", async () => {
+    const app = createAdminApp(sql);
+    const editor = await login(app, "editor@pulso.test", "senha-editor-pulso", "203.0.113.54");
+    const headers = auth(editor.token, "203.0.113.54");
+    const banner = {
+      slot: "hero",
+      title: "Faixa",
+      imageUrl: "https://cdn.example/faixa.jpg",
+    };
+    for (const href of ["javascript:alert(1)", "data:text/html,hi", "http://pulso.example/loja", "//pulso.example/loja"]) {
+      const rejected = await app.request("/v1/admin/banners", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ ...banner, href }),
+      });
+      expect(rejected.status).toBe(400);
+    }
+    const path = await app.request("/v1/admin/banners", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ...banner, href: "/loja" }),
+    });
+    expect(path.status).toBe(201);
+    const https = await app.request("/v1/admin/banners", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ...banner, title: "Externo", href: "https://pulso.example/loja" }),
+    });
+    expect(https.status).toBe(201);
+    const created = await app.request("/v1/admin/categories", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ slug: "temporaria", name: "Temporária" }),
+    });
+    expect(created.status).toBe(201);
+    const removed = await app.request("/v1/admin/categories/temporaria", { method: "DELETE", headers });
+    expect(removed.status).toBe(200);
+    const quiz = await app.request("/v1/admin/quiz", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        prompt: "Qual o treino?",
+        answerKey: "treino",
+        position: 0,
+        options: [{ label: "Força", value: "forca" }],
+      }),
+    });
+    expect(quiz.status).toBe(201);
+    const quizId = (await quiz.json()).item.id as string;
+    const dropped = await app.request(`/v1/admin/quiz/${quizId}`, { method: "DELETE", headers });
+    expect(dropped.status).toBe(200);
+  });
 });

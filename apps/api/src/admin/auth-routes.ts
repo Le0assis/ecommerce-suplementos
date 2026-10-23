@@ -1,8 +1,10 @@
 import { writeAudit } from "@pulso/db/audit";
 import { hashPassword, verifyPassword } from "@pulso/db/password";
+import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import { z } from "zod";
 import { clientIp, HttpError, pageQuery, parseInput, readJson, requireActor, type AdminRuntime } from "./http";
+import { openSession, revokeSession, sessionIsLive } from "./live-session";
 import { isRole } from "./permissions";
 import { clearCookie, readSession, sessionCookie, SESSION_SECONDS, signSession, tokenFromRequest } from "./session";
 
@@ -12,8 +14,17 @@ const loginSchema = z.object({
 });
 
 const LOCK_MS = 15 * 60 * 1000;
-const EMAIL_LIMIT = 5;
 const IP_LIMIT = 30;
+
+export function loginBackoffMs(failedAttempts: number): number {
+  if (failedAttempts <= 1) return 0;
+  return Math.min(8_000, 100 * 2 ** Math.min(failedAttempts - 2, 6));
+}
+
+function wait(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const ipHits = new Map<string, { count: number; reset: number }>();
 let dummyHash: string | null = null;
@@ -53,16 +64,6 @@ interface UserRow {
   locked_until: Date | string | null;
 }
 
-function locked(row: UserRow, now: Date): boolean {
-  if (!row.locked_until) return false;
-  return new Date(row.locked_until).getTime() > now.getTime();
-}
-
-function retryAfter(row: UserRow, now: Date): number {
-  if (!row.locked_until) return 900;
-  return Math.max(1, Math.ceil((new Date(row.locked_until).getTime() - now.getTime()) / 1000));
-}
-
 export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
   admin.post("/login", async (c) => {
     const ctx = runtime();
@@ -92,21 +93,18 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
       });
       throw new HttpError(401, "E-mail ou senha não confere.");
     }
-    if (locked(user, now)) {
-      c.header("retry-after", String(retryAfter(user, now)));
-      throw new HttpError(429, "Muitas tentativas de login. Espera alguns minutos.");
-    }
+    const bumped = await ctx.sql.query<{ failed_attempts: number }>(
+      `update admin_users
+       set failed_attempts = failed_attempts + 1, updated_at = now()
+       where id = $1
+       returning failed_attempts`,
+      [user.id],
+    );
+    const attempts = Number(bumped.rows[0]?.failed_attempts ?? 1);
     const ok = await verifyPassword(body.password, user.password_hash);
     if (!ok) {
       recordIp(ip, now.getTime());
-      await ctx.sql.query(
-        `update admin_users
-         set failed_attempts = failed_attempts + 1,
-             locked_until = case when failed_attempts + 1 >= $2 then $3::timestamptz else locked_until end,
-             updated_at = now()
-         where id = $1 and (locked_until is null or locked_until <= now())`,
-        [user.id, EMAIL_LIMIT, new Date(now.getTime() + LOCK_MS).toISOString()],
-      );
+      await wait(loginBackoffMs(attempts));
       await writeAudit(ctx.sql, {
         actorId: null,
         action: "login_failed",
@@ -121,7 +119,9 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
       [user.id],
     );
     const exp = Math.floor(now.getTime() / 1000) + SESSION_SECONDS;
-    const token = signSession({ sub: user.id, email: user.email, name: user.name, role: user.role, exp }, ctx.secret);
+    const jti = randomUUID();
+    await openSession(ctx.sql, jti, user.id, new Date(exp * 1000));
+    const token = signSession({ sub: user.id, email: user.email, name: user.name, role: user.role, exp, jti }, ctx.secret);
     await writeAudit(ctx.sql, {
       actorId: user.id,
       action: "login",
@@ -130,14 +130,16 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
       after: { email: user.email, role: user.role },
     });
     c.header("set-cookie", sessionCookie(token, SESSION_SECONDS, ctx.cookieSecure));
-    return c.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+    return c.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
   });
 
   admin.post("/logout", async (c) => {
     const ctx = runtime();
     const token = tokenFromRequest(c.req.header("authorization"), c.req.header("cookie"));
-    const claims = token ? readSession(token, ctx.secret, ctx.now()) : null;
-    if (claims) {
+    const now = ctx.now();
+    const claims = token ? readSession(token, ctx.secret, now) : null;
+    if (claims && (await sessionIsLive(ctx.sql, claims, now))) {
+      await revokeSession(ctx.sql, claims.jti, now);
       await writeAudit(ctx.sql, {
         actorId: claims.sub,
         action: "logout",
@@ -156,6 +158,7 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
     if (!token) throw new HttpError(401, "Faça login para continuar.");
     const claims = readSession(token, ctx.secret, ctx.now());
     if (!claims) throw new HttpError(401, "Sessão inválida ou vencida.");
+    if (!(await sessionIsLive(ctx.sql, claims, ctx.now()))) throw new HttpError(401, "Sessão inválida ou vencida.");
     const rows = await ctx.sql.query<{ id: string; email: string; name: string; role: string; active: boolean }>(
       "select id, email, name, role, active from admin_users where id = $1",
       [claims.sub],

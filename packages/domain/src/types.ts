@@ -159,6 +159,7 @@ export interface Coupon {
   label: string;
   kind: "percent" | "shipping";
   percent?: number;
+  minCents?: number;
   influencerSlug?: string;
   active: boolean;
 }

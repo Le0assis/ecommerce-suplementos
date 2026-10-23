@@ -3,6 +3,10 @@ import type { Review, UgcPost } from "@pulso/domain";
 import { CatalogError } from "./catalog";
 import type { Sql } from "./sql";
 
+function pgCode(error: unknown): string {
+  return typeof error === "object" && error && "code" in error ? String((error as { code: unknown }).code) : "";
+}
+
 function num(value: unknown, fallback = 0): number {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -46,6 +50,17 @@ export async function saveNamed(sql: Sql, table: "categories" | "goals", input: 
   const saved = rows.find((row) => row.slug === input.slug);
   if (!saved) throw new CatalogError(500, "Registro não voltou depois de gravar.", "SAVE");
   return saved;
+}
+
+export async function deleteNamed(sql: Sql, table: "categories" | "goals", slug: string): Promise<void> {
+  try {
+    const rows = await sql.query<{ slug: string }>(`delete from ${table} where slug = $1 returning slug`, [slug]);
+    if (!rows.rows.length) throw new CatalogError(404, "Registro não encontrado.", "NOT_FOUND");
+  } catch (error) {
+    if (error instanceof CatalogError) throw error;
+    if (pgCode(error) === "23503") throw new CatalogError(409, "Este registro está em uso.", "IN_USE");
+    throw error;
+  }
 }
 
 export interface PromotionInput {
@@ -190,6 +205,17 @@ export async function saveQuizQuestion(sql: Sql, input: QuizQuestion): Promise<Q
   const saved = (await listQuiz(sql)).find((question) => question.id === input.id);
   if (!saved) throw new CatalogError(500, "Pergunta não voltou depois de gravar.", "SAVE");
   return saved;
+}
+
+export async function deleteQuizQuestion(sql: Sql, id: string): Promise<void> {
+  try {
+    const rows = await sql.query<{ id: string }>("delete from quiz_questions where id = $1 returning id", [id]);
+    if (!rows.rows.length) throw new CatalogError(404, "Pergunta não encontrada.", "NOT_FOUND");
+  } catch (error) {
+    if (error instanceof CatalogError) throw error;
+    if (pgCode(error) === "23503") throw new CatalogError(409, "Esta pergunta está em uso.", "IN_USE");
+    throw error;
+  }
 }
 
 export interface LoyaltySettings {

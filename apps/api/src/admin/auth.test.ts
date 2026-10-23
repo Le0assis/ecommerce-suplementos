@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app";
 import { auth, createAdminApp, createTestDb, login, resetTables } from "./harness";
+import { loginBackoffMs } from "./auth-routes";
+import { clientAddress } from "./http";
+import { sessionSecret } from "./session";
 import type { SqlClient } from "@pulso/db/sql";
 
 let sql: SqlClient;
@@ -23,16 +26,17 @@ beforeEach(async () => {
 describe("login do admin", () => {
   it("grava cookie httpOnly por 12 h e devolve o token que o painel usa", async () => {
     const app = createAdminApp(sql);
-    const { response, body } = await login(app, "dono@pulso.test", "senha-dona-pulso");
+    const { response, body, token } = await login(app, "dono@pulso.test", "senha-dona-pulso");
     expect(response.status).toBe(200);
     expect(body.user).toMatchObject({ email: "dono@pulso.test", role: "dono" });
+    expect(body).not.toHaveProperty("token");
     const cookie = response.headers.get("set-cookie") ?? "";
     expect(cookie).toContain("pulso_admin=");
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toContain("Secure");
     expect(cookie).toContain("SameSite=Lax");
     expect(cookie).toContain("Max-Age=43200");
-    const me = await app.request("/v1/admin/me", { headers: auth(body.token ?? "") });
+    const me = await app.request("/v1/admin/me", { headers: auth(token) });
     expect(me.status).toBe(200);
     const rows = await sql.query<{ after_data: { email?: string; password?: string } }>(
       "select after_data from audit_log where action = 'login'",
@@ -49,17 +53,21 @@ describe("login do admin", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 
-  it("trava o e-mail depois de 5 senhas erradas", async () => {
+  it("atrasa a senha errada e ainda entra com a senha certa", async () => {
     const app = createAdminApp(sql);
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
       const failed = await login(app, "dono@pulso.test", "senha-errada-pulso", "203.0.113.20");
       expect(failed.response.status).toBe(401);
     }
-    const locked = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.20");
-    expect(locked.response.status).toBe(429);
-    expect(locked.response.headers.get("retry-after")).toBeTruthy();
-    const other = await login(app, "editor@pulso.test", "senha-editor-pulso", "203.0.113.21");
-    expect(other.response.status).toBe(200);
+    const counted = await sql.query<{ failed_attempts: number }>("select failed_attempts from admin_users where email = 'dono@pulso.test'");
+    expect(counted.rows[0]?.failed_attempts).toBe(4);
+    const opened = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.20");
+    expect(opened.response.status).toBe(200);
+    const reset = await sql.query<{ failed_attempts: number; locked_until: string | null }>(
+      "select failed_attempts, locked_until from admin_users where email = 'dono@pulso.test'",
+    );
+    expect(reset.rows[0]?.failed_attempts).toBe(0);
+    expect(reset.rows[0]?.locked_until).toBeNull();
   });
 
   it("separa papéis e rejeita cookie adulterado", async () => {
@@ -82,6 +90,8 @@ describe("login do admin", () => {
     const logout = await app.request("/v1/admin/logout", { method: "POST", headers: auth(owner.token, "203.0.113.32") });
     expect(logout.status).toBe(204);
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+    const again = await app.request("/v1/admin/me", { headers: auth(owner.token, "203.0.113.32") });
+    expect(again.status).toBe(401);
   });
 
   it("recusa origem desconhecida e login sem segredo", async () => {
@@ -102,5 +112,30 @@ describe("login do admin", () => {
     });
     expect(missing.status).toBe(503);
     if (previous) process.env.ADMIN_SESSION_SECRET = previous;
+    expect(sessionSecret({ NODE_ENV: "production", ADMIN_SESSION_SECRET: "pulso-dev-session-change-me" })).toBeNull();
+    expect(sessionSecret({ NODE_ENV: "test", ADMIN_SESSION_SECRET: "pulso-dev-session-change-me" })).toBe("pulso-dev-session-change-me");
+    expect(loginBackoffMs(1)).toBe(0);
+    expect(loginBackoffMs(3)).toBeGreaterThan(loginBackoffMs(2));
+    expect(clientAddress({
+      socketAddress: "203.0.113.8",
+      forwardedFor: "198.51.100.9, 203.0.113.8",
+      vercelForwardedFor: null,
+      trustedProxies: [],
+      vercel: false,
+    })).toBe("203.0.113.8");
+    expect(clientAddress({
+      socketAddress: "203.0.113.8",
+      forwardedFor: "198.51.100.9, 203.0.113.8",
+      vercelForwardedFor: null,
+      trustedProxies: ["203.0.113.8"],
+      vercel: false,
+    })).toBe("198.51.100.9");
+    expect(clientAddress({
+      socketAddress: "203.0.113.8",
+      forwardedFor: "1.1.1.1",
+      vercelForwardedFor: "198.51.100.20, 203.0.113.8",
+      trustedProxies: ["203.0.113.8"],
+      vercel: true,
+    })).toBe("198.51.100.20");
   });
 });

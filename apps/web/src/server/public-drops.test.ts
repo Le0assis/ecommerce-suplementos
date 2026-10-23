@@ -43,7 +43,7 @@ test("o catálogo usa o estoque do sabor e não inventa o lote", () => {
   assert.equal(scarcityOf(20, 10)?.percent, null);
 });
 
-test("a lista guarda o e-mail com consentimento e a saída apaga", async () => {
+test("a lista guarda o e-mail com consentimento e a saída pública não apaga", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "pulso-wait-"));
   dirs.push(dir);
   process.env.DROP_WAITLIST_PATH = path.join(dir, "lista.json");
@@ -62,7 +62,9 @@ test("a lista guarda o e-mail com consentimento e a saída apaga", async () => {
   assert.equal(raw.entries[0]?.email, "lista@pulso.dev");
   assert.equal(raw.entries[0]?.consentOrigin, "pagina_drops:v1");
   const erased = await eraseDropWaitlist({ email: "lista@pulso.dev" });
-  assert.equal(erased.body.removed, 1);
+  assert.deepEqual(erased.body, { ok: true });
   const after = JSON.parse(readFileSync(process.env.DROP_WAITLIST_PATH, "utf8")) as { entries: unknown[] };
-  assert.equal(after.entries.length, 0);
+  assert.equal(after.entries.length, 1);
+  const stranger = await eraseDropWaitlist({ email: "outra@pulso.dev" });
+  assert.deepEqual(stranger.body, { ok: true });
 });

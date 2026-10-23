@@ -30,8 +30,14 @@ describe("autores, blocos e fotos do influencer", () => {
       body: JSON.stringify({ id: "redacao", name: "Redação PULSO", bio: "Textos da casa." }),
     });
     expect(author.status).toBe(201);
-    const denied = await app.request("/v1/admin/authors/redacao", { method: "DELETE", headers });
-    expect(denied.status).toBe(409);
+    const removedAuthor = await app.request("/v1/admin/authors/redacao", { method: "DELETE", headers });
+    expect(removedAuthor.status).toBe(200);
+    const restored = await app.request("/v1/admin/authors", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ id: "redacao", name: "Redação PULSO", bio: "Textos da casa." }),
+    });
+    expect(restored.status).toBe(201);
     const influencer = await app.request("/v1/admin/influencers", {
       method: "POST",
       headers,
@@ -76,6 +82,21 @@ describe("autores, blocos e fotos do influencer", () => {
       }),
     });
     expect(post.status).toBe(201);
+    const usedAuthor = await app.request("/v1/admin/authors/redacao", { method: "DELETE", headers });
+    expect(usedAuthor.status).toBe(409);
+    const draft = await app.request("/v1/admin/posts", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        slug: "rascunho-sem-data",
+        title: "Ainda sem data",
+        status: "rascunho",
+        blocks: [{ type: "paragrafo", text: "Rascunho." }],
+      }),
+    });
+    expect(draft.status).toBe(201);
+    const draftRow = await sql.query<{ published_at: string | null }>("select published_at from posts where slug = 'rascunho-sem-data'");
+    expect(draftRow.rows[0]?.published_at).toBeNull();
     const listed = await app.request("/v1/posts?influencer=luna-teste");
     const posts = (await listed.json()).posts;
     expect(posts).toHaveLength(1);

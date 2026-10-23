@@ -58,15 +58,7 @@ function remember(dropId: string, email: string, consentAt: string): { already: 
   return { already: false };
 }
 
-function forget(email: string): number {
-  const data = readFile();
-  const next = data.entries.filter((entry) => entry.email !== email);
-  const removed = data.entries.length - next.length;
-  if (removed) writeFile({ entries: next });
-  return removed;
-}
-
-async function postApi(path: string, body: unknown): Promise<{ status: number; body: { error?: string; already?: boolean; ok?: boolean; removed?: number } } | null> {
+async function postApi(path: string, body: unknown): Promise<{ status: number; body: { error?: string; already?: boolean; ok?: boolean } } | null> {
   try {
     const response = await fetch(`${apiBase()}${path}`, {
       method: "POST",
@@ -74,7 +66,7 @@ async function postApi(path: string, body: unknown): Promise<{ status: number; b
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(800),
     });
-    const payload = (await response.json().catch(() => ({}))) as { error?: string; already?: boolean; ok?: boolean; removed?: number };
+    const payload = (await response.json().catch(() => ({}))) as { error?: string; already?: boolean; ok?: boolean };
     return { status: response.status, body: payload };
   } catch {
     return null;
@@ -96,13 +88,7 @@ export async function joinDropWaitlist(dropId: string, input: { email?: unknown;
   return { status: local.already ? 200 : 201, body: { ok: true, already: local.already, source: "adapter" } };
 }
 
-export async function eraseDropWaitlist(input: { email?: unknown }): Promise<{ status: number; body: { ok?: boolean; removed?: number; error?: string; source?: string } }> {
-  const email = normalizeEmail(input.email);
-  if (!email) return { status: 400, body: { error: "E-mail inválido." } };
-  const api = await postApi("/v1/drops/waitlist/erase", { email });
-  const local = forget(email);
-  if (api && api.status !== 503 && api.status < 400) {
-    return { status: 200, body: { ok: true, removed: Math.max(local, api.body.removed ?? 0), source: "api" } };
-  }
-  return { status: 200, body: { ok: true, removed: local, source: "adapter" } };
+export async function eraseDropWaitlist(input: { email?: unknown }): Promise<{ status: number; body: { ok: true } }> {
+  void input;
+  return { status: 200, body: { ok: true } };
 }

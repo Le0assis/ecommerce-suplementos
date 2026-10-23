@@ -56,7 +56,19 @@ function resolveCoupon(code: string, list: Coupon[], stored: AdminCoupon | null,
   return findCoupon(code, list);
 }
 
+function assertProductionDataSource(): void {
+  if (process.env.NODE_ENV !== "production") return;
+  if (process.env.API_DATA_SOURCE === "postgres" && process.env.DATABASE_URL) return;
+  throw new Error("Em produção a API exige API_DATA_SOURCE=postgres e DATABASE_URL.");
+}
+
 export function createApp(options: AdminAppOptions = {}): Hono {
+  assertProductionDataSource();
+  const dataSql = (): Sql | null => {
+    if (options.sql) return options.sql;
+    if (process.env.API_DATA_SOURCE === "postgres" && process.env.DATABASE_URL) return fromPgPool(getPool());
+    return null;
+  };
   const app = new Hono();
 
   app.use("*", async (c, next) => {
@@ -98,7 +110,8 @@ app.get("/v1/products/:slug", async (c) => {
   const loaded = await loadProducts(options.sql);
   const product = loaded.products.find((item) => item.slug === c.req.param("slug"));
   if (!product) return c.json({ error: "Produto não encontrado." }, 404);
-  const reviews = options.sql ? await readPublicReviews(options.sql, product.slug) : getReviews(product.slug);
+  const reviewSql = dataSql();
+  const reviews = reviewSql ? await readPublicReviews(reviewSql, product.slug) : getReviews(product.slug);
   return c.json({ source: loaded.source, product, reviews });
 });
 
@@ -113,54 +126,62 @@ app.get("/v1/products/:slug", async (c) => {
 });
 
   app.get("/v1/influencers", async (c) => {
-    if (!options.sql) return c.json({ influencers });
-    const rows = await listInfluencers(options.sql, false);
+    const sql = dataSql();
+    if (!sql) return c.json({ influencers });
+    const rows = await listInfluencers(sql, false);
     return c.json({ influencers: rows.map(toPublicInfluencer) });
   });
   app.get("/v1/influencers/:slug", async (c) => {
-    if (!options.sql) {
+    const sql = dataSql();
+    if (!sql) {
       const influencer = getInfluencer(c.req.param("slug"));
       if (!influencer) return c.json({ error: "Atleta não encontrado." }, 404);
       return c.json({ influencer });
     }
-    const row = (await listInfluencers(options.sql, false)).find((item) => item.slug === c.req.param("slug"));
+    const row = (await listInfluencers(sql, false)).find((item) => item.slug === c.req.param("slug"));
     if (!row) return c.json({ error: "Atleta não encontrado." }, 404);
     return c.json({ influencer: toPublicInfluencer(row) });
   });
   app.get("/v1/posts", async (c) => {
-    if (!options.sql) return c.json({ posts });
-    return c.json({ posts: await readPublicPosts(options.sql, c.req.query("influencer") || undefined) });
+    const sql = dataSql();
+    if (!sql) return c.json({ posts });
+    return c.json({ posts: await readPublicPosts(sql, c.req.query("influencer") || undefined) });
   });
   app.get("/v1/posts/:slug", async (c) => {
-    if (!options.sql) {
+    const sql = dataSql();
+    if (!sql) {
       const post = getPost(c.req.param("slug"));
       if (!post) return c.json({ error: "Texto não encontrado." }, 404);
       return c.json({ post });
     }
-    const post = (await readPublicPosts(options.sql)).find((item) => item.slug === c.req.param("slug"));
+    const post = (await readPublicPosts(sql)).find((item) => item.slug === c.req.param("slug"));
     if (!post) return c.json({ error: "Texto não encontrado." }, 404);
     return c.json({ post });
   });
   app.get("/v1/ugc", async (c) => {
-    if (!options.sql) return c.json({ ugc });
-    return c.json({ ugc: ugcPublic(await listUgc(options.sql, false)) });
+    const sql = dataSql();
+    if (!sql) return c.json({ ugc });
+    return c.json({ ugc: ugcPublic(await listUgc(sql, false)) });
   });
   app.get("/v1/videos", async (c) => {
-    if (!options.sql) return c.json({ videos: [] });
-    const videos = await listVideos(options.sql, false);
+    const sql = dataSql();
+    if (!sql) return c.json({ videos: [] });
+    const videos = await listVideos(sql, false);
     return c.json({ videos });
   });
   app.get("/v1/banners", async (c) => {
-    if (!options.sql) return c.json({ banners: [] });
-    const banners = (await listBanners(options.sql)).filter((banner) => banner.active);
+    const sql = dataSql();
+    if (!sql) return c.json({ banners: [] });
+    const banners = (await listBanners(sql)).filter((banner) => banner.active);
     return c.json({ banners });
   });
   app.get("/v1/settings/loyalty", async (c) => {
-    if (!options.sql) return c.json({ item: null, source: "domain" });
-    return c.json({ item: await readLoyalty(options.sql), source: "postgres" });
+    const sql = dataSql();
+    if (!sql) return c.json({ item: null, source: "domain" });
+    return c.json({ item: await readLoyalty(sql), source: "postgres" });
   });
   app.get("/v1/coupons", async (c) => {
-    const list = await couponSource(options.sql);
+    const list = await couponSource(dataSql() ?? undefined);
     return c.json({ coupons: list.filter((coupon) => coupon.active).map(({ code, label, kind, percent }) => ({ code, label, kind, percent })) });
   });
 
@@ -175,8 +196,8 @@ app.post("/v1/quotes/shipping", async (c) => {
   app.post("/v1/coupons/validate", async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body.code !== "string") return c.json({ error: "Informe o cupom." }, 400);
-  const list = await couponSource(options.sql);
-  const stored = options.sql ? await getAdminCoupon(options.sql, body.code.trim().toUpperCase()) : null;
+  const list = await couponSource(dataSql() ?? undefined);
+  const stored = dataSql() ? await getAdminCoupon(dataSql()!, body.code.trim().toUpperCase()) : null;
   const found = resolveCoupon(body.code, list, stored, new Date());
   if (!found.coupon) return c.json({ error: found.error }, 404);
   return c.json({ coupon: found.coupon });
@@ -230,9 +251,11 @@ app.post("/v1/checkout/simulate", async (c) => {
   if (!rates.ok) return c.json({ error: rates.error }, 400);
   const pac = rates.rates.find((rate) => rate.id === "pac")!;
   const sedex = rates.rates.find((rate) => rate.id === "sedex")!;
-  const list = await couponSource(options.sql);
-  const stored = options.sql && body.couponCode ? await getAdminCoupon(options.sql, String(body.couponCode).trim().toUpperCase()) : null;
+  const sql = dataSql();
+  const list = await couponSource(sql ?? undefined);
+  const stored = sql && body.couponCode ? await getAdminCoupon(sql, String(body.couponCode).trim().toUpperCase()) : null;
   const coupon = body.couponCode ? resolveCoupon(String(body.couponCode), list, stored, new Date()).coupon : null;
+  const loyalty = sql ? await readLoyalty(sql) : null;
   const quote = quoteCart({
     lines: body.lines as QuoteLine[],
     coupon,
@@ -243,6 +266,17 @@ app.post("/v1/checkout/simulate", async (c) => {
     shippingMethod: checkout.shippingMethod as ShippingMethod,
     pacCents: pac.priceCents,
     sedexCents: sedex.priceCents,
+    ...(loyalty
+      ? {
+          pixDiscountPercent: loyalty.pixDiscountPercent,
+          freeShippingBaseCents: loyalty.freeShippingCents,
+          kitDiscountPercent: loyalty.kitDiscountPercent,
+          maxPointsRedeemRatio: loyalty.maxPointsRedeemRatio,
+          pointsPerReal: loyalty.pointsPerReal,
+          pixPointsBonus: loyalty.pixPointsBonus,
+          pointValueCents: loyalty.pointValueCents,
+        }
+      : {}),
   });
   return c.json({
     simulated: true,
@@ -251,15 +285,7 @@ app.post("/v1/checkout/simulate", async (c) => {
   });
 });
 
-  mountPublicDrops(
-    app,
-    () => {
-      if (options.sql) return options.sql;
-      if (process.env.API_DATA_SOURCE === "postgres" && process.env.DATABASE_URL) return fromPgPool(getPool());
-      return null;
-    },
-    options.now ?? (() => new Date()),
-  );
+  mountPublicDrops(app, dataSql, options.now ?? (() => new Date()));
   mountAdmin(app, options);
   return app;
 }

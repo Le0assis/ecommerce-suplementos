@@ -1,9 +1,9 @@
 import { writeAudit } from "@pulso/db/audit";
-import { archiveInfluencer, archivePost, listAuthors, listInfluencers, listPosts, saveAuthor, saveInfluencer, savePost } from "@pulso/db/content";
+import { archiveInfluencer, archivePost, deleteAuthor, listAuthors, listInfluencers, listPosts, saveAuthor, saveInfluencer, savePost } from "@pulso/db/content";
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import { z } from "zod";
-import { guard, HttpError, parseInput, readJson, requireActor, type AdminRuntime } from "./http";
+import { guard, parseInput, readJson, requireActor, type AdminRuntime } from "./http";
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "A cor precisa ser um hex de 6 dígitos.");
 const httpsOrNull = z
@@ -144,8 +144,11 @@ export function mountContent(admin: Hono, runtime: () => AdminRuntime): void {
   });
   admin.delete("/authors/:id", async (c) => {
     const ctx = runtime();
-    await requireActor(c, ctx, "authors");
-    throw new HttpError(409, "Não apagamos autor. Edite o cadastro. O único apagar de verdade é o cupom que nunca foi usado.");
+    const actor = await requireActor(c, ctx, "authors");
+    const id = c.req.param("id");
+    await guard(() => deleteAuthor(ctx.sql, id));
+    await writeAudit(ctx.sql, { actorId: actor.id, action: "author.delete", entity: "author", entityId: id, after: { deleted: true } });
+    return c.json({ ok: true });
   });
 
   admin.get("/posts", async (c) => {

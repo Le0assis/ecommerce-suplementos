@@ -50,6 +50,16 @@ function withSource(body: Record<string, unknown>, source: "api" | "adapter"): R
   return { ...body, source };
 }
 
+function tokenFromApiCookie(response: Response): string | null {
+  const listed = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
+  const sources = listed.length > 0 ? listed : [response.headers.get("set-cookie") ?? ""];
+  for (const source of sources) {
+    const match = /(?:^|[;,]\s*)pulso_admin=([^;]+)/.exec(source);
+    if (match?.[1]) return decodeURIComponent(match[1]);
+  }
+  return null;
+}
+
 async function readJson(response: Response): Promise<Record<string, unknown>> {
   const json = (await response.json().catch(() => ({}))) as unknown;
   if (typeof json === "object" && json !== null && !Array.isArray(json)) return json as Record<string, unknown>;
@@ -76,10 +86,11 @@ export async function loginAgainstApi(email: string, password: string): Promise<
       return { ok: false, status: response.status, error: typeof json.error === "string" ? json.error : "Não foi possível entrar." };
     }
     const user = json.user as AdminPublicUser | undefined;
-    if (typeof json.token !== "string" || !user || !ROLES.includes(user.role)) {
+    const token = tokenFromApiCookie(response) ?? (typeof json.token === "string" ? json.token : null);
+    if (!token || !user || !ROLES.includes(user.role)) {
       return { ok: false, status: 502, error: "A API de login respondeu sem sessão utilizável." };
     }
-    return { ok: true, token: json.token, user };
+    return { ok: true, token, user };
   } catch {
     apiDownUntil = Date.now() + 30_000;
     return null;

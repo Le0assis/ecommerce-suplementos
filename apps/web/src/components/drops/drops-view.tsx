@@ -84,15 +84,14 @@ function WaitlistForm({ dropId, count }: { dropId: string; count: number }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(erase ? { email } : { email, consent: true }),
     });
-    const body = (await response.json().catch(() => ({}))) as { error?: string; already?: boolean; removed?: number };
+    const body = (await response.json().catch(() => ({}))) as { error?: string; already?: boolean };
     setPending(false);
     if (!response.ok) {
       setError(body.error ?? "Não deu para salvar.");
       return;
     }
     if (erase) {
-      setPeople((value) => Math.max(0, value - (body.removed ?? 0)));
-      setNotice(body.removed ? "E-mail tirado da lista." : "Esse e-mail não estava na lista deste aparelho.");
+      setNotice("A saída da lista ainda pede um link no e-mail. Nada foi apagado.");
       return;
     }
     if (!body.already) setPeople((value) => value + 1);

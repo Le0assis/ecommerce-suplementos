@@ -1,8 +1,10 @@
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { CatalogError } from "@pulso/db/catalog";
 import type { Sql, SqlClient } from "@pulso/db/sql";
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { ZodTypeAny, output as ZodOutput } from "zod";
+import { sessionIsLive } from "./live-session";
 import { can, type Resource, type Role } from "./permissions";
 import { readSession, tokenFromRequest, type SessionClaims } from "./session";
 
@@ -44,10 +46,55 @@ export async function readJson(c: Context): Promise<unknown> {
   });
 }
 
-export function clientIp(c: Context): string {
-  const forwarded = c.req.header("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]?.trim() || "local";
-  return "local";
+function normalizeIp(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("::ffff:")) return trimmed.slice("::ffff:".length);
+  return trimmed;
+}
+
+function trustedProxySet(proxies: readonly string[]): Set<string> {
+  return new Set(proxies.map((item) => normalizeIp(item)).filter(Boolean));
+}
+
+function rightmostUntrusted(header: string, trusted: Set<string>): string | null {
+  const hops = header.split(",").map((item) => normalizeIp(item)).filter(Boolean);
+  for (let index = hops.length - 1; index >= 0; index -= 1) {
+    const hop = hops[index];
+    if (hop && !trusted.has(hop)) return hop;
+  }
+  return null;
+}
+
+export function clientAddress(input: {
+  socketAddress: string | null;
+  forwardedFor: string | null;
+  vercelForwardedFor: string | null;
+  trustedProxies: readonly string[];
+  vercel: boolean;
+}): string {
+  const socket = input.socketAddress ? normalizeIp(input.socketAddress) : "local";
+  const trusted = trustedProxySet(input.trustedProxies);
+  if (!trusted.has(socket)) return socket;
+  const header = input.vercel && input.vercelForwardedFor ? input.vercelForwardedFor : input.forwardedFor;
+  if (!header) return socket;
+  return rightmostUntrusted(header, trusted) ?? socket;
+}
+
+export function clientIp(c: Context, env: NodeJS.ProcessEnv = process.env): string {
+  let socketAddress: string | null = null;
+  try {
+    socketAddress = getConnInfo(c).remote.address ?? null;
+  } catch {
+    socketAddress = null;
+  }
+  const trustedProxies = (env.TRUSTED_PROXIES ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+  return clientAddress({
+    socketAddress,
+    forwardedFor: c.req.header("x-forwarded-for") ?? null,
+    vercelForwardedFor: c.req.header("x-vercel-forwarded-for") ?? null,
+    trustedProxies,
+    vercel: env.VERCEL === "1",
+  });
 }
 
 export async function requireActor(c: Context, runtime: AdminRuntime, resource: Resource): Promise<Actor> {
@@ -55,6 +102,7 @@ export async function requireActor(c: Context, runtime: AdminRuntime, resource: 
   if (!token) throw new HttpError(401, "Faça login para continuar.");
   const claims = readSession(token, runtime.secret, runtime.now());
   if (!claims) throw new HttpError(401, "Sessão inválida ou vencida.");
+  if (!(await sessionIsLive(runtime.sql, claims, runtime.now()))) throw new HttpError(401, "Sessão inválida ou vencida.");
   const actor = await loadActor(runtime.sql, claims);
   if (!actor) throw new HttpError(401, "Sessão inválida ou vencida.");
   if (!can(actor.role, resource)) throw new HttpError(403, "Seu papel não faz isso.");
@@ -85,8 +133,15 @@ export async function guard<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
+function pgCode(error: unknown): string {
+  return typeof error === "object" && error && "code" in error ? String((error as { code: unknown }).code) : "";
+}
+
 export function raiseCatalog(error: unknown): never {
   if (error instanceof CatalogError) throw new HttpError(error.status as ContentfulStatusCode, error.message);
+  if (pgCode(error) === "23503") throw new HttpError(409, "Este registro está em uso.");
+  if (pgCode(error) === "23505") throw new HttpError(409, "Já existe um registro com esse identificador.");
+  if (pgCode(error) === "23514") throw new HttpError(400, "Os dados não passam na regra do banco.");
   throw error;
 }
 

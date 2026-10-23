@@ -11,7 +11,7 @@ Este guia publica a **demonstração**. Pix, boleto e cartão continuam sandbox.
 | Postgres | serviço gerenciado, Postgres 16 | usuário e senha **novos**, não `pulso`/`pulso` |
 | Redis | opcional | se não houver, apague `REDIS_URL` |
 
-`ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET` ficam só no servidor. O login grava o cookie httpOnly `pulso_admin_session` por 12 horas. Não publique de novo uma variável `NEXT_PUBLIC_ADMIN_PASSWORD`. Troque os dois segredos antes de um domínio público.
+`ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET` ficam só no servidor. O login grava o cookie httpOnly `pulso_admin_session` por 12 horas. Não publique de novo uma variável `NEXT_PUBLIC_ADMIN_PASSWORD`. Troque os dois segredos antes de um domínio público. `pulso-admin` e `pulso-dev-session-change-me` não valem em produção: a API recusa subir sem `API_DATA_SOURCE=postgres` e `DATABASE_URL`, e recusa assinar sessão com o segredo de exemplo.
 
 ## Passos
 
@@ -19,7 +19,7 @@ Este guia publica a **demonstração**. Pix, boleto e cartão continuam sandbox.
 2. `pnpm install --frozen-lockfile` na raiz.
 3. Copie `.env.example` para `.env` e troque `NEXT_PUBLIC_SITE_URL` para o `https` do site. Ajuste `WEB_PORT` se o proxy usar outra porta.
 4. `pnpm build`.
-5. Se for usar banco: suba o Postgres, aponte `DATABASE_URL`, rode `pnpm db:migrate` e `pnpm db:seed` uma vez, e ponha `API_DATA_SOURCE=postgres`.
+5. Suba o Postgres, aponte `DATABASE_URL`, rode `pnpm db:migrate` e `pnpm db:seed` uma vez, e ponha `API_DATA_SOURCE=postgres`. Em produção a API não sobe em modo mock.
 6. Suba dois processos: `pnpm start` e `pnpm start:api`. O proxy manda o domínio do site para `WEB_PORT` e, se quiser, `/api` ou um subdomínio para `API_PORT`.
 7. Confira `GET /health` da API e a home do site. O teste de ponta a ponta, na máquina de quem desenvolve, é `pnpm --filter @pulso/web exec playwright install chromium` e `pnpm test:e2e`.
 

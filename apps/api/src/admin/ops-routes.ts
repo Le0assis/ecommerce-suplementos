@@ -9,6 +9,8 @@ import {
   hideVideo,
   listBanners,
   listCustomers,
+  deleteNamed,
+  deleteQuizQuestion,
   listNamed,
   listOrders,
   listPromotions,
@@ -147,7 +149,15 @@ const bannerSchema = z.object({
   slot: z.enum(["hero", "marquee", "destaque"]),
   title: z.string().trim().min(1).max(160),
   subtitle: z.string().trim().max(240).nullable().optional().default(null),
-  href: z.string().trim().max(200).nullable().optional().default(null),
+  href: z
+    .union([z.string().trim().max(200), z.null(), z.literal("")])
+    .optional()
+    .transform((value, ctx) => {
+      if (value === undefined || value === null || value === "") return null;
+      if (isSafeBannerHref(value)) return value;
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "O link do banner precisa ser https ou um caminho do site." });
+      return z.NEVER;
+    }),
   imageUrl: httpsUrl,
   accent: z.union([hex, z.null()]).optional().default(null),
   position: z.number().int().nonnegative().default(0),
@@ -200,12 +210,18 @@ const subscriptionPatch = z.object({
   status: z.enum(["ativa", "pausada", "cancelada"]),
 });
 
-async function audit(ctx: AdminRuntime, actor: Actor, action: string, entity: string, entityId: string, after: unknown, before?: unknown) {
-  await writeAudit(ctx.sql, { actorId: actor.id, action, entity, entityId, before, after });
+function isSafeBannerHref(value: string): boolean {
+  if (value.startsWith("/") && !value.startsWith("//") && !value.includes("\\") && !value.includes(":")) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.length > 0;
+  } catch {
+    return false;
+  }
 }
 
-function kept(message: string): never {
-  throw new HttpError(409, message);
+async function audit(ctx: AdminRuntime, actor: Actor, action: string, entity: string, entityId: string, after: unknown, before?: unknown) {
+  await writeAudit(ctx.sql, { actorId: actor.id, action, entity, entityId, before, after });
 }
 
 export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
@@ -224,8 +240,13 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
       await audit(ctx, actor, `${table}.save`, table, saved.slug, saved);
       return c.json({ item: saved }, 201);
     });
-    admin.delete(`/${table}/:slug`, async () => {
-      kept("Não apagamos categoria nem objetivo. Edite o registro. O único apagar de verdade é o cupom que nunca foi usado.");
+    admin.delete(`/${table}/:slug`, async (c) => {
+      const ctx = runtime();
+      const actor = await requireActor(c, ctx, resource);
+      const slug = c.req.param("slug");
+      await guard(() => deleteNamed(ctx.sql, table, slug));
+      await audit(ctx, actor, `${table}.delete`, table, slug, { deleted: true });
+      return c.json({ ok: true });
     });
   }
 
@@ -286,8 +307,13 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
     await audit(ctx, actor, "quiz.save", "quiz_question", saved.id, saved);
     return c.json({ item: saved }, 201);
   });
-  admin.delete("/quiz/:id", async () => {
-    kept("Não apagamos pergunta do quiz. Edite as opções. O único apagar de verdade é o cupom que nunca foi usado.");
+  admin.delete("/quiz/:id", async (c) => {
+    const ctx = runtime();
+    const actor = await requireActor(c, ctx, "quiz");
+    const id = c.req.param("id");
+    await guard(() => deleteQuizQuestion(ctx.sql, id));
+    await audit(ctx, actor, "quiz.delete", "quiz_question", id, { deleted: true });
+    return c.json({ ok: true });
   });
 
   admin.get("/settings/loyalty", async (c) => {

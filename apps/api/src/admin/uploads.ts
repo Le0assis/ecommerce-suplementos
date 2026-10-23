@@ -37,8 +37,10 @@ export function pathnameFor(contentType: string): string {
   return `pulso/${randomUUID()}.${ext}`;
 }
 
+const UPLOAD_PATH = /^pulso\/[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(jpg|jpeg|png|webp)$/;
+
 export function assertUploadPath(pathname: string): void {
-  if (!pathname || pathname.includes("..") || pathname.includes("\\") || pathname.startsWith("/") || pathname.includes("\0")) {
+  if (!pathname || pathname.includes("..") || pathname.includes("\\") || pathname.includes("\0") || !UPLOAD_PATH.test(pathname)) {
     throw new HttpError(400, "Caminho de upload inválido.");
   }
 }

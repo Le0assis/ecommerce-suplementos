@@ -121,6 +121,10 @@ export function mountProducts(admin: Hono, runtime: () => AdminRuntime): void {
     const ctx = runtime();
     const actor = await requireActor(c, ctx, "products");
     const body = parseInput(productSchema, await readJson(c));
+    if (await getAdminProduct(ctx.sql, body.slug)) throw new HttpError(409, "Já existe um produto com esse slug.");
+    if (body.id && body.id !== body.slug && (await getAdminProduct(ctx.sql, body.id))) {
+      throw new HttpError(409, "Já existe um produto com esse id.");
+    }
     const saved = await saveAudited(ctx, actor, null, toStoredProduct(body), "product.create");
     return c.json({ item: saved }, 201);
   });
@@ -158,6 +162,7 @@ export function mountProducts(admin: Hono, runtime: () => AdminRuntime): void {
         before: current,
         after: saved,
       });
+      await invalidateCatalogCache();
       return c.json({ item: saved });
     } catch (error) {
       raiseCatalog(error);

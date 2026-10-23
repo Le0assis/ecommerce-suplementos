@@ -726,6 +726,19 @@ export async function saveAdminProduct(sql: SqlClient, input: AdminProduct): Pro
       );
     }
 
+    const seenImages = new Set<string>();
+    for (const image of input.images) {
+      if (seenImages.has(image.id)) throw new CatalogError(409, "Já existe uma imagem com esse id.", "IMAGE_ID");
+      seenImages.add(image.id);
+    }
+    if (input.images.length) {
+      const clash = await sql.query<{ id: string }>(
+        "select id from product_images where id = any($1::text[]) and product_id <> $2",
+        [input.images.map((image) => image.id), input.id],
+      );
+      if (clash.rows.length) throw new CatalogError(409, "Já existe uma imagem com esse id.", "IMAGE_ID");
+    }
+
     await sql.query("delete from product_images where product_id = $1", [input.id]);
     const images = input.images.map((image, index) => ({ ...image, position: index, isCover: image.isCover }));
     if (images.length && !images.some((image) => image.isCover)) images[0] = { ...images[0]!, isCover: true };
@@ -923,6 +936,7 @@ export async function readPublicCoupons(sql: Sql, now = new Date()): Promise<Cou
       label: coupon.label,
       kind: coupon.kind,
       ...(coupon.kind === "percent" ? { percent: coupon.value } : {}),
+      ...(coupon.minCents > 0 ? { minCents: coupon.minCents } : {}),
       ...(coupon.influencerId ? { influencerSlug: coupon.influencerId } : {}),
       active: true,
     }));

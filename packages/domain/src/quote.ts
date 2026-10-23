@@ -5,6 +5,7 @@ import {
   KIT_DISCOUNT_PERCENT,
   MAX_POINTS_REDEEM_RATIO,
   PIX_DISCOUNT_PERCENT,
+  POINT_VALUE_CENTS,
 } from "./loyalty";
 import { resolveShippingCents } from "./shipping";
 import type { Coupon, PaymentMethod, ShippingMethod } from "./types";
@@ -29,6 +30,11 @@ export interface QuoteInput {
   sedexCents: number;
   pixDiscountPercent?: number;
   freeShippingBaseCents?: number;
+  kitDiscountPercent?: number;
+  maxPointsRedeemRatio?: number;
+  pointsPerReal?: number;
+  pixPointsBonus?: number;
+  pointValueCents?: number;
 }
 
 export interface Quote {
@@ -78,26 +84,31 @@ export function quoteCart(input: QuoteInput): Quote {
     if (line.category && quantity > 0) categories.add(line.category);
   }
   const merchandiseCents = grossCents - subscriptionSavingsCents;
+  const minimum = input.coupon?.minCents ?? 0;
+  const coupon = input.coupon && merchandiseCents >= minimum ? input.coupon : null;
 
   let discountPercent = 0;
   let discountLabel: string | null = null;
-  if (input.coupon?.kind === "percent" && input.coupon.percent) {
-    discountPercent = input.coupon.percent;
-    discountLabel = input.coupon.label;
+  if (coupon?.kind === "percent" && coupon.percent) {
+    discountPercent = coupon.percent;
+    discountLabel = coupon.label;
   }
-  if (categories.size >= 3 && KIT_DISCOUNT_PERCENT > discountPercent) {
-    discountPercent = KIT_DISCOUNT_PERCENT;
-    discountLabel = "Kit 12% — 3 categorias no carrinho";
+  const kitPercent = input.kitDiscountPercent ?? KIT_DISCOUNT_PERCENT;
+  if (categories.size >= 3 && kitPercent > discountPercent) {
+    discountPercent = kitPercent;
+    discountLabel = `Kit ${kitPercent}% — 3 categorias no carrinho`;
   }
   discountPercent = Math.min(discountPercent, 30);
   const discountCents = Math.round(merchandiseCents * (discountPercent / 100));
   const afterCoupon = merchandiseCents - discountCents;
 
-  const cap = Math.floor(afterCoupon * MAX_POINTS_REDEEM_RATIO);
+  const ratio = input.maxPointsRedeemRatio ?? MAX_POINTS_REDEEM_RATIO;
+  const pointValue = input.pointValueCents ?? POINT_VALUE_CENTS;
+  const cap = Math.floor(afterCoupon * ratio);
   const pointsCents = Math.min(
-    Math.max(0, Math.floor(input.redeemPoints)),
+    Math.max(0, Math.floor(input.redeemPoints)) * pointValue,
     cap,
-    Math.max(0, Math.floor(input.pointsBalance)),
+    Math.max(0, Math.floor(input.pointsBalance)) * pointValue,
   );
   const pixBase = afterCoupon - pointsCents;
   const pixPercent = input.payment === "pix" ? (input.pixDiscountPercent ?? PIX_DISCOUNT_PERCENT) : 0;
@@ -111,7 +122,7 @@ export function quoteCart(input: QuoteInput): Quote {
     merchandiseCents,
     levelId: levelIdFromPoints(input.lifetimePoints),
     freeShippingBaseCents: input.freeShippingBaseCents,
-    shippingCoupon: input.coupon?.kind === "shipping",
+    shippingCoupon: coupon?.kind === "shipping",
   });
 
   const totalCents = productAfterDiscountsCents + shipping.cents;
@@ -134,6 +145,8 @@ export function quoteCart(input: QuoteInput): Quote {
       productCents: productAfterDiscountsCents,
       lifetimePoints: input.lifetimePoints,
       payment: input.payment,
+      pointsPerReal: input.pointsPerReal,
+      pixPointsBonus: input.pixPointsBonus,
     }),
     installments: installmentSchedule(totalCents),
   };

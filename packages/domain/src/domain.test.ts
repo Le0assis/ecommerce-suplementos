@@ -127,6 +127,27 @@ describe("quote do carrinho", () => {
     expect(quote.shippingFree).toBe(true);
   });
 
+  it("ignora cupom abaixo do mínimo e usa o desconto de fidelidade", () => {
+    const below = quoteCart({
+      ...baseQuote,
+      payment: "pix",
+      lines: [{ unitPriceCents: 1000, quantity: 1, subscription: false, subscriptionDiscountPercent: 0, category: "whey" }],
+      coupon: { ...luna, minCents: 5000 },
+    });
+    expect(below.discountCents).toBe(0);
+    expect(below.pixCents).toBe(100);
+    const loyal = quoteCart({
+      ...baseQuote,
+      payment: "pix",
+      lines: [{ unitPriceCents: 10000, quantity: 1, subscription: false, subscriptionDiscountPercent: 0, category: "whey" }],
+      coupon: null,
+      pixDiscountPercent: 20,
+      pointsPerReal: 2,
+    });
+    expect(loyal.pixCents).toBe(2000);
+    expect(loyal.pointsEarned).toBe(Math.round(80 * 2 * 1.2));
+  });
+
   it("não acha cupom inventado", () => {
     expect(findCoupon("nao-existe", [luna]).error).toBe("Cupom não encontrado.");
   });

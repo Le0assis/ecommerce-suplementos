@@ -28,7 +28,11 @@ export function usingDevSessionSecret(): boolean {
 
 export function sessionSecret(): string {
   const secret = process.env.ADMIN_SESSION_SECRET;
-  if (secret && secret.length >= 16) return secret;
+  if (process.env.NODE_ENV === "production" && (!secret || secret.length < 16 || secret === EXAMPLE_SECRET)) {
+    throw new Error("ADMIN_SESSION_SECRET de exemplo não vale em produção.");
+  }
+  if (secret && secret.length >= 16 && secret !== EXAMPLE_SECRET) return secret;
+  if (secret && secret.length >= 16 && process.env.NODE_ENV !== "production") return secret;
   return DEV_SECRET;
 }
 
@@ -38,10 +42,16 @@ export function passwordsMatch(input: string, expected: string): boolean {
   return timingSafeEqual(left, right);
 }
 
+export const EXAMPLE_ADMIN_PASSWORD = "pulso-admin";
+
 export function adapterPasswordOk(password: string): { ok: true } | { ok: false; status: number; error: string } {
   const expected = process.env.ADMIN_PASSWORD;
-  if (!expected) return { ok: false, status: 503, error: "ADMIN_PASSWORD não está definida no servidor." };
-  if (!passwordsMatch(password, expected)) return { ok: false, status: 401, error: "Senha não confere." };
+  if (!expected || expected === EXAMPLE_ADMIN_PASSWORD) {
+    return { ok: false, status: 503, error: "ADMIN_PASSWORD não está definida no servidor." };
+  }
+  if (password === EXAMPLE_ADMIN_PASSWORD || !passwordsMatch(password, expected)) {
+    return { ok: false, status: 401, error: "Senha não confere." };
+  }
   return { ok: true };
 }
 

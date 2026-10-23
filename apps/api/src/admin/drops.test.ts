@@ -167,7 +167,7 @@ describe("drops e lista de espera", () => {
       body: JSON.stringify({ email: "ana@pulso.test" }),
     });
     expect(erased.status).toBe(200);
-    expect((await erased.json()).removed).toBe(0);
+    expect(await erased.json()).toEqual({ ok: true });
     const kept = await sql.query("select id from drop_waitlist");
     expect(kept.rows).toHaveLength(1);
 
@@ -176,9 +176,16 @@ describe("drops e lista de espera", () => {
       headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.76" },
       body: JSON.stringify({ email: "bia@pulso.test", consent: true }),
     });
-    const gone = await app.request("/v1/drops/waitlist/erase", {
+    const ignored = await app.request("/v1/drops/waitlist/erase", {
       method: "POST",
       headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.77" },
+      body: JSON.stringify({ email: "bia@pulso.test" }),
+    });
+    expect(await ignored.json()).toEqual({ ok: true });
+    expect((await sql.query("select email from drop_waitlist where anonymized_at is null")).rows).toHaveLength(1);
+    const gone = await app.request("/v1/admin/drops/waitlist/erase", {
+      method: "POST",
+      headers,
       body: JSON.stringify({ email: "bia@pulso.test" }),
     });
     expect((await gone.json()).removed).toBe(1);

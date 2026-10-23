@@ -9,6 +9,9 @@ afterEach(() => {
 
 describe("API", () => {
   it("responde saúde sem banco", async () => {
+    delete process.env.DATABASE_URL;
+    delete process.env.REDIS_URL;
+    delete process.env.API_DATA_SOURCE;
     const response = await app.request("/health");
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -61,6 +64,21 @@ describe("API", () => {
     expect(body.simulated).toBe(true);
     expect(body.quote.pixCents).toBeGreaterThan(0);
     expect(body.quote.totalCents).toBeGreaterThan(0);
+  });
+
+  it("em produção exige a fonte postgres", () => {
+    const previousNode = process.env.NODE_ENV;
+    const previousSource = process.env.API_DATA_SOURCE;
+    const previousUrl = process.env.DATABASE_URL;
+    process.env.NODE_ENV = "production";
+    delete process.env.API_DATA_SOURCE;
+    delete process.env.DATABASE_URL;
+    expect(() => createApp()).toThrow(/postgres/);
+    process.env.NODE_ENV = previousNode;
+    if (previousSource === undefined) delete process.env.API_DATA_SOURCE;
+    else process.env.API_DATA_SOURCE = previousSource;
+    if (previousUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousUrl;
   });
 
   it("recusa o login do admin sem segredo de sessão", async () => {
