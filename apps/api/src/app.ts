@@ -25,6 +25,7 @@ import {
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HttpError } from "./admin/http";
+import { mountPublicDrops } from "./admin/drop-routes";
 import { mountAdmin, type AdminAppOptions } from "./admin/router";
 import { loadProducts, pingPostgres, pingRedis } from "./catalog-source";
 
@@ -250,6 +251,15 @@ app.post("/v1/checkout/simulate", async (c) => {
   });
 });
 
+  mountPublicDrops(
+    app,
+    () => {
+      if (options.sql) return options.sql;
+      if (process.env.API_DATA_SOURCE === "postgres" && process.env.DATABASE_URL) return fromPgPool(getPool());
+      return null;
+    },
+    options.now ?? (() => new Date()),
+  );
   mountAdmin(app, options);
   return app;
 }

@@ -24,6 +24,8 @@ Definido em `packages/domain/src/types.ts`. O catálogo acrescenta `label`.
 
 A API com Postgres não lê `products.payload`. Ela junta `products`, `product_flavors`, `product_variants`, `product_labels`, `nutrition_rows`, `product_images`, `product_goals`, `product_badges` e `kit_items`. Foto sem arquivo tem `url` nula e `fallback_hex` (`#rrggbb`). O estoque do sabor na vitrine é o menor estoque das variações daquele sabor, porque a tabela de sabor não tem coluna de estoque. `status` no banco é `rascunho`, `ativo`, `oculto` ou `arquivado`. O JSON do admin chama `ativo` de `publicado`, que é o valor da tela.
 
+Drops ficam em `drops` (`005_drops.sql`). `units_total` e `units_left` podem ser nulos. A lista de espera é `drop_waitlist`: só e-mail, consentimento explícito, data e origem. Sem CPF, telefone ou IP.
+
 ## Cupom
 
 `code`, `label`, `kind` (`percent` ou `shipping`), `percent`, `influencerSlug`, `active`.

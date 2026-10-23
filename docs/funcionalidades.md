@@ -74,7 +74,7 @@ Código do pedido. Demo: `PLDEMOANA`, objeto `PL123456789BR`.
 
 ## Drops `/drops`
 
-Countdown e lista. A fase sai de `dropPhase` (`no-ar`, `encerrado`, `data-invalida`) em `packages/domain/src/drops.ts`. O relógio só lê a hora no cliente. Newsletter desta página fica no estado local (não dispara e-mail). O Drop 05 é teaser (`upcomingDrop.teaser`).
+Countdown e lista. A fase sai de `dropPhase` (`no-ar`, `encerrado`, `data-invalida`) em `packages/domain/src/drops.ts`. O relógio só lê a hora no cliente. O formulário desta página ainda guarda o e-mail no navegador. A API, com banco, recebe a lista em `POST /v1/drops/:id/waitlist` (consentimento explícito) e apaga em `POST /v1/drops/waitlist/erase`. O Drop 05 é teaser (`upcomingDrop.teaser`).
 
 ## Atletas `/atletas` e `/atletas/[slug]`
 

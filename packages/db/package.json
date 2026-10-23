@@ -12,6 +12,7 @@
     "./catalog": "./src/catalog.ts",
     "./resources": "./src/resources.ts",
     "./content": "./src/content.ts",
+    "./drops": "./src/drops.ts",
     "./password": "./src/password.ts"
   },
   "scripts": {
