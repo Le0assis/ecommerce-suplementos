@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const envPath = resolve(root, ".env");
@@ -19,6 +19,12 @@ if (existsSync(envPath)) {
 
 const mode = process.argv[2] === "start" ? "start" : "dev";
 const port = process.env.WEB_PORT || "43123";
+const stamp = pathToFileURL(resolve(root, "scripts/stamp-peer-ip.mjs")).href;
+const options = process.env.NODE_OPTIONS ?? "";
+if (!options.includes("stamp-peer-ip.mjs")) {
+  process.env.NODE_OPTIONS = `${options} --import ${stamp}`.trim();
+}
+process.env.PULSO_STAMP_PEER = "1";
 const child = spawn("pnpm", ["exec", "next", mode, "--hostname", "0.0.0.0", "--port", port], {
   cwd: resolve(root, "apps/web"),
   stdio: "inherit",

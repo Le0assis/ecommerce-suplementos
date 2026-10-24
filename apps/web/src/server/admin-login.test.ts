@@ -3,7 +3,8 @@ import { createServer } from "node:http";
 import { afterEach, test } from "vitest";
 import { POST } from "@/app/api/admin/session/route";
 import { LOGIN_API_TIMEOUT_MS, loginAgainstApi } from "@/server/admin-client";
-import { forwardedForApi } from "@/server/forwarded-for";
+import { SOCKET_IP_HEADER, forwardedForApi, observedClientIp } from "@/server/forwarded-for";
+import { SOCKET_IP_HEADER as STAMP_HEADER, installPeerStamp, stampPeerHeaders, uninstallPeerStamp } from "../../../../scripts/stamp-peer-ip.mjs";
 
 const previous = process.env.API_URL;
 
@@ -71,6 +72,78 @@ test("o XFF do cliente não muda o IP enviado à API", () => {
     headers: { "x-forwarded-for": "1.1.1.1", "x-real-ip": "203.0.113.8" },
   });
   assert.equal(forwardedForApi(real, onVercel), "203.0.113.8");
+  assert.equal(STAMP_HEADER, SOCKET_IP_HEADER);
+});
+
+test("sem VERCEL girar o cabeçalho não troca o IP e não queima o do dono", () => {
+  const off: NodeJS.ProcessEnv = { NODE_ENV: "test" };
+  const attacker = "203.0.113.50";
+  const owner = "203.0.113.1";
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const headers: Record<string, string> = {
+      "x-real-ip": `198.51.100.${attempt}`,
+      "x-vercel-forwarded-for": `198.51.100.${attempt}`,
+      "x-forwarded-for": `203.0.113.${attempt}`,
+      [SOCKET_IP_HEADER]: `198.51.100.${attempt}`,
+    };
+    stampPeerHeaders(headers, attacker, off);
+    const request = new Request("http://127.0.0.1:43123/api/admin/session", { headers });
+    assert.equal(request.headers.get("x-real-ip"), null);
+    assert.equal(request.headers.get("x-vercel-forwarded-for"), null);
+    assert.equal(observedClientIp(request, off), attacker);
+  }
+  const ownerHeaders: Record<string, string> = {
+    "x-real-ip": attacker,
+    "x-vercel-forwarded-for": attacker,
+    "x-forwarded-for": attacker,
+  };
+  stampPeerHeaders(ownerHeaders, owner, off);
+  assert.equal(observedClientIp(new Request("http://127.0.0.1:43123/api/admin/session", { headers: ownerHeaders }), off), owner);
+  const forgedOwner: Record<string, string> = {
+    "x-real-ip": owner,
+    "x-vercel-forwarded-for": owner,
+    "x-forwarded-for": owner,
+  };
+  stampPeerHeaders(forgedOwner, attacker, off);
+  assert.equal(observedClientIp(new Request("http://127.0.0.1:43123/api/admin/session", { headers: forgedOwner }), off), attacker);
+});
+
+test("o servidor HTTP troca o IP girado pelo do socket", async () => {
+  const previous = process.env.VERCEL;
+  delete process.env.VERCEL;
+  installPeerStamp();
+  const seen: string[] = [];
+  const server = createServer((req, res) => {
+    seen.push(String(req.headers[SOCKET_IP_HEADER] ?? ""));
+    assert.equal(req.headers["x-real-ip"], undefined);
+    assert.equal(req.headers["x-vercel-forwarded-for"], undefined);
+    res.end("ok");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  try {
+    for (const ip of ["198.51.100.1", "198.51.100.2", "203.0.113.1"]) {
+      const response = await fetch(`http://127.0.0.1:${port}/`, {
+        headers: {
+          "x-real-ip": ip,
+          "x-vercel-forwarded-for": ip,
+          "x-forwarded-for": ip,
+          [SOCKET_IP_HEADER]: ip,
+        },
+      });
+      assert.equal(response.status, 200);
+    }
+    assert.equal(seen.length, 3);
+    assert.equal(seen[0], seen[1]);
+    assert.equal(seen[1], seen[2]);
+    assert.equal(seen[0] === "127.0.0.1" || seen[0] === "::1", true);
+  } finally {
+    uninstallPeerStamp();
+    if (previous === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = previous;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
 test("dois clientes no Next seguem com limites separados e o 429 da API passa inteiro", async () => {

@@ -28,7 +28,7 @@ Há no máximo uma tentativa em andamento por conta e IP (`pulso:login:slot:<ema
 
 O IP é o do socket. Atrás de um proxy, `TRUSTED_PROXIES` é obrigatório: sem a lista, todo cliente vira o IP do proxy e o limite de login trava todo mundo junto. `X-Forwarded-For` só entra se esse socket estiver na lista; vale o salto mais à direita que não é proxy. Com `VERCEL=1`, o cabeçalho lido é `x-vercel-forwarded-for`.
 
-O site chama `POST /v1/admin/login` de servidor para servidor. A API, então, vê o IP do Next em todo login. `POST /api/admin/session` acrescenta o IP do cliente no fim de `X-Forwarded-For` (não substitui a cadeia). Esse IP é o do socket. `x-vercel-forwarded-for` e `x-real-ip` só entram com `VERCEL=1`, porque a Vercel sobrescreve os dois. O `X-Forwarded-For` do navegador não entra. O endereço do Next precisa estar em `TRUSTED_PROXIES`, senão todo mundo divide o limite do IP do Next.
+O site chama `POST /v1/admin/login` de servidor para servidor. A API, então, vê o IP do Next em todo login. `POST /api/admin/session` acrescenta o IP do cliente no fim de `X-Forwarded-For` (não substitui a cadeia). Esse IP é o do socket. `x-vercel-forwarded-for` e `x-real-ip` só entram com `VERCEL=1`, porque a Vercel sobrescreve os dois. Fora da Vercel o processo do Next apaga esses dois cabeçalhos do cliente e grava o IP do socket por cima, antes da rota. O `X-Forwarded-For` do navegador não entra. O endereço do Next precisa estar em `TRUSTED_PROXIES`, senão todo mundo divide o limite do IP do Next.
 
 Exemplo com Next e API na mesma máquina:
 

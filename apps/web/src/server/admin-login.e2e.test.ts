@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "vitest";
 import { POST } from "@/app/api/admin/session/route";
+import { stampPeerHeaders } from "../../../../scripts/stamp-peer-ip.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
@@ -48,20 +49,20 @@ function startApi(): Promise<{ port: number; stop: () => void }> {
 }
 
 function login(ip: string, email: string, forgedForwardedFor?: string, socketIp?: string) {
-  const request = new Request("http://127.0.0.1:43123/api/admin/session", {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    host: "127.0.0.1:43123",
+    origin: "http://127.0.0.1:43123",
+    "x-real-ip": ip,
+    "x-vercel-forwarded-for": ip,
+  };
+  if (forgedForwardedFor) headers["x-forwarded-for"] = forgedForwardedFor;
+  if (socketIp) stampPeerHeaders(headers, socketIp, process.env);
+  return POST(new Request("http://127.0.0.1:43123/api/admin/session", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      host: "127.0.0.1:43123",
-      origin: "http://127.0.0.1:43123",
-      "x-real-ip": ip,
-      "x-vercel-forwarded-for": ip,
-      ...(forgedForwardedFor ? { "x-forwarded-for": forgedForwardedFor } : {}),
-    },
+    headers,
     body: JSON.stringify({ email, password: "senha-errada-pulso" }),
-  });
-  if (socketIp) Object.assign(request, { socket: { remoteAddress: socketIp } });
-  return POST(request);
+  }));
 }
 
 test("dois clientes no Next recebem limites de 30 separados na API", async () => {

@@ -14,7 +14,7 @@ A API já restringe `GET /v1/admin/drops/:id/waitlist` a quem tem `waitlist`, de
 
 ## IP e checkout
 
-Fora da Vercel o `Request` do Next muitas vezes não tem `socket.remoteAddress`. A chave do limite vira `local`. Não dá para usar o `X-Forwarded-For` do cliente. Com `VERCEL=1` o site lê `x-vercel-forwarded-for` e, se faltar, `x-real-ip`, e manda só esse IP. A API, com o socket na lista de proxy, ainda lê `x-forwarded-for` (salto da direita) mesmo sem `VERCEL=1`. Com `VERCEL=1` ela prefere `x-vercel-forwarded-for` e não lê `x-real-ip`.
+Fora da Vercel o processo do Next apaga `x-real-ip` e `x-vercel-forwarded-for` do cliente e grava o IP do socket antes da rota. Girar esses cabeçalhos não abre outro limite, e repetir o IP do dono não queima o limite dele. Com `VERCEL=1` o site lê `x-vercel-forwarded-for` e, se faltar, `x-real-ip`, e manda só esse IP. A API, com o socket na lista de proxy, ainda lê `x-forwarded-for` (salto da direita) mesmo sem `VERCEL=1`. Com `VERCEL=1` ela prefere `x-vercel-forwarded-for` e não lê `x-real-ip`.
 
 `CHECKOUT_QUOTE_SHA` continua vazio. O checkout visível segue o `quoteCart` local. Não ligar até o Backend publicar o SHA do contrato.
 
