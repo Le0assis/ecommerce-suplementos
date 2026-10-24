@@ -10,6 +10,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 function startApi(): Promise<{ port: number; stop: () => void }> {
   const env: NodeJS.ProcessEnv = { ...process.env, TRUSTED_PROXIES: "127.0.0.1" };
   delete env.REDIS_URL;
+  delete env.VERCEL;
   const child: ChildProcess = spawn("pnpm", ["--dir", path.join(repoRoot, "apps/api"), "exec", "tsx", "src/admin/limit-fixture.ts"], {
     cwd: repoRoot,
     env,
@@ -46,23 +47,26 @@ function startApi(): Promise<{ port: number; stop: () => void }> {
   }));
 }
 
-function login(ip: string, email: string, forgedForwardedFor?: string) {
-  return POST(
-    new Request("http://127.0.0.1:43123/api/admin/session", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        host: "127.0.0.1:43123",
-        origin: "http://127.0.0.1:43123",
-        "x-real-ip": ip,
-        ...(forgedForwardedFor ? { "x-forwarded-for": forgedForwardedFor } : {}),
-      },
-      body: JSON.stringify({ email, password: "senha-errada-pulso" }),
-    }),
-  );
+function login(ip: string, email: string, forgedForwardedFor?: string, socketIp?: string) {
+  const request = new Request("http://127.0.0.1:43123/api/admin/session", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      host: "127.0.0.1:43123",
+      origin: "http://127.0.0.1:43123",
+      "x-real-ip": ip,
+      "x-vercel-forwarded-for": ip,
+      ...(forgedForwardedFor ? { "x-forwarded-for": forgedForwardedFor } : {}),
+    },
+    body: JSON.stringify({ email, password: "senha-errada-pulso" }),
+  });
+  if (socketIp) Object.assign(request, { socket: { remoteAddress: socketIp } });
+  return POST(request);
 }
 
 test("dois clientes no Next recebem limites de 30 separados na API", async () => {
+  const previousVercel = process.env.VERCEL;
+  process.env.VERCEL = "1";
   const api = await startApi();
   process.env.API_URL = `http://127.0.0.1:${api.port}`;
   try {
@@ -88,6 +92,36 @@ test("dois clientes no Next recebem limites de 30 separados na API", async () =>
     assert.equal(spoofedKey.headers.get("retry-after"), null);
   } finally {
     delete process.env.API_URL;
+    if (previousVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = previousVercel;
+    api.stop();
+  }
+}, 60_000);
+
+test("sem VERCEL o cabeçalho girado não foge do limite e não queima o IP do dono", async () => {
+  const previousVercel = process.env.VERCEL;
+  delete process.env.VERCEL;
+  const api = await startApi();
+  process.env.API_URL = `http://127.0.0.1:${api.port}`;
+  const attacker = "203.0.113.50";
+  const owner = "203.0.113.1";
+  try {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const response = await login(`198.51.100.${attempt}`, `giro-${attempt}@pulso.test`, `203.0.113.${attempt}`, attacker);
+      const expected = attempt < 30 ? 401 : 429;
+      assert.equal(response.status, expected, `tentativa ${attempt} com cabeçalho girado`);
+      if (expected === 429) assert.equal(response.headers.get("retry-after"), "900");
+    }
+    const ownerLogin = await login(attacker, "dono@pulso.test", attacker, owner);
+    assert.equal(ownerLogin.status, 401);
+    assert.equal(ownerLogin.headers.get("retry-after"), null);
+    const forgedOwner = await login(owner, "forja-dono@pulso.test", owner, attacker);
+    assert.equal(forgedOwner.status, 429);
+    assert.equal(forgedOwner.headers.get("retry-after"), "900");
+  } finally {
+    delete process.env.API_URL;
+    if (previousVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = previousVercel;
     api.stop();
   }
 }, 60_000);

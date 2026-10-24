@@ -16,19 +16,19 @@ function socketAddress(request: { headers: Headers }): string | null {
 }
 
 /**
- * IP da infraestrutura. O X-Forwarded-For do cliente não entra:
- * na Vercel vale x-vercel-forwarded-for, senão x-real-ip, senão o socket.
+ * IP da infraestrutura. O X-Forwarded-For do cliente nunca entra.
+ * x-vercel-forwarded-for e x-real-ip só valem com VERCEL=1, porque a plataforma sobrescreve os dois.
+ * Fora isso vale o IP do socket.
  */
-export function observedClientIp(request: { headers: Headers }): string {
-  return (
-    firstHop(request.headers.get("x-vercel-forwarded-for"))
-    ?? firstHop(request.headers.get("x-real-ip"))
-    ?? socketAddress(request)
-    ?? "local"
-  );
+export function observedClientIp(request: { headers: Headers }, env: NodeJS.ProcessEnv = process.env): string {
+  const socket = socketAddress(request);
+  if (env.VERCEL === "1") {
+    return firstHop(request.headers.get("x-vercel-forwarded-for")) ?? firstHop(request.headers.get("x-real-ip")) ?? socket ?? "local";
+  }
+  return socket ?? "local";
 }
 
 /** Só o IP confiável. A cadeia enviada pelo navegador não segue para a API. */
-export function forwardedForApi(request: { headers: Headers }): string {
-  return observedClientIp(request);
+export function forwardedForApi(request: { headers: Headers }, env: NodeJS.ProcessEnv = process.env): string {
+  return observedClientIp(request, env);
 }

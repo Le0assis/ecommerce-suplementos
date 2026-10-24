@@ -36,16 +36,27 @@ test("o login espera o atraso e devolve o erro com Retry-After", async () => {
 });
 
 test("o XFF do cliente não muda o IP enviado à API", () => {
+  const off: NodeJS.ProcessEnv = { NODE_ENV: "test" };
   const forged = new Request("http://127.0.0.1:43123/api/admin/session", {
-    headers: { "x-forwarded-for": "1.1.1.1, 203.0.113.8" },
+    headers: {
+      "x-forwarded-for": "1.1.1.1, 203.0.113.8",
+      "x-real-ip": "203.0.113.8",
+      "x-vercel-forwarded-for": "198.51.100.4",
+    },
   });
-  assert.equal(forwardedForApi(forged), "local");
+  assert.equal(forwardedForApi(forged, off), "local");
 
-  const real = new Request("http://127.0.0.1:43123/api/admin/session", {
-    headers: { "x-forwarded-for": "1.1.1.1", "x-real-ip": "203.0.113.8" },
+  const socketed = new Request("http://127.0.0.1:43123/api/admin/session", {
+    headers: {
+      "x-forwarded-for": "203.0.113.1",
+      "x-real-ip": "198.51.100.9",
+      "x-vercel-forwarded-for": "::ffff:198.51.100.4",
+    },
   });
-  assert.equal(forwardedForApi(real), "203.0.113.8");
+  Object.assign(socketed, { socket: { remoteAddress: "::ffff:203.0.113.8" } });
+  assert.equal(forwardedForApi(socketed, off), "203.0.113.8");
 
+  const onVercel: NodeJS.ProcessEnv = { NODE_ENV: "test", VERCEL: "1" };
   const vercel = new Request("http://127.0.0.1:43123/api/admin/session", {
     headers: {
       "x-forwarded-for": "9.9.9.9",
@@ -53,16 +64,18 @@ test("o XFF do cliente não muda o IP enviado à API", () => {
       "x-vercel-forwarded-for": "::ffff:198.51.100.4, 10.0.0.1",
     },
   });
-  assert.equal(forwardedForApi(vercel), "198.51.100.4");
+  Object.assign(vercel, { socket: { remoteAddress: "203.0.113.8" } });
+  assert.equal(forwardedForApi(vercel, onVercel), "198.51.100.4");
 
-  const socketed = new Request("http://127.0.0.1:43123/api/admin/session", {
-    headers: { "x-forwarded-for": "1.1.1.1" },
+  const real = new Request("http://127.0.0.1:43123/api/admin/session", {
+    headers: { "x-forwarded-for": "1.1.1.1", "x-real-ip": "203.0.113.8" },
   });
-  Object.assign(socketed, { socket: { remoteAddress: "::ffff:203.0.113.8" } });
-  assert.equal(forwardedForApi(socketed), "203.0.113.8");
+  assert.equal(forwardedForApi(real, onVercel), "203.0.113.8");
 });
 
 test("dois clientes no Next seguem com limites separados e o 429 da API passa inteiro", async () => {
+  const previousVercel = process.env.VERCEL;
+  process.env.VERCEL = "1";
   const seen: string[] = [];
   const server = createServer((req, res) => {
     const forwarded = String(req.headers["x-forwarded-for"] ?? "");
@@ -112,6 +125,8 @@ test("dois clientes no Next seguem com limites separados e o 429 da API passa in
     assert.equal(seen.filter((ip) => ip === "203.0.113.10").length, 11);
     assert.equal(seen.some((ip) => ip.includes("198.51.100.99")), false);
   } finally {
+    if (previousVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = previousVercel;
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

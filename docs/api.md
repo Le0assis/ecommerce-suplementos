@@ -28,7 +28,7 @@ Há no máximo uma tentativa em andamento por conta e IP (`pulso:login:slot:<ema
 
 O IP é o do socket. Atrás de um proxy, `TRUSTED_PROXIES` é obrigatório: sem a lista, todo cliente vira o IP do proxy e o limite de login trava todo mundo junto. `X-Forwarded-For` só entra se esse socket estiver na lista; vale o salto mais à direita que não é proxy. Com `VERCEL=1`, o cabeçalho lido é `x-vercel-forwarded-for`.
 
-O site chama `POST /v1/admin/login` de servidor para servidor. A API, então, vê o IP do Next em todo login. `POST /api/admin/session` acrescenta o IP do cliente no fim de `X-Forwarded-For` (não substitui a cadeia). O endereço do Next precisa estar em `TRUSTED_PROXIES`, senão todo mundo divide o limite do IP do Next.
+O site chama `POST /v1/admin/login` de servidor para servidor. A API, então, vê o IP do Next em todo login. `POST /api/admin/session` acrescenta o IP do cliente no fim de `X-Forwarded-For` (não substitui a cadeia). Esse IP é o do socket. `x-vercel-forwarded-for` e `x-real-ip` só entram com `VERCEL=1`, porque a Vercel sobrescreve os dois. O `X-Forwarded-For` do navegador não entra. O endereço do Next precisa estar em `TRUSTED_PROXIES`, senão todo mundo divide o limite do IP do Next.
 
 Exemplo com Next e API na mesma máquina:
 
@@ -102,7 +102,7 @@ Sem token no JSON.
 
 O site não conta falha de login. `POST /api/admin/session` repassa o status, o JSON e o `Retry-After` da API. `401` chega como `{ "error": "E-mail ou senha não confere." }`. `429` chega como `{ "error": "Muitas tentativas de login. Espera alguns minutos." }` com o `Retry-After` da API.
 
-O CRUD do painel não grava `apps/web/.data/admin-mock.json`. Se a API não responde, a tela mostra o erro e não diz que salvou. `/api/admin/data` é o outro proxy do admin: cada chamada acrescenta o IP do cliente no fim de `X-Forwarded-For` e repassa o status da API. Rota ainda inexistente vira erro (`A API não tem GET /v1/admin/...`), sem cair no mock.
+O CRUD do painel não grava `apps/web/.data/admin-mock.json`. Se a API não responde, a tela mostra o erro e não diz que salvou. `/api/admin/data` é o outro proxy do admin: cada chamada acrescenta o mesmo IP (socket, ou o cabeçalho da Vercel quando `VERCEL=1`) no fim de `X-Forwarded-For` e repassa o status da API. Rota ainda inexistente vira erro (`A API não tem GET /v1/admin/...`), sem cair no mock.
 
 O painel usa o identificador da tabela: produto e kit pelo `id` (o slug), cupom pelo `code`, categoria e objetivo pelo `slug`, influencer e post pelo `slug`, vídeo pelo `id` ou pelo `slug`, e o restante pelo `id`. `409` é duplicata, `404` é registro ou rota ausente, `403` é papel errado. A tela mostra essa mensagem.
 
