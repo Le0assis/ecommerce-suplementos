@@ -145,7 +145,7 @@ export function WaitlistScreen({ publicDrops = NO_DROPS }: { publicDrops?: DropO
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-lime">LGPD</p>
       <h1 className="font-display text-6xl leading-none">Lista de espera</h1>
       <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-        Dono e atendimento removem a inscrição. O editor vê a lista e anonimiza, sem apagar. Os e-mails ficam na API. Esta página não grava cópia.
+        O dono vê o e-mail inteiro. O atendimento vê a máscara, como j***@d***.com, e remove pelo id. O editor não abre a lista. Os e-mails ficam na API. Esta página não grava cópia.
       </p>
       <div className="mt-4 max-w-sm">
         <Field label="Drop">

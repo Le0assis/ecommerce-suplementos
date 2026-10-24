@@ -11,6 +11,7 @@ import {
   listDrops,
   listPublicDrops,
   listWaitlist,
+  maskWaitlistEmail,
   saveDrop,
   type AdminDrop,
   type DropStatus,
@@ -185,9 +186,10 @@ export function mountDrops(admin: Hono, runtime: () => AdminRuntime): void {
 
   admin.get("/drops/:id/waitlist", async (c) => {
     const ctx = runtime();
-    await requireActor(c, ctx, "waitlist");
+    const actor = await requireActor(c, ctx, "waitlist");
     const items = await guard(() => listWaitlist(ctx.sql, c.req.param("id")));
-    return c.json({ items, total: items.length });
+    const visible = actor.role === "dono" ? items : items.map((item) => ({ ...item, email: maskWaitlistEmail(item.email) }));
+    return c.json({ items: visible, total: visible.length });
   });
 
   admin.get("/drops/:id", async (c) => {
