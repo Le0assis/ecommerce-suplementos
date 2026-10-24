@@ -77,4 +77,19 @@ describe("schema", () => {
     expect(sql).toContain("post_blocks_pkey");
     expect(sql).not.toContain("drop table");
   });
+
+  it("acrescenta índices das consultas reais sem apagar dado", () => {
+    const files = migrationFiles(sqlDir);
+    expect(files.at(-1)).toBe("008_indices.sql");
+    const sql = readFileSync(resolve(sqlDir, "008_indices.sql"), "utf8").toLowerCase();
+    expect(sql).toContain("create index if not exists products_store_idx");
+    expect(sql).toContain("create index if not exists reviews_public_idx");
+    expect(sql).toContain("create index if not exists order_lines_order_idx");
+    expect(sql).toContain("create index if not exists drop_waitlist_drop_created_idx");
+    expect(sql).toContain("not valid");
+    expect(sql).not.toContain("drop table");
+    expect(sql).not.toContain("delete from");
+    expect(sql).not.toContain("truncate");
+    expect(sql).not.toContain("drop index");
+  });
 });

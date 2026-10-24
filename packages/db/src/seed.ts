@@ -21,8 +21,11 @@ import type pg from "pg";
 import { loadEnv } from "./env";
 import { closePool, getPool } from "./pool";
 
-// O seed espelha o mock. Rodar de novo atualiza esses campos e não duplica.
-// Não zera uses do cupom, resposta de avaliação, nem a senha do admin.
+// Exemplo fictício, copiado do mock da vitrine. Não é cadastro de produção.
+// Rodar de novo regrava as chaves deste exemplo (nutrição, imagem, meta, selo,
+// item de kit, produto do influencer, opção do quiz e bloco do post) e não duplica.
+// Não mexe em pedido, cliente, lista de espera, sessão nem senha de admin.
+// Não zera uses do cupom nem a resposta de uma avaliação.
 
 function instagramUrl(handle: string): string {
   return `https://instagram.com/${handle.replace(/^@/, "")}`;
@@ -692,7 +695,9 @@ export async function seed(): Promise<void> {
 if (process.argv[1] && process.argv[1].includes("seed")) {
   seed()
     .then(async () => {
-      console.log("Catálogo gravado no Postgres.");
+      console.log(
+        "Exemplo gravado no Postgres. São dados fictícios do mock; pedido, lista de espera e senha de admin não entram aqui.",
+      );
       await closePool();
     })
     .catch(async (error: unknown) => {
