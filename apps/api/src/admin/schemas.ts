@@ -139,6 +139,7 @@ export const couponSchema = z
     maxUses: z.number().int().positive().nullable().optional().default(null),
     influencerId: z.string().trim().min(1).max(80).nullable().optional().default(null),
     active: z.boolean().default(true),
+    public: z.boolean().default(false),
   })
   .superRefine((coupon, ctx) => {
     if (coupon.kind === "percent" && (coupon.value < 1 || coupon.value > 30)) {

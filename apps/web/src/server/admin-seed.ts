@@ -199,7 +199,7 @@ function toProduct(product: (typeof products)[number]): AdminProduct {
   };
 }
 
-function toCoupon(coupon: { code: string; label: string; kind: "percent" | "shipping"; percent?: number; influencerSlug?: string; active: boolean }): AdminCoupon {
+function toCoupon(coupon: { code: string; label: string; kind: "percent" | "shipping"; percent?: number; influencerSlug?: string; active: boolean; public?: boolean }): AdminCoupon {
   return {
     id: coupon.code.toLowerCase(),
     code: coupon.code,
@@ -213,6 +213,7 @@ function toCoupon(coupon: { code: string; label: string; kind: "percent" | "ship
     uses: coupon.code === "VENCIDO" ? 4 : 0,
     influencerId: coupon.influencerSlug ?? null,
     active: coupon.active,
+    public: coupon.public === true,
   };
 }
 

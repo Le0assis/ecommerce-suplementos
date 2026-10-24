@@ -146,6 +146,7 @@ export interface AdminCoupon {
   uses: number;
   influencerId: string | null;
   active: boolean;
+  public: boolean;
 }
 
 export interface AdminInfluencerRef {
@@ -594,5 +595,6 @@ export function blankCoupon(): AdminCoupon {
     uses: 0,
     influencerId: null,
     active: true,
+    public: false,
   };
 }

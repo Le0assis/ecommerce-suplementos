@@ -101,6 +101,8 @@ export interface AdminCoupon {
   uses: number;
   influencerId: string | null;
   active: boolean;
+  /** true entra em GET /v1/coupons. false fica só para quem digita o código. */
+  public: boolean;
 }
 
 interface ProductRow {
@@ -194,6 +196,7 @@ interface CouponRow {
   uses: number;
   influencer_id: string | null;
   active: boolean;
+  public: boolean;
 }
 
 function iso(value: Date | string | null | undefined): string | null {
@@ -985,6 +988,7 @@ function couponFrom(row: CouponRow): AdminCoupon {
     uses: num(row.uses),
     influencerId: row.influencer_id,
     active: row.active,
+    public: row.public === true,
   };
 }
 
@@ -1004,7 +1008,7 @@ export async function listAdminCoupons(
   const clause = where.length ? `where ${where.join(" and ")}` : "";
   const total = await sql.query<{ count: number }>(`select count(*)::int as count from coupons ${clause}`, params);
   const rows = await sql.query<CouponRow>(
-    `select code, label, kind, percent, value, min_cents, starts_at, ends_at, max_uses, uses, influencer_id, active
+    `select code, label, kind, percent, value, min_cents, starts_at, ends_at, max_uses, uses, influencer_id, active, public
      from coupons ${clause}
      order by code asc
      limit $${params.length + 1} offset $${params.length + 2}`,
@@ -1020,7 +1024,7 @@ export async function listAdminCoupons(
 
 export async function getAdminCoupon(sql: Sql, code: string): Promise<AdminCoupon | null> {
   const rows = await sql.query<CouponRow>(
-    `select code, label, kind, percent, value, min_cents, starts_at, ends_at, max_uses, uses, influencer_id, active
+    `select code, label, kind, percent, value, min_cents, starts_at, ends_at, max_uses, uses, influencer_id, active, public
      from coupons where code = $1`,
     [code],
   );
@@ -1036,8 +1040,8 @@ export async function saveAdminCoupon(sql: Sql, input: AdminCoupon, keepUses: bo
   const percent = input.kind === "percent" ? input.value : null;
   try {
     await sql.query(
-      `insert into coupons (code, label, kind, percent, value, min_cents, starts_at, ends_at, max_uses, uses, influencer_slug, influencer_id, active, updated_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12, now())
+      `insert into coupons (code, label, kind, percent, value, min_cents, starts_at, ends_at, max_uses, uses, influencer_slug, influencer_id, active, public, updated_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12, $13, now())
        on conflict (code) do update set
          label = excluded.label,
          kind = excluded.kind,
@@ -1047,10 +1051,11 @@ export async function saveAdminCoupon(sql: Sql, input: AdminCoupon, keepUses: bo
          starts_at = excluded.starts_at,
          ends_at = excluded.ends_at,
          max_uses = excluded.max_uses,
-         uses = case when $13 then coupons.uses else excluded.uses end,
+         uses = case when $14 then coupons.uses else excluded.uses end,
          influencer_slug = excluded.influencer_slug,
          influencer_id = excluded.influencer_id,
          active = excluded.active,
+         public = excluded.public,
          updated_at = now()`,
       [
         input.code,
@@ -1065,6 +1070,7 @@ export async function saveAdminCoupon(sql: Sql, input: AdminCoupon, keepUses: bo
         keepUses ? 0 : input.uses,
         input.influencerId,
         input.active,
+        input.public,
         keepUses,
       ],
     );
@@ -1129,7 +1135,7 @@ export async function listAdvertisedCoupons(sql: Sql): Promise<AdvertisedCoupon[
 
 export async function readPublicCoupons(sql: Sql, now = new Date()): Promise<Coupon[]> {
   const rows = await sql.query<CouponRow>(
-    `select code, label, kind, percent, value, min_cents, starts_at, ends_at, max_uses, uses, influencer_id, active
+    `select code, label, kind, percent, value, min_cents, starts_at, ends_at, max_uses, uses, influencer_id, active, public
      from coupons where active = true order by code asc`,
   );
   return rows.rows

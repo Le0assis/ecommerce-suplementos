@@ -21,6 +21,7 @@ function toStored(body: CouponBody, uses = 0): AdminCoupon {
     uses,
     influencerId: body.influencerId ?? null,
     active: body.active,
+    public: body.public,
   };
 }
 

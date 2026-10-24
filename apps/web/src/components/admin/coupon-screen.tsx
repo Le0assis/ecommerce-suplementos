@@ -108,7 +108,8 @@ export function CouponScreen() {
             {influencers.map((influencer) => <option key={influencer.id} value={influencer.id}>{influencer.name}</option>)}
           </SelectField>
           <div className="flex items-end"><CheckRow label="Ativo" checked={draft.active} onChange={(active) => setDraft({ ...draft, active })} /></div>
-          <p className="text-sm text-muted-foreground md:col-span-3">Usos registrados: {draft.uses}. Esse número não se edita aqui.</p>
+          <div className="flex items-end"><CheckRow label="Anunciar na loja" checked={draft.public} onChange={(advertised) => setDraft({ ...draft, public: advertised })} /></div>
+          <p className="text-sm text-muted-foreground md:col-span-3">Usos registrados: {draft.uses}. Esse número não se edita aqui. Anunciar mostra o código em GET /v1/coupons. Sem isso, só quem digita o código usa.</p>
           <div className="flex gap-2 md:col-span-3">
             <Button type="button" onClick={() => void save()}>Salvar cupom</Button>
             <Button type="button" variant="outline" onClick={() => setDraft(null)}>Cancelar</Button>
@@ -123,7 +124,7 @@ export function CouponScreen() {
             <div>
               <p className="font-display text-3xl leading-none">{coupon.code}</p>
               <p className="text-sm text-muted-foreground">
-                {coupon.label} · {coupon.kind === "shipping" ? "frete" : `${coupon.value}%`} · {coupon.uses} uso{coupon.uses === 1 ? "" : "s"} · {coupon.active ? "ativo" : "inativo"}
+                {coupon.label} · {coupon.kind === "shipping" ? "frete" : `${coupon.value}%`} · {coupon.uses} uso{coupon.uses === 1 ? "" : "s"} · {coupon.active ? "ativo" : "inativo"} · {coupon.public ? "anunciado" : "interno"}
               </p>
             </div>
             <div className="flex gap-2">

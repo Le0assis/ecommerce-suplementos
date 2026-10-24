@@ -472,6 +472,7 @@ function parseCoupon(input: unknown, db: AdminDb, existing?: AdminCoupon): Admin
     uses,
     influencerId: influencerId || null,
     active: typeof input.active === "boolean" ? input.active : (existing?.active ?? true),
+    public: typeof input.public === "boolean" ? input.public : (existing?.public ?? false),
   };
 }
 

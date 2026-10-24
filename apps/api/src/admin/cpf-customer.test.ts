@@ -51,9 +51,18 @@ describe("CPF do cliente no admin", () => {
     expect(body).not.toContain("39053344705");
     expect(body).not.toContain("390.533.447-05");
 
-    const row = await db.sql.query<{ cpf: string; cpf_hash: string | null }>("select cpf, cpf_hash from customers where id = 'cli-cpf'");
+    const row = await db.sql.query<{ cpf: string; cpf_hash: string | null; cpf_key_id: string | null; cpf_enc: Uint8Array | null }>(
+      "select cpf, cpf_hash, cpf_key_id, cpf_enc from customers where id = 'cli-cpf'",
+    );
     expect(row.rows[0]?.cpf).toBe("529.982.247-25");
+    expect(row.rows[0]?.cpf_key_id).toBe("local-1");
+    expect(row.rows[0]?.cpf_enc).toBeTruthy();
     expect(row.rows[0]?.cpf_hash).toHaveLength(64);
+    const directory = JSON.stringify(await (await app.request("/v1/admin/customers", { headers })).json());
+    expect(directory).toContain("***.***.***-05");
+    expect(directory).not.toContain("39053344705");
+    expect(directory).not.toContain("52998224725");
+    expect(directory).not.toContain("529.982.247-25");
     const audit = await db.sql.query<{ after_data: unknown }>(
       "select after_data from audit_log where entity = 'customer' and entity_id = 'cli-cpf'",
     );

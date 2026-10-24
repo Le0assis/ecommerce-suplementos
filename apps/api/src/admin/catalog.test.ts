@@ -1,3 +1,4 @@
+import { listAdvertisedCoupons } from "@pulso/db/catalog";
 import type { SqlClient } from "@pulso/db/sql";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { auth, createAdminApp, createTestDb, login, resetTables, sampleProduct } from "./harness";
@@ -255,6 +256,43 @@ describe("produtos, cupons e fotos", () => {
     expect(body.item.active).toBe(false);
     const actions = await sql.query<{ action: string }>("select action from audit_log where entity = 'coupon' order by created_at asc");
     expect(actions.rows.map((row) => row.action)).toEqual(["coupon.create", "coupon.delete", "coupon.create", "coupon.archive"]);
+  });
+
+  it("grava public e a lista anunciada segue a escolha do admin", async () => {
+    const app = createAdminApp(sql);
+    const owner = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.48");
+    const headers = auth(owner.token, "203.0.113.48");
+    const shown = await app.request("/v1/admin/coupons", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ code: "vitrine8", label: "Vitrine", kind: "percent", value: 8, active: true, public: true }),
+    });
+    expect(shown.status).toBe(201);
+    expect((await shown.json()).item.public).toBe(true);
+    const hidden = await app.request("/v1/admin/coupons", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ code: "interno7", label: "Interno", kind: "percent", value: 7, active: true }),
+    });
+    expect(hidden.status).toBe(201);
+    expect((await hidden.json()).item.public).toBe(false);
+
+    const advertised = await listAdvertisedCoupons(sql);
+    expect(advertised).toEqual([{ code: "VITRINE8", label: "Vitrine", kind: "percent", percent: 8 }]);
+    const store = await app.request("/v1/coupons");
+    const codes = ((await store.json()) as { coupons: { code: string }[] }).coupons.map((coupon) => coupon.code);
+    expect(codes).toEqual(["VITRINE8"]);
+
+    const edited = await app.request("/v1/admin/coupons/VITRINE8", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ code: "VITRINE8", label: "Vitrine", kind: "percent", value: 8, active: true, public: false }),
+    });
+    expect(edited.status).toBe(200);
+    expect((await edited.json()).item.public).toBe(false);
+    expect(await listAdvertisedCoupons(sql)).toEqual([]);
+    const after = ((await (await app.request("/v1/coupons")).json()) as { coupons: { code: string }[] }).coupons;
+    expect(after).toEqual([]);
   });
 
   it("assina upload só para quem pode e exige texto alternativo", async () => {

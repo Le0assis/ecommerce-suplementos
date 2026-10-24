@@ -36,7 +36,7 @@ Só entra post `publicado`, ou `agendado` com `publishedAt` até a data UTC de h
 
 ### `GET /v1/coupons`
 
-Só cupom com `active` e `public`. A resposta traz `code`, `label`, `kind` e `percent`. Raspadinha (`RASPA5`, `RASPA10`, `RASPAFRETE`) não entra. Sem a coluna `coupons.public`, a lista volta vazia.
+Só cupom com `active` e `public`. A resposta traz `code`, `label`, `kind` e `percent`. Raspadinha (`RASPA5`, `RASPA10`, `RASPAFRETE`) não entra. Sem a coluna `coupons.public`, a lista volta vazia. O admin grava `public` em `POST` e `PATCH /v1/admin/coupons`. Sem o campo, o cupom não é anunciado.
 
 ## Escrita simulada
 
