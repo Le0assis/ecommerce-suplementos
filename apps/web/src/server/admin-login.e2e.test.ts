@@ -67,7 +67,9 @@ function login(ip: string, email: string, forgedForwardedFor?: string, socketIp?
 
 test("dois clientes no Next recebem limites de 30 separados na API", async () => {
   const previousVercel = process.env.VERCEL;
+  const previousVercelEnv = process.env.VERCEL_ENV;
   process.env.VERCEL = "1";
+  process.env.VERCEL_ENV = "preview";
   const api = await startApi();
   process.env.API_URL = `http://127.0.0.1:${api.port}`;
   try {
@@ -95,6 +97,8 @@ test("dois clientes no Next recebem limites de 30 separados na API", async () =>
     delete process.env.API_URL;
     if (previousVercel === undefined) delete process.env.VERCEL;
     else process.env.VERCEL = previousVercel;
+    if (previousVercelEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previousVercelEnv;
     api.stop();
   }
 }, 60_000);

@@ -257,6 +257,8 @@ Abra o `.env` num editor de texto. Cada linha `NOME=valor` é uma variável. Lin
 
 O arquivo `.env` está no `.gitignore`. Não faça commit dele.
 
+Na Vercel, `x-vercel-forwarded-for` e `x-real-ip` só entram no IP do cliente quando `VERCEL=1` e existe `VERCEL_ENV` ou `VERCEL_URL`. A plataforma preenche os três e sobrescreve esses cabeçalhos. `VERCEL=1` sozinho não basta: o processo do Next apaga os dois e usa o IP do socket. Fora da Vercel, `TRUSTED_PROXY=1` deixa o site ler `x-real-ip` quando um proxy confiável sobrescreve esse cabeçalho. O `X-Forwarded-For` do navegador não segue para a API. O contrato está em [docs/api.md](docs/api.md).
+
 ---
 
 ## 5. Subir os serviços

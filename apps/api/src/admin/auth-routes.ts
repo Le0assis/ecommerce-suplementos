@@ -31,6 +31,7 @@ let dummyHash: string | null = null;
 let proofs = 0;
 let redisClient: Redis | null = null;
 let redisUrl = "";
+let redisOpening: Promise<void> | null = null;
 
 const BUSY = "Muitas tentativas de login. Espera alguns minutos.";
 
@@ -113,8 +114,9 @@ function settleSlotMap(email: string, ip: string, now: number, delayMs: number):
 function redis(): Redis | null {
   const url = process.env.REDIS_URL;
   if (!url) return null;
-  if (redisClient && redisUrl === url) return redisClient;
+  if (redisClient && redisUrl === url && redisClient.status !== "end") return redisClient;
   redisClient?.disconnect();
+  redisOpening = null;
   redisUrl = url;
   redisClient = new Redis(url, {
     connectTimeout: 800,
@@ -122,7 +124,37 @@ function redis(): Redis | null {
     enableOfflineQueue: false,
     lazyConnect: true,
   });
+  redisClient.on("error", () => {
+    // connect() e o comando já devolvem a falha. Sem ouvinte o processo cai.
+  });
   return redisClient;
+}
+
+/**
+ * lazyConnect + enableOfflineQueue:false rejeita o comando se o socket ainda não está pronto.
+ * Esse rejeite caía no Map daquele pedido e a falha sumia do Redis: o 429 só vinha na 32ª.
+ * Uma conexão compartilhada espera o status ready antes de qualquer comando, inclusive na rajada.
+ */
+async function openRedis(): Promise<Redis | null> {
+  const client = redis();
+  if (!client) return null;
+  if (client.status === "ready") return client;
+  if (!redisOpening) {
+    redisOpening = client.connect().then(() => undefined).finally(() => {
+      redisOpening = null;
+    });
+  }
+  await redisOpening;
+  if (client.status !== "ready") throw new Error("Redis do login não ficou pronto.");
+  return client;
+}
+
+export function disconnectLoginRedis(): void {
+  redisOpening = null;
+  const client = redisClient;
+  redisClient = null;
+  redisUrl = "";
+  client?.disconnect();
 }
 
 function ipRedisKey(ip: string): string {
@@ -134,7 +166,7 @@ function ipUserRedisKey(ip: string, email: string): string {
 }
 
 async function ipBlockedByOthersRedis(ip: string, email: string): Promise<boolean> {
-  const client = redis();
+  const client = await openRedis();
   if (!client) return false;
   const total = Number((await client.get(ipRedisKey(ip))) ?? 0);
   const own = Number((await client.get(ipUserRedisKey(ip, email))) ?? 0);
@@ -142,7 +174,7 @@ async function ipBlockedByOthersRedis(ip: string, email: string): Promise<boolea
 }
 
 async function noteIpFailureRedis(ip: string, email: string): Promise<boolean> {
-  const client = redis();
+  const client = await openRedis();
   if (!client) return false;
   const key = ipRedisKey(ip);
   const count = await client.incr(key);
@@ -158,7 +190,7 @@ function emailIpRedisKey(email: string, ip: string): string {
 }
 
 async function noteEmailIpFailureRedis(email: string, ip: string): Promise<boolean> {
-  const client = redis();
+  const client = await openRedis();
   if (!client) return false;
   const key = emailIpRedisKey(email, ip);
   const count = await client.incr(key);
@@ -167,13 +199,13 @@ async function noteEmailIpFailureRedis(email: string, ip: string): Promise<boole
 }
 
 async function clearEmailIpRedis(email: string, ip: string): Promise<void> {
-  const client = redis();
+  const client = await openRedis();
   if (!client) return;
   await client.del(emailIpRedisKey(email, ip));
 }
 
 async function clearIpUserRedis(ip: string, email: string): Promise<void> {
-  const client = redis();
+  const client = await openRedis();
   if (!client) return;
   const userKey = ipUserRedisKey(ip, email);
   const own = Number((await client.get(userKey)) ?? 0);
@@ -185,7 +217,7 @@ async function clearIpUserRedis(ip: string, email: string): Promise<void> {
 }
 
 async function reserveSlotRedis(email: string, ip: string): Promise<{ ok: true } | { ok: false; retryAfter: number }> {
-  const client = redis();
+  const client = await openRedis();
   if (!client) return { ok: false, retryAfter: 1 };
   const key = `pulso:login:slot:${email}:${ip}`;
   const set = await client.set(key, "1", "PX", 30_000, "NX");
@@ -195,7 +227,7 @@ async function reserveSlotRedis(email: string, ip: string): Promise<{ ok: true }
 }
 
 async function settleSlotRedis(email: string, ip: string, delayMs: number): Promise<void> {
-  const client = redis();
+  const client = await openRedis();
   if (!client) return;
   const key = `pulso:login:slot:${email}:${ip}`;
   if (delayMs <= 0) {

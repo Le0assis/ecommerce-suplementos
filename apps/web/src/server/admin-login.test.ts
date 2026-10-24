@@ -59,7 +59,7 @@ test("o XFF do cliente não muda o IP enviado à API", () => {
   Object.assign(socketed, { socket: { remoteAddress: "::ffff:203.0.113.8" } });
   assert.equal(forwardedForApi(socketed, off), "203.0.113.8");
 
-  const onVercel: NodeJS.ProcessEnv = { NODE_ENV: "test", VERCEL: "1" };
+  const onVercel: NodeJS.ProcessEnv = { NODE_ENV: "test", VERCEL: "1", VERCEL_ENV: "production" };
   const vercel = new Request("http://127.0.0.1:43123/api/admin/session", {
     headers: {
       "x-forwarded-for": "9.9.9.9",
@@ -69,6 +69,9 @@ test("o XFF do cliente não muda o IP enviado à API", () => {
   });
   Object.assign(vercel, { socket: { remoteAddress: "203.0.113.8" } });
   assert.equal(forwardedForApi(vercel, onVercel), "198.51.100.4");
+  assert.equal(forwardedForApi(vercel, { NODE_ENV: "test", VERCEL: "1", VERCEL_URL: "pulso.vercel.app" }), "198.51.100.4");
+  assert.equal(forwardedForApi(vercel, { NODE_ENV: "test", VERCEL: "1" }), "203.0.113.8");
+  assert.equal(forwardedForApi(vercel, { NODE_ENV: "test", VERCEL: "1", VERCEL_ENV: "  ", VERCEL_URL: "" }), "203.0.113.8");
 
   const real = new Request("http://127.0.0.1:43123/api/admin/session", {
     headers: { "x-forwarded-for": "1.1.1.1", "x-real-ip": "203.0.113.8" },
@@ -127,6 +130,25 @@ test("sem VERCEL girar o cabeçalho não troca o IP e não queima o do dono", ()
   };
   stampPeerHeaders(forgedOwner, attacker, off);
   assert.equal(observedClientIp(new Request("http://127.0.0.1:43123/api/admin/session", { headers: forgedOwner }), off), attacker);
+
+  const flagOnly: NodeJS.ProcessEnv = { NODE_ENV: "test", VERCEL: "1" };
+  const keptByFlag: Record<string, string> = {
+    "x-real-ip": owner,
+    "x-vercel-forwarded-for": owner,
+  };
+  stampPeerHeaders(keptByFlag, attacker, flagOnly);
+  assert.equal(keptByFlag["x-real-ip"], undefined);
+  assert.equal(keptByFlag["x-vercel-forwarded-for"], undefined);
+  assert.equal(observedClientIp(new Request("http://127.0.0.1:43123/api/admin/session", { headers: keptByFlag }), flagOnly), attacker);
+
+  const onVercel: NodeJS.ProcessEnv = { NODE_ENV: "test", VERCEL: "1", VERCEL_ENV: "preview" };
+  const kept: Record<string, string> = {
+    "x-real-ip": owner,
+    "x-vercel-forwarded-for": owner,
+  };
+  stampPeerHeaders(kept, attacker, onVercel);
+  assert.equal(kept["x-vercel-forwarded-for"], owner);
+  assert.equal(observedClientIp(new Request("http://127.0.0.1:43123/api/admin/session", { headers: kept }), onVercel), owner);
 });
 
 test("o servidor HTTP troca o IP girado pelo do socket", async () => {
@@ -169,7 +191,9 @@ test("o servidor HTTP troca o IP girado pelo do socket", async () => {
 
 test("dois clientes no Next seguem com limites separados e o 429 da API passa inteiro", async () => {
   const previousVercel = process.env.VERCEL;
+  const previousVercelEnv = process.env.VERCEL_ENV;
   process.env.VERCEL = "1";
+  process.env.VERCEL_ENV = "preview";
   const seen: string[] = [];
   const server = createServer((req, res) => {
     const forwarded = String(req.headers["x-forwarded-for"] ?? "");
@@ -221,13 +245,17 @@ test("dois clientes no Next seguem com limites separados e o 429 da API passa in
   } finally {
     if (previousVercel === undefined) delete process.env.VERCEL;
     else process.env.VERCEL = previousVercel;
+    if (previousVercelEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previousVercelEnv;
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
 
 test("a 31ª falha no par e-mail e IP responde 429 e a senha certa zera o contador", async () => {
   const previousVercel = process.env.VERCEL;
+  const previousVercelEnv = process.env.VERCEL_ENV;
   process.env.VERCEL = "1";
+  process.env.VERCEL_ENV = "preview";
   let mode: "fail" | "ok" = "fail";
   let hits = 0;
   const server = createServer((_req, res) => {
@@ -289,6 +317,8 @@ test("a 31ª falha no par e-mail e IP responde 429 e a senha certa zera o contad
   } finally {
     if (previousVercel === undefined) delete process.env.VERCEL;
     else process.env.VERCEL = previousVercel;
+    if (previousVercelEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previousVercelEnv;
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

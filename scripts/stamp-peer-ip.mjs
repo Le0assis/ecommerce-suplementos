@@ -8,9 +8,17 @@ function normalizeIp(value) {
   return trimmed;
 }
 
-/** Tira o IP que o cliente escreveu e grava o do socket. Com VERCEL=1 a plataforma já sobrescreveu os cabeçalhos dela. */
+/** Mesma regra de trustVercelHeaders: VERCEL=1 e VERCEL_ENV ou VERCEL_URL. Este arquivo não importa o TypeScript. */
+export function trustVercelHeaders(env = process.env) {
+  if (env.VERCEL !== "1") return false;
+  const named = typeof env.VERCEL_ENV === "string" ? env.VERCEL_ENV.trim() : "";
+  const url = typeof env.VERCEL_URL === "string" ? env.VERCEL_URL.trim() : "";
+  return Boolean(named || url);
+}
+
+/** Tira o IP que o cliente escreveu e grava o do socket. Na Vercel de verdade a plataforma já sobrescreveu os cabeçalhos dela. */
 export function stampPeerHeaders(headers, remoteAddress, env = process.env) {
-  if (env.VERCEL !== "1") {
+  if (!trustVercelHeaders(env)) {
     delete headers["x-vercel-forwarded-for"];
     if (env.TRUSTED_PROXY !== "1") delete headers["x-real-ip"];
   }

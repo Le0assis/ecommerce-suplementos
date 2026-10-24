@@ -1,11 +1,13 @@
 import { serve } from "@hono/node-server";
+import type { SqlClient } from "@pulso/db/sql";
+import Redis from "ioredis";
+import { createServer, type Server, type Socket } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app";
+import { disconnectLoginRedis, loginBackoffMs, loginProofCount, resetLoginLimits } from "./auth-routes";
 import { auth, createAdminApp, createTestDb, login, resetTables } from "./harness";
-import { loginBackoffMs, loginProofCount } from "./auth-routes";
 import { clientAddress } from "./http";
 import { sessionSecret } from "./session";
-import type { SqlClient } from "@pulso/db/sql";
 
 let sql: SqlClient;
 let close: () => Promise<void>;
@@ -35,6 +37,138 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetTables(sql);
 });
+
+type RedisEntry = { value: string; expiresAt: number | null };
+
+function bulkReply(value: string): string {
+  return `$${Buffer.byteLength(value)}\r\n${value}\r\n`;
+}
+
+function liveEntry(store: Map<string, RedisEntry>, key: string, now: number): RedisEntry | undefined {
+  const entry = store.get(key);
+  if (!entry) return undefined;
+  if (entry.expiresAt !== null && entry.expiresAt <= now) {
+    store.delete(key);
+    return undefined;
+  }
+  return entry;
+}
+
+function redisReply(store: Map<string, RedisEntry>, args: string[]): string {
+  const command = (args[0] ?? "").toUpperCase();
+  const key = args[1] ?? "";
+  const now = Date.now();
+  if (command === "INFO") return bulkReply("# Server\r\nredis_version:7.2.4\r\nloading:0\r\n");
+  if (command === "CLIENT" || command === "PING") return command === "PING" ? "+PONG\r\n" : "+OK\r\n";
+  if (command === "GET") {
+    const entry = liveEntry(store, key, now);
+    return entry ? bulkReply(entry.value) : "$-1\r\n";
+  }
+  if (command === "INCR" || command === "DECRBY") {
+    const current = liveEntry(store, key, now);
+    const delta = command === "INCR" ? 1 : -Number(args[2] ?? 0);
+    const next = (current ? Number(current.value) : 0) + delta;
+    store.set(key, { value: String(next), expiresAt: current?.expiresAt ?? null });
+    return `:${next}\r\n`;
+  }
+  if (command === "EXPIRE") {
+    const entry = liveEntry(store, key, now);
+    if (!entry) return ":0\r\n";
+    entry.expiresAt = now + Number(args[2] ?? 0) * 1000;
+    return ":1\r\n";
+  }
+  if (command === "TTL" || command === "PTTL") {
+    const entry = liveEntry(store, key, now);
+    if (!entry) return ":-2\r\n";
+    if (entry.expiresAt === null) return ":-1\r\n";
+    const left = entry.expiresAt - now;
+    return command === "TTL" ? `:${Math.ceil(left / 1000)}\r\n` : `:${left}\r\n`;
+  }
+  if (command === "DEL") {
+    const entry = liveEntry(store, key, now);
+    store.delete(key);
+    return entry ? ":1\r\n" : ":0\r\n";
+  }
+  if (command === "SET") {
+    let px: number | null = null;
+    let nx = false;
+    for (let index = 3; index < args.length; index += 1) {
+      const flag = args[index]?.toUpperCase();
+      if (flag === "PX") {
+        px = Number(args[index + 1] ?? 0);
+        index += 1;
+      } else if (flag === "NX") nx = true;
+    }
+    if (nx && liveEntry(store, key, now)) return "$-1\r\n";
+    store.set(key, { value: args[2] ?? "", expiresAt: px === null ? null : now + px });
+    return "+OK\r\n";
+  }
+  return `-ERR comando ${command}\r\n`;
+}
+
+function readRedisCommand(buffer: Buffer): { args: string[]; bytes: number } | null {
+  if (buffer.length < 4 || buffer[0] !== 42) return null;
+  const headerEnd = buffer.indexOf("\r\n");
+  if (headerEnd < 0) return null;
+  const count = Number(buffer.subarray(1, headerEnd).toString());
+  if (!Number.isInteger(count) || count < 1 || count > 16) return null;
+  let offset = headerEnd + 2;
+  const args: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    if (offset >= buffer.length || buffer[offset] !== 36) return null;
+    const lengthEnd = buffer.indexOf("\r\n", offset);
+    if (lengthEnd < 0) return null;
+    const length = Number(buffer.subarray(offset + 1, lengthEnd).toString());
+    const start = lengthEnd + 2;
+    const end = start + length;
+    if (buffer.length < end + 2) return null;
+    args.push(buffer.subarray(start, end).toString());
+    offset = end + 2;
+  }
+  return { args, bytes: offset };
+}
+
+function startLoginRedis(): Promise<{ port: number; errors: string[]; close: () => Promise<void> }> {
+  const store = new Map<string, RedisEntry>();
+  const errors: string[] = [];
+  const sockets = new Set<Socket>();
+  const server: Server = createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+    socket.on("error", () => undefined);
+    let pending = Buffer.alloc(0);
+    socket.on("data", (chunk: Buffer) => {
+      pending = Buffer.concat([pending, chunk]);
+      while (pending.length > 0) {
+        if (pending[0] !== 42) {
+          errors.push(pending.subarray(0, 40).toString());
+          pending = Buffer.alloc(0);
+          break;
+        }
+        const parsed = readRedisCommand(pending);
+        if (!parsed) break;
+        pending = pending.subarray(parsed.bytes);
+        const reply = redisReply(store, parsed.args);
+        if (reply.startsWith("-ERR")) errors.push(reply.trim());
+        socket.write(reply);
+      }
+    });
+  });
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      resolve({
+        port,
+        errors,
+        close() {
+          for (const socket of sockets) socket.destroy();
+          return new Promise((done) => server.close(() => done()));
+        },
+      });
+    });
+  });
+}
 
 describe("login do admin", () => {
   it("grava cookie httpOnly por 12 h e devolve o token que o painel usa", async () => {
@@ -170,6 +304,50 @@ describe("login do admin", () => {
     expect(ownerBlocked.response.headers.get("retry-after")).toBe("900");
     const other = await login(app, "atendimento@pulso.test", "senha-atendimento", "203.0.113.61");
     expect(other.response.status).toBe(200);
+  }, 60_000);
+
+  it("a primeira rajada no Redis frio conta o primeiro comando e a 31ª é 429", async () => {
+    const redis = await startLoginRedis();
+    const previous = process.env.REDIS_URL;
+    process.env.REDIS_URL = `redis://127.0.0.1:${redis.port}`;
+    disconnectLoginRedis();
+    resetLoginLimits();
+    const app = createAdminApp(sql);
+    const ip = "203.0.113.140";
+    try {
+      const burst = await Promise.all(
+        Array.from({ length: 8 }, (_, n) => login(app, `frio-${n}@pulso.test`, "senha-errada-pulso", ip)),
+      );
+      for (const item of burst) expect(item.response.status).toBe(401);
+      for (let n = burst.length; n < 30; n += 1) {
+        const failed = await login(app, `frio-${n}@pulso.test`, "senha-errada-pulso", ip);
+        expect(failed.response.status).toBe(401);
+      }
+      const blocked = await login(app, "frio-30@pulso.test", "senha-errada-pulso", ip);
+      expect(blocked.response.status).toBe(429);
+      expect(blocked.response.headers.get("retry-after")).toBe("900");
+      const probe = new Redis(process.env.REDIS_URL, {
+        lazyConnect: true,
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 1,
+        connectTimeout: 800,
+      });
+      probe.on("error", () => undefined);
+      await probe.connect();
+      try {
+        // A 31ª é recusada antes do INCR: as 30 falhas já estão no Redis, não no Map.
+        expect(await probe.get(`pulso:login:ip:${ip}`)).toBe("30");
+      } finally {
+        probe.disconnect();
+      }
+      expect(redis.errors).toEqual([]);
+    } finally {
+      disconnectLoginRedis();
+      resetLoginLimits();
+      if (previous === undefined) delete process.env.REDIS_URL;
+      else process.env.REDIS_URL = previous;
+      await redis.close();
+    }
   }, 60_000);
 
   it("o segundo balde junta o e-mail normalizado ao IP e a senha certa zera", async () => {
