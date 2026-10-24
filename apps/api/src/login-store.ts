@@ -13,9 +13,14 @@ export function loginStoreMode(env: NodeJS.ProcessEnv = process.env): LoginStore
   return "memory";
 }
 
+/** Conexão lenta não segura o login. O comando parado também não: 500 ms e a produção responde 503. */
+export const LOGIN_REDIS_CONNECT_TIMEOUT_MS = 800;
+export const LOGIN_REDIS_COMMAND_TIMEOUT_MS = 500;
+
 export function loginRedisOptions(): RedisOptions {
   return {
-    connectTimeout: 800,
+    connectTimeout: LOGIN_REDIS_CONNECT_TIMEOUT_MS,
+    commandTimeout: LOGIN_REDIS_COMMAND_TIMEOUT_MS,
     maxRetriesPerRequest: 1,
     enableOfflineQueue: false,
     lazyConnect: true,

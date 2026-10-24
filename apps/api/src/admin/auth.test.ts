@@ -129,7 +129,7 @@ function readRedisCommand(buffer: Buffer): { args: string[]; bytes: number } | n
   return { args, bytes: offset };
 }
 
-function startLoginRedis(): Promise<{ port: number; errors: string[]; close: () => Promise<void> }> {
+function startLoginRedis(pauseData = false): Promise<{ port: number; errors: string[]; close: () => Promise<void> }> {
   const store = new Map<string, RedisEntry>();
   const errors: string[] = [];
   const sockets = new Set<Socket>();
@@ -149,6 +149,8 @@ function startLoginRedis(): Promise<{ port: number; errors: string[]; close: () 
         const parsed = readRedisCommand(pending);
         if (!parsed) break;
         pending = pending.subarray(parsed.bytes);
+        const command = (parsed.args[0] ?? "").toUpperCase();
+        if (pauseData && !["INFO", "PING", "CLIENT", "HELLO"].includes(command)) continue;
         const reply = redisReply(store, parsed.args);
         if (reply.startsWith("-ERR")) errors.push(reply.trim());
         socket.write(reply);
@@ -537,6 +539,60 @@ describe("login do admin", () => {
       else env.TRUSTED_PROXIES = previousProxiesHere;
     }
   });
+
+  it("Redis pausado em produção responde 503 antes da senha", async () => {
+    const paused = await startLoginRedis(true);
+    const env = process.env as Record<string, string | undefined>;
+    const previousNode = env.NODE_ENV;
+    const previousRedis = env.REDIS_URL;
+    const previousSource = env.API_DATA_SOURCE;
+    const previousDatabase = env.DATABASE_URL;
+    const previousProxiesHere = env.TRUSTED_PROXIES;
+    env.NODE_ENV = "production";
+    env.API_DATA_SOURCE = "postgres";
+    env.DATABASE_URL = previousDatabase || "postgres://pulso:pulso@127.0.0.1:5432/pulso";
+    env.TRUSTED_PROXIES = "127.0.0.1";
+    env.REDIS_URL = `redis://127.0.0.1:${paused.port}`;
+    disconnectLoginRedis();
+    resetLoginLimits();
+    const app = createAdminApp(sql);
+    const server = await new Promise<ReturnType<typeof serve>>((resolve) => {
+      const started = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 }, () => resolve(started));
+    });
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    try {
+      const proofs = loginProofCount();
+      const audits = await sql.query<{ total: number }>("select count(*)::int as total from audit_log where action = 'login_failed'");
+      const startedAt = Date.now();
+      const response = await fetch(`http://127.0.0.1:${port}/v1/admin/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.78" },
+        body: JSON.stringify({ email: "dono@pulso.test", password: "senha-dona-pulso" }),
+      });
+      expect(Date.now() - startedAt).toBeLessThan(2_000);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: LOGIN_NO_REDIS });
+      expect(loginProofCount()).toBe(proofs);
+      const after = await sql.query<{ total: number }>("select count(*)::int as total from audit_log where action = 'login_failed'");
+      expect(after.rows[0]?.total).toBe(audits.rows[0]?.total);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      disconnectLoginRedis();
+      resetLoginLimits();
+      await paused.close();
+      if (previousNode === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNode;
+      if (previousRedis === undefined) delete env.REDIS_URL;
+      else env.REDIS_URL = previousRedis;
+      if (previousSource === undefined) delete env.API_DATA_SOURCE;
+      else env.API_DATA_SOURCE = previousSource;
+      if (previousDatabase === undefined) delete env.DATABASE_URL;
+      else env.DATABASE_URL = previousDatabase;
+      if (previousProxiesHere === undefined) delete env.TRUSTED_PROXIES;
+      else env.TRUSTED_PROXIES = previousProxiesHere;
+    }
+  }, 4_000);
 
   it("fora de produção, Redis fora cai no Map e a senha ainda é conferida", async () => {
     const previous = process.env.REDIS_URL;

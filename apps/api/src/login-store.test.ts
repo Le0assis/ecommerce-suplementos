@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { HttpError } from "./admin/http";
-import { LOGIN_NO_REDIS, openLoginStore, runLoginStore } from "./login-store";
+import { LOGIN_NO_REDIS, LOGIN_REDIS_COMMAND_TIMEOUT_MS, LOGIN_REDIS_CONNECT_TIMEOUT_MS, loginRedisOptions, openLoginStore, runLoginStore } from "./login-store";
 
 describe("limite de login", () => {
+  it("corta conexão e comando para o Redis não pendurar o login", () => {
+    const options = loginRedisOptions();
+    expect(options.connectTimeout).toBe(LOGIN_REDIS_CONNECT_TIMEOUT_MS);
+    expect(options.commandTimeout).toBe(LOGIN_REDIS_COMMAND_TIMEOUT_MS);
+    expect(options.commandTimeout).toBe(500);
+    expect(options.connectTimeout).toBeLessThan(1_000);
+  });
+
   it("em produção, Redis fora responde 503 e não chama o Map", async () => {
     const env = { NODE_ENV: "production", REDIS_URL: "redis://127.0.0.1:1" } as NodeJS.ProcessEnv;
     const state = openLoginStore(env);

@@ -67,9 +67,11 @@ function siteRedis(): Redis | null {
   redisUrl = url;
   redisClient = new Redis(url, {
     connectTimeout: 800,
+    commandTimeout: 500,
     maxRetriesPerRequest: 1,
     enableOfflineQueue: false,
     lazyConnect: true,
+    retryStrategy: () => null,
   });
   redisClient.on("error", () => {
     // connect() e o comando já devolvem a falha.

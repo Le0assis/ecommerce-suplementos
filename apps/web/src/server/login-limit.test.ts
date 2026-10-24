@@ -78,7 +78,29 @@ test("produção sem Redis não usa o Map, e o Redis da API trava o par antes da
   }
 });
 
-function startRedis(): Promise<{ port: number; commands: string[][]; close: () => Promise<void> }> {
+test("Redis pausado em produção responde 503 antes da senha", async () => {
+  const env = process.env as { NODE_ENV?: string; REDIS_URL?: string };
+  const previousNode = env.NODE_ENV;
+  const previousRedis = env.REDIS_URL;
+  const redis = await startRedis(true);
+  env.NODE_ENV = "production";
+  env.REDIS_URL = `redis://127.0.0.1:${redis.port}`;
+  disconnectLoginRedis();
+  const started = Date.now();
+  try {
+    assert.deepEqual(await admitLogin("dono@pulso.test", "203.0.113.9", start), { ok: false, status: 503 });
+    assert.ok(Date.now() - started < 2_000);
+  } finally {
+    disconnectLoginRedis();
+    if (previousRedis === undefined) delete env.REDIS_URL;
+    else env.REDIS_URL = previousRedis;
+    if (previousNode === undefined) delete env.NODE_ENV;
+    else env.NODE_ENV = previousNode;
+    await redis.close();
+  }
+});
+
+function startRedis(pauseData = false): Promise<{ port: number; commands: string[][]; close: () => Promise<void> }> {
   const store = new Map<string, string>();
   const commands: string[][] = [];
   const sockets = new Set<Socket>();
@@ -94,6 +116,10 @@ function startRedis(): Promise<{ port: number; commands: string[][]; close: () =
         if (!parsed) break;
         pending = pending.subarray(parsed.bytes);
         commands.push(parsed.args);
+        const command = (parsed.args[0] ?? "").toUpperCase();
+        if (pauseData && command !== "INFO" && command !== "PING" && command !== "INLINE" && command !== "CLIENT" && command !== "HELLO") {
+          continue;
+        }
         socket.write(reply(store, parsed.args));
       }
     });
