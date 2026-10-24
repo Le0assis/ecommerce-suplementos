@@ -138,13 +138,14 @@ function redis(): Redis | null {
 async function openRedis(): Promise<Redis | null> {
   const client = redis();
   if (!client) return null;
-  if (client.status === "ready") return client;
-  if (!redisOpening) {
-    redisOpening = client.connect().then(() => undefined).finally(() => {
-      redisOpening = null;
-    });
+  if (client.status !== "ready") {
+    if (!redisOpening) {
+      redisOpening = client.connect().then(() => undefined).finally(() => {
+        redisOpening = null;
+      });
+    }
+    await redisOpening;
   }
-  await redisOpening;
   if (client.status !== "ready") throw new Error("Redis do login não ficou pronto.");
   return client;
 }
