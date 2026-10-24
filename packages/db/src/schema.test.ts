@@ -125,7 +125,7 @@ describe("schema", () => {
 
   it("acrescenta o cupom público e os índices novos sem apagar dado", () => {
     const files = migrationFiles(sqlDir);
-    expect(files.at(-1)).toBe("011_consulta_cupom_cpf.sql");
+    expect(files).toContain("011_consulta_cupom_cpf.sql");
     expect(files.indexOf("011_consulta_cupom_cpf.sql")).toBeGreaterThan(files.indexOf("010_cpf_cifrado.sql"));
     const sql = readFileSync(resolve(sqlDir, "011_consulta_cupom_cpf.sql"), "utf8").toLowerCase();
     expect(sql).toContain("add column if not exists public boolean not null default false");
@@ -133,6 +133,29 @@ describe("schema", () => {
     expect(sql).toContain("create index if not exists subscriptions_product_slug_idx");
     expect(sql).toContain("create index if not exists subscriptions_variant_idx");
     expect(sql).toContain("create index if not exists customers_cpf_plain_idx");
+    expect(sql).not.toContain("drop table");
+    expect(sql).not.toContain("drop column");
+    expect(sql).not.toContain("delete from");
+    expect(sql).not.toContain("truncate");
+    expect(sql).not.toContain("update ");
+  });
+
+  it("prepara conta e pedido sem duplicar tabela nem apagar dado", () => {
+    const files = migrationFiles(sqlDir);
+    expect(files.at(-1)).toBe("012_conta_pedido.sql");
+    expect(files.indexOf("012_conta_pedido.sql")).toBeGreaterThan(files.indexOf("011_consulta_cupom_cpf.sql"));
+    const sql = readFileSync(resolve(sqlDir, "012_conta_pedido.sql"), "utf8").toLowerCase();
+    expect(sql).toContain("add column if not exists password_hash text");
+    expect(sql).toContain("create unique index customers_email_lower_key on customers (lower(email))");
+    expect(sql).toContain("add column if not exists account_id text");
+    expect(sql).toContain("add column if not exists items jsonb");
+    expect(sql).toContain("orders_account_id_fkey");
+    expect(sql).toContain("references customers (id)");
+    expect(sql).toContain("check (total_cents >= 0)");
+    expect(sql).toContain("not valid");
+    expect(sql).toContain("create index if not exists orders_account_created_idx");
+    expect(sql).toContain("pagamento_pendente");
+    expect(sql).not.toContain("create table");
     expect(sql).not.toContain("drop table");
     expect(sql).not.toContain("drop column");
     expect(sql).not.toContain("delete from");

@@ -77,9 +77,33 @@ Arquivo `packages/db/sql/001_init.sql`.
 
 A conta, o pedido e a raspadinha que você vê no site estão no `localStorage`, não nessas tabelas. O pedido demo `PLDEMOANA` também é código (`apps/web/src/lib/demo.ts`).
 
-## Conta e pedido no servidor (proposta para o DBA)
+## Conta e pedido no servidor
 
-A loja ainda não grava cliente nem pedido. Esta etapa não cria a rota: o preço do checkout já sai do catálogo, e o saldo de pontos no orçamento fica 0 até a sessão existir. Enquanto `serverPointAccount` não tiver saldo, `pointsToRedeem` maior que zero responde 422 `pontos_indisponiveis` no quote e no simulate. O checkout esconde o resgate, inclusive na conta demo com saldo, não envia o campo e mostra a frase do 422. A migração é do DBA. As tabelas `customers`, `addresses`, `orders`, `order_lines`, `payments`, `shipments` e `points_ledger` continuam. Falta o que autentica e o que o orçamento precisa ler sem confiar no navegador.
+A vitrine ainda grava conta e pedido no `localStorage`. A migração `012_conta_pedido.sql` prepara o banco e não cria rota. O preço do checkout continua saindo do catálogo, e o saldo de pontos no orçamento fica 0 até a sessão existir. Enquanto `serverPointAccount` não tiver saldo, `pointsToRedeem` maior que zero responde 422 `pontos_indisponiveis` no quote e no simulate. O checkout esconde o resgate, inclusive na conta demo com saldo, não envia o campo e mostra a frase do 422. As tabelas `customers`, `addresses`, `orders`, `order_lines`, `payments`, `shipments` e `points_ledger` continuam.
+
+### Mapeamento (pedido do Backend → banco)
+
+Não há tabela `accounts` nem um segundo `orders`. `customers` é a conta. `orders` é o pedido. A 012 não apaga linha e não copia `customer_id` para `account_id`.
+
+| Pedido do Backend | Coluna real |
+| --- | --- |
+| `accounts` | `customers` |
+| `accounts.id` | `customers.id` `text` primary key |
+| `accounts.email` único em `lower(email)` | `customers.email` já é `unique`. O índice `customers_email_lower_key` em `lower(email)` só entra se não houver e-mail repetido ignorando a caixa. Havendo repetição, a migração emite `NOTICE` com a quantidade de grupos e de linhas e não cria o índice |
+| `accounts.password_hash` | `customers.password_hash` `text` nulo (scrypt, o formato de `admin_users`) |
+| `accounts.created_at` | `customers.created_at` |
+| `cpf_enc` `bytea` | `customers.cpf_enc` (migração 010). A 012 não cria de novo |
+| `cpf_hash` com índice | `customers.cpf_hash` e `customers_cpf_hash_key` (010, único onde não é nulo). `customers.cpf_key_id` também é da 010. `customers.cpf` em claro permanece |
+| `orders` | `orders` |
+| `orders.id` | `orders.id` |
+| `orders.account_id` FK → conta | `orders.account_id` `text` nulo, FK `orders_account_id_fkey` → `customers(id)` `NOT VALID`. `orders.customer_id` segue como a FK já usada pelo admin |
+| `orders.status` | `orders.status`. CHECK da 001: `pagamento_pendente`, `pago`, `separando`, `enviado`, `entregue`, `cancelado`. A 012 não acrescenta outro CHECK |
+| `orders.total_cents` | `orders.total_cents` `integer` (centavos), mais CHECK `orders_total_cents_nonneg` (`total_cents >= 0`) `NOT VALID` |
+| `orders.items` `jsonb` | `orders.items` `jsonb` nulo. As linhas normalizadas continuam em `order_lines` |
+| `orders.created_at` | `orders.created_at` |
+| índice `(account_id, created_at desc)` | `orders_account_created_idx` |
+
+`customer_sessions` não existe. `orders.coupon_code`, `orders.points_redeemed` e `orders.shipping_method` também ficam fora da 012.
 
 `customers.cpf` (`001_init.sql`) continua `text` em claro. A migração `010` já acrescentou, sem apagar essa coluna:
 
@@ -93,13 +117,9 @@ A loja ainda não grava cliente nem pedido. Esta etapa não cria a rota: o preç
 
 A aplicação lê e grava essas colunas. `pnpm db:backfill-cpf` copia o que ainda está em claro e não altera `customers.cpf`. Escrita nova (`PATCH /v1/admin/customers/:id` com `cpf`) preenche só `cpf_enc`, `cpf_key_id` e `cpf_hash`. A resposta do admin e o `audit_log` levam `cpfMasked` (`***.***.***-25`), nunca os 11 dígitos. Tirar a coluna `cpf` fica para o DBA, depois do backfill e com o OK do Léo.
 
-`customers`, além do que já existe (`id`, `email` único, `name`, `phone`, `points_balance`, `points_lifetime`, `marketing_opt_in`, `created_at`, e as colunas de CPF acima):
+`customers.password_hash` já entrou na 012, nulo até a pessoa definir senha, e não sai no JSON.
 
-| Coluna | Tipo | Papel |
-| --- | --- | --- |
-| `password_hash` | `text` nulo | scrypt, o mesmo formato de `admin_users`. Nulo até a pessoa definir senha. Não sai no JSON |
-
-`customer_sessions`, no mesmo desenho de `admin_sessions`:
+`customer_sessions` ainda não tem migração. O desenho, no mesmo formato de `admin_sessions`:
 
 | Coluna | Tipo | Papel |
 | --- | --- | --- |
@@ -111,7 +131,7 @@ A aplicação lê e grava essas colunas. `pnpm db:backfill-cpf` copia o que aind
 
 Índice em `customer_sessions (customer_id)`.
 
-`orders`, além das colunas atuais:
+Ainda sem migração, em `orders`:
 
 | Coluna | Tipo | Papel |
 | --- | --- | --- |
