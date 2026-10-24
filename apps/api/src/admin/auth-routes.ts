@@ -23,7 +23,7 @@ export function loginBackoffMs(failedAttempts: number): number {
   return Math.min(8_000, 100 * 2 ** Math.min(failedAttempts - 2, 7));
 }
 
-const ipHits = new Map<string, { count: number; reset: number }>();
+const ipHits = new Map<string, { failures: number; reset: number; byUser: Map<string, number> }>();
 const slots = new Map<string, { inflight: boolean; notBefore: number }>();
 let dummyHash: string | null = null;
 let proofs = 0;
@@ -37,14 +37,37 @@ async function dummy(): Promise<string> {
   return dummyHash;
 }
 
-function reserveIpMap(ip: string, now: number): boolean {
+function ipBucket(ip: string, now: number) {
   const current = ipHits.get(ip);
-  if (!current || current.reset <= now) {
-    ipHits.set(ip, { count: 1, reset: now + LOCK_MS });
-    return true;
+  if (!current || current.reset <= now) return null;
+  return current;
+}
+
+function ipBlockedByOthers(ip: string, email: string, now: number): boolean {
+  const bucket = ipBucket(ip, now);
+  if (!bucket) return false;
+  const own = bucket.byUser.get(email) ?? 0;
+  return bucket.failures - own >= IP_LIMIT;
+}
+
+function noteIpFailure(ip: string, email: string, now: number): boolean {
+  let bucket = ipHits.get(ip);
+  if (!bucket || bucket.reset <= now) {
+    bucket = { failures: 0, reset: now + LOCK_MS, byUser: new Map() };
+    ipHits.set(ip, bucket);
   }
-  current.count += 1;
-  return current.count <= IP_LIMIT;
+  bucket.failures += 1;
+  bucket.byUser.set(email, (bucket.byUser.get(email) ?? 0) + 1);
+  return bucket.failures <= IP_LIMIT;
+}
+
+function clearIpUser(ip: string, email: string, now: number): void {
+  const bucket = ipBucket(ip, now);
+  if (!bucket) return;
+  const own = bucket.byUser.get(email) ?? 0;
+  bucket.failures = Math.max(0, bucket.failures - own);
+  bucket.byUser.delete(email);
+  if (bucket.failures <= 0) ipHits.delete(ip);
 }
 
 function slotKey(email: string, ip: string): string {
@@ -85,13 +108,44 @@ function redis(): Redis | null {
   return redisClient;
 }
 
-async function reserveIpRedis(ip: string): Promise<boolean> {
+function ipRedisKey(ip: string): string {
+  return `pulso:login:ip:${ip}`;
+}
+
+function ipUserRedisKey(ip: string, email: string): string {
+  return `pulso:login:ipuser:${ip}:${email}`;
+}
+
+async function ipBlockedByOthersRedis(ip: string, email: string): Promise<boolean> {
   const client = redis();
   if (!client) return false;
-  const key = `pulso:login:ip:${ip}`;
+  const total = Number((await client.get(ipRedisKey(ip))) ?? 0);
+  const own = Number((await client.get(ipUserRedisKey(ip, email))) ?? 0);
+  return total - own >= IP_LIMIT;
+}
+
+async function noteIpFailureRedis(ip: string, email: string): Promise<boolean> {
+  const client = redis();
+  if (!client) return false;
+  const key = ipRedisKey(ip);
   const count = await client.incr(key);
   if (count === 1 || (await client.ttl(key)) < 0) await client.expire(key, LOCK_MS / 1000);
+  const userKey = ipUserRedisKey(ip, email);
+  const userCount = await client.incr(userKey);
+  if (userCount === 1 || (await client.ttl(userKey)) < 0) await client.expire(userKey, LOCK_MS / 1000);
   return count <= IP_LIMIT;
+}
+
+async function clearIpUserRedis(ip: string, email: string): Promise<void> {
+  const client = redis();
+  if (!client) return;
+  const userKey = ipUserRedisKey(ip, email);
+  const own = Number((await client.get(userKey)) ?? 0);
+  if (own > 0) {
+    const left = await client.decrby(ipRedisKey(ip), own);
+    if (left <= 0) await client.del(ipRedisKey(ip));
+  }
+  await client.del(userKey);
 }
 
 async function reserveSlotRedis(email: string, ip: string): Promise<{ ok: true } | { ok: false; retryAfter: number }> {
@@ -140,35 +194,62 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
   admin.post("/login", async (c) => {
     const ctx = runtime();
     const now = ctx.now();
+    const clock = now.getTime();
     const ip = clientIp(c);
+    const body = parseInput(loginSchema, await readJson(c));
+    const email = body.email.toLowerCase();
     let memory = !process.env.REDIS_URL;
-    let allowed = false;
-    if (memory) {
-      allowed = reserveIpMap(ip, now.getTime());
-    } else {
-      try {
-        allowed = await reserveIpRedis(ip);
-      } catch {
-        memory = true;
-        allowed = reserveIpMap(ip, now.getTime());
+    const blockedByOthers = async (): Promise<boolean> => {
+      if (!memory) {
+        try {
+          return await ipBlockedByOthersRedis(ip, email);
+        } catch {
+          memory = true;
+        }
       }
-    }
-    if (!allowed) {
+      return ipBlockedByOthers(ip, email, clock);
+    };
+    if (await blockedByOthers()) {
       c.header("retry-after", "900");
       throw new HttpError(429, BUSY);
     }
-    const body = parseInput(loginSchema, await readJson(c));
-    const email = body.email.toLowerCase();
-    const clock = Date.now();
+    const recordFailure = async (): Promise<never> => {
+      let allowed = false;
+      if (!memory) {
+        try {
+          allowed = await noteIpFailureRedis(ip, email);
+        } catch {
+          memory = true;
+        }
+      }
+      if (memory) allowed = noteIpFailure(ip, email, clock);
+      if (!allowed) {
+        c.header("retry-after", "900");
+        throw new HttpError(429, BUSY);
+      }
+      throw new HttpError(401, "E-mail ou senha não confere.");
+    };
+    const forgetFailures = async (): Promise<void> => {
+      if (!memory) {
+        try {
+          await clearIpUserRedis(ip, email);
+          return;
+        } catch {
+          memory = true;
+        }
+      }
+      clearIpUser(ip, email, clock);
+    };
+    const slotClock = Date.now();
     let gate: { ok: true } | { ok: false; retryAfter: number };
     if (memory) {
-      gate = reserveSlotMap(email, ip, clock);
+      gate = reserveSlotMap(email, ip, slotClock);
     } else {
       try {
         gate = await reserveSlotRedis(email, ip);
       } catch {
         memory = true;
-        gate = reserveSlotMap(email, ip, clock);
+        gate = reserveSlotMap(email, ip, slotClock);
       }
     }
     if (!gate.ok) {
@@ -206,7 +287,7 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
           entityId: null,
           after: { email },
         });
-        throw new HttpError(401, "E-mail ou senha não confere.");
+        return recordFailure();
       }
       const bumped = await ctx.sql.query<{ failed_attempts: number }>(
         `update admin_users
@@ -227,8 +308,9 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
           entityId: user.id,
           after: { email },
         });
-        throw new HttpError(401, "E-mail ou senha não confere.");
+        return recordFailure();
       }
+      await forgetFailures();
       await ctx.sql.query(
         "update admin_users set failed_attempts = 0, locked_until = null, updated_at = now() where id = $1",
         [user.id],

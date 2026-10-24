@@ -66,13 +66,7 @@ test("dois clientes no Next recebem limites de 30 separados na API", async () =>
   const api = await startApi();
   process.env.API_URL = `http://127.0.0.1:${api.port}`;
   try {
-    const burst = await Promise.all(Array.from({ length: 12 }, () => login("203.0.113.70", "dono@pulso.test")));
-    const statuses = await Promise.all(burst.map(async (response) => response.status));
-    assert.ok(statuses.includes(401));
-    assert.ok(statuses.includes(429));
-    assert.ok(statuses.every((status) => status === 401 || status === 429));
-
-    for (let attempt = 0; attempt < 18; attempt += 1) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       const response = await login("203.0.113.70", `visitante-${attempt}@pulso.test`);
       assert.equal(response.status, 401, `tentativa ${attempt} ainda cabia no limite do IP`);
     }

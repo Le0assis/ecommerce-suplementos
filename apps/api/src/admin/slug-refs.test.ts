@@ -111,18 +111,6 @@ describe("slug, busca e órfãos", () => {
     const owner = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.61");
     const headers = auth(owner.token, "203.0.113.61");
     expect((await app.request("/v1/admin/products", { method: "POST", headers, body: JSON.stringify(sampleProduct("caos-teste")) })).status).toBe(201);
-    expect(
-      (
-        await app.request("/v1/admin/products", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            ...sampleProduct("outro-pote"),
-            images: [{ id: "foto-compartilhada", flavorId: "limao", url: null, alt: "Pote", position: 0, isCover: true, fallbackHex: "#d6ff3c" }],
-          }),
-        })
-      ).status,
-    ).toBe(201);
     const variant = await variantId("caos-teste");
     await seedRefs("caos-teste", variant);
     const failed = await app.request("/v1/admin/products/caos-teste", {
@@ -130,7 +118,7 @@ describe("slug, busca e órfãos", () => {
       headers,
       body: JSON.stringify({
         ...sampleProduct("caos-novo"),
-        images: [{ id: "foto-compartilhada", flavorId: "limao", url: null, alt: "Pote", position: 0, isCover: true, fallbackHex: "#d6ff3c" }],
+        badges: ["novo", "novo"],
       }),
     });
     expect(failed.status).toBe(409);

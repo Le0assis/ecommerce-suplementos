@@ -185,7 +185,7 @@ export function mountDrops(admin: Hono, runtime: () => AdminRuntime): void {
 
   admin.get("/drops/:id/waitlist", async (c) => {
     const ctx = runtime();
-    await requireActor(c, ctx, ["drops", "waitlist"]);
+    await requireActor(c, ctx, "waitlist");
     const items = await guard(() => listWaitlist(ctx.sql, c.req.param("id")));
     return c.json({ items, total: items.length });
   });

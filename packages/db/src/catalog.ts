@@ -674,6 +674,52 @@ async function assertRefs(sql: Sql, input: AdminProduct): Promise<void> {
   }
 }
 
+type ScopedTable = "product_variants" | "product_images";
+
+async function rowIdExists(sql: Sql, table: ScopedTable, id: string): Promise<boolean> {
+  const found = await sql.query(`select id from ${table} where id = $1`, [id]);
+  return found.rows.length > 0;
+}
+
+/** Id que já é deste produto permanece. Qualquer outro (vazio, repetido ou de outro produto) nasce aqui. */
+async function assignScopedIds(
+  sql: Sql,
+  table: ScopedTable,
+  productId: string,
+  requested: readonly (string | undefined)[],
+  mint: (index: number) => string,
+): Promise<string[]> {
+  const asked = requested.map((id) => id?.trim() ?? "").filter(Boolean);
+  const owned = new Set<string>();
+  if (asked.length) {
+    const found = await sql.query<{ id: string }>(
+      `select id from ${table} where product_id = $1 and id = any($2::text[])`,
+      [productId, asked],
+    );
+    for (const row of found.rows) owned.add(row.id);
+  }
+  const used = new Set<string>();
+  const ids: string[] = [];
+  for (let index = 0; index < requested.length; index += 1) {
+    const requestedId = requested[index]?.trim() ?? "";
+    if (requestedId && owned.has(requestedId) && !used.has(requestedId)) {
+      used.add(requestedId);
+      ids.push(requestedId);
+      continue;
+    }
+    let next = mint(index);
+    let bump = 0;
+    while (used.has(next) || (await rowIdExists(sql, table, next))) {
+      bump += 1;
+      next = `${mint(index)}__${bump}`;
+      if (bump > 1000) throw new CatalogError(409, "Não deu para gerar um id livre.", table === "product_variants" ? "variacao_de_outro_produto" : "IMAGE_ID");
+    }
+    used.add(next);
+    ids.push(next);
+  }
+  return ids;
+}
+
 export async function saveAdminProduct(sql: SqlClient, input: AdminProduct): Promise<AdminProduct> {
   return withTx(sql, async () => {
     const status = toDbStatus(input.status);
@@ -685,13 +731,18 @@ export async function saveAdminProduct(sql: SqlClient, input: AdminProduct): Pro
     if (slugOwner.rows.length) throw new CatalogError(409, "Já existe um produto com esse slug.", "SLUG_TAKEN");
     await assertRefs(sql, input);
     const flavorIds = input.flavors.map((flavor) => `${input.id}__${flavor.id}`);
-    const variantIds = input.variants.map((variant, index) => variant.id || `${input.id}__${variant.flavorId}__${index}`);
+    const variantIds = await assignScopedIds(
+      sql,
+      "product_variants",
+      input.id,
+      input.variants.map((variant) => variant.id),
+      (index) => `${input.id}__${input.variants[index]?.flavorId ?? "sabor"}__${index}`,
+    );
     const seenSku = new Set<string>();
     for (const [index, variant] of input.variants.entries()) {
       if (seenSku.has(variant.sku)) throw new CatalogError(409, "Já existe uma variação com esse SKU.", "SKU_TAKEN");
       seenSku.add(variant.sku);
-      const variantId = variant.id || `${input.id}__${variant.flavorId}__${index}`;
-      const taken = await sql.query("select id from product_variants where sku = $1 and id <> $2", [variant.sku, variantId]);
+      const taken = await sql.query("select id from product_variants where sku = $1 and id <> $2", [variant.sku, variantIds[index]]);
       if (taken.rows.length) throw new CatalogError(409, "Já existe uma variação com esse SKU.", "SKU_TAKEN");
     }
     const doomed = await sql.query<{ id: string }>(
@@ -774,15 +825,17 @@ export async function saveAdminProduct(sql: SqlClient, input: AdminProduct): Pro
     await sql.query("delete from product_variants where product_id = $1 and not (id = any($2::text[]))", [input.id, variantIds]);
 
     for (const [position, variant] of input.variants.entries()) {
-      const id = variant.id || `${input.id}__${variant.flavorId}__${position}`;
-      await sql.query(
+      const id = variantIds[position];
+      const written = await sql.query<{ id: string }>(
         `insert into product_variants (
            id, product_id, flavor_id, sku, size, price_cents, compare_at_cents, stock, weight_g, servings, position
          ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          on conflict (id) do update set
            flavor_id = excluded.flavor_id, sku = excluded.sku, size = excluded.size, price_cents = excluded.price_cents,
            compare_at_cents = excluded.compare_at_cents, stock = excluded.stock, weight_g = excluded.weight_g,
-           servings = excluded.servings, position = excluded.position`,
+           servings = excluded.servings, position = excluded.position
+         where product_variants.product_id = excluded.product_id
+         returning id`,
         [
           id,
           input.id,
@@ -797,6 +850,9 @@ export async function saveAdminProduct(sql: SqlClient, input: AdminProduct): Pro
           position,
         ],
       );
+      if (!written.rows.length) {
+        throw new CatalogError(409, "Essa variação pertence a outro produto.", "variacao_de_outro_produto");
+      }
     }
 
     await sql.query("delete from product_flavors where product_id = $1 and not (id = any($2::text[]))", [input.id, flavorIds]);
@@ -831,21 +887,16 @@ export async function saveAdminProduct(sql: SqlClient, input: AdminProduct): Pro
       );
     }
 
-    const seenImages = new Set<string>();
-    for (const image of input.images) {
-      if (seenImages.has(image.id)) throw new CatalogError(409, "Já existe uma imagem com esse id.", "IMAGE_ID");
-      seenImages.add(image.id);
-    }
-    if (input.images.length) {
-      const clash = await sql.query<{ id: string }>(
-        "select id from product_images where id = any($1::text[]) and product_id <> $2",
-        [input.images.map((image) => image.id), input.id],
-      );
-      if (clash.rows.length) throw new CatalogError(409, "Já existe uma imagem com esse id.", "IMAGE_ID");
-    }
+    const imageIds = await assignScopedIds(
+      sql,
+      "product_images",
+      input.id,
+      input.images.map((image) => image.id),
+      (index) => `${input.id}__img__${index}`,
+    );
 
     await sql.query("delete from product_images where product_id = $1", [input.id]);
-    const images = input.images.map((image, index) => ({ ...image, position: index, isCover: image.isCover }));
+    const images = input.images.map((image, index) => ({ ...image, id: imageIds[index] ?? `${input.id}__img__${index}`, position: index, isCover: image.isCover }));
     if (images.length && !images.some((image) => image.isCover)) images[0] = { ...images[0]!, isCover: true };
     for (const image of images) {
       await sql.query(

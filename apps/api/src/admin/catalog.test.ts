@@ -48,7 +48,10 @@ describe("produtos, cupons e fotos", () => {
         ],
       }),
     });
-    expect(clash.status).toBe(409);
+    expect(clash.status).toBe(201);
+    const duplicated = (await clash.json()).item as { images: { id: string; alt: string }[] };
+    expect(duplicated.images.map((image) => image.id)).toEqual(["img-dup__img__0", "img-dup__img__1"]);
+    expect(duplicated.images.map((image) => image.alt)).toEqual(["Pote verde", "Outro ângulo"]);
     const item = (await created.json()).item;
     expect(item.images[0]).toMatchObject({ url: null, fallbackHex: "#d6ff3c", alt: "Pote verde" });
     expect(item.status).toBe("publicado");
@@ -67,7 +70,9 @@ describe("produtos, cupons e fotos", () => {
     const after = await app.request("/v1/products");
     const left = await after.json();
     expect(left.products.some((entry: { slug: string }) => entry.slug === "caos-teste")).toBe(false);
-    const audit = await sql.query<{ action: string; after_data: unknown }>("select action, after_data from audit_log where entity = 'product' order by created_at asc");
+    const audit = await sql.query<{ action: string; after_data: unknown }>(
+      "select action, after_data from audit_log where entity = 'product' and entity_id = 'caos-teste' order by created_at asc",
+    );
     expect(audit.rows.map((row) => row.action)).toEqual(["product.create", "product.archive"]);
     expect(JSON.stringify(audit.rows)).not.toContain("scrypt");
     const anon = await app.request("/v1/admin/products", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(sampleProduct("outro")) });
@@ -78,6 +83,106 @@ describe("produtos, cupons e fotos", () => {
       body: JSON.stringify({ ...sampleProduct("ruim"), label: { ...sampleProduct().label, registration: "ANVISA-123" } }),
     });
     expect(bad.status).toBe(400);
+  });
+
+  it("gera id de variação e foto no servidor e não troca o dono", async () => {
+    const app = createAdminApp(sql);
+    const owner = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.44");
+    const headers = auth(owner.token, "203.0.113.44");
+    const base = sampleProduct("caos-a");
+    const created = await app.request("/v1/admin/products", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        ...base,
+        variants: [{ ...base.variants[0], id: "var-1" }],
+        images: [{ ...base.images[0], id: "foto-1" }],
+      }),
+    });
+    expect(created.status).toBe(201);
+    const productA = (await created.json()).item as {
+      variants: { id: string; sku: string; priceCents: number }[];
+      images: { id: string; alt: string }[];
+    };
+    expect(productA.variants[0]?.id).toBe("caos-a__limao__0");
+    expect(productA.images[0]?.id).toBe("caos-a__img__0");
+
+    const stolen = sampleProduct("caos-b");
+    const attack = await app.request("/v1/admin/products", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        ...stolen,
+        variants: [{ ...stolen.variants[0], id: "caos-a__limao__0", sku: "PL-ROUBO", priceCents: 100 }],
+        images: [
+          { id: "caos-a__img__0", flavorId: "limao", url: null, alt: "Roubo", position: 0, isCover: true, fallbackHex: "#d6ff3c" },
+          { id: "foto-1", flavorId: "limao", url: null, alt: "Outra", position: 1, isCover: false, fallbackHex: "#101012" },
+        ],
+      }),
+    });
+    expect(attack.status).toBe(201);
+    const productB = (await attack.json()).item as {
+      variants: { id: string; sku: string; priceCents: number }[];
+      images: { id: string; alt: string }[];
+    };
+    expect(productB.variants[0]).toMatchObject({ id: "caos-b__limao__0", sku: "PL-ROUBO", priceCents: 100 });
+    expect(productB.images.map((image) => image.id)).toEqual(["caos-b__img__0", "caos-b__img__1"]);
+    const ownerRow = await sql.query<{ product_id: string; sku: string; price_cents: number }>(
+      "select product_id, sku, price_cents from product_variants where id = 'caos-a__limao__0'",
+    );
+    expect(ownerRow.rows).toEqual([{ product_id: "caos-a", sku: "PL-CAOS-A", price_cents: 14990 }]);
+    const ownerImage = await sql.query<{ product_id: string; alt: string }>(
+      "select product_id, alt from product_images where id = 'caos-a__img__0'",
+    );
+    expect(ownerImage.rows).toEqual([{ product_id: "caos-a", alt: "Pote verde" }]);
+
+    await sql.query("update product_variants set id = 'var-1' where id = 'caos-a__limao__0'");
+    await sql.query("update product_images set id = 'foto-1' where id = 'caos-a__img__0'");
+    const fixed = sampleProduct("caos-c");
+    const again = await app.request("/v1/admin/products", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        ...fixed,
+        variants: [{ ...fixed.variants[0], id: "var-1", sku: "PL-FIXO", priceCents: 500 }],
+        images: [{ ...fixed.images[0], id: "foto-1", alt: "Foto fixa" }],
+      }),
+    });
+    expect(again.status).toBe(201);
+    const productC = (await again.json()).item as { variants: { id: string }[]; images: { id: string }[] };
+    expect(productC.variants[0]?.id).toBe("caos-c__limao__0");
+    expect(productC.images[0]?.id).toBe("caos-c__img__0");
+    const still = await sql.query<{ product_id: string; price_cents: number; sku: string }>(
+      "select product_id, price_cents, sku from product_variants where id = 'var-1'",
+    );
+    expect(still.rows).toEqual([{ product_id: "caos-a", price_cents: 14990, sku: "PL-CAOS-A" }]);
+    const stillImage = await sql.query<{ product_id: string; alt: string }>("select product_id, alt from product_images where id = 'foto-1'");
+    expect(stillImage.rows).toEqual([{ product_id: "caos-a", alt: "Pote verde" }]);
+
+    const updated = await app.request("/v1/admin/products/caos-b", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({
+        ...stolen,
+        variants: [{ ...stolen.variants[0], id: productB.variants[0]?.id, sku: "PL-ROUBO", priceCents: 2500 }],
+        images: productB.images.map((image, index) => ({
+          id: image.id,
+          flavorId: "limao",
+          url: null,
+          alt: index === 0 ? "Capa nova" : image.alt,
+          position: index,
+          isCover: index === 0,
+          fallbackHex: "#d6ff3c",
+        })),
+      }),
+    });
+    expect(updated.status).toBe(200);
+    const savedB = (await updated.json()).item as { variants: { id: string; priceCents: number }[]; images: { id: string; alt: string }[] };
+    expect(savedB.variants[0]).toMatchObject({ id: "caos-b__limao__0", priceCents: 2500 });
+    expect(savedB.images[0]).toMatchObject({ id: "caos-b__img__0", alt: "Capa nova" });
+    expect(savedB.images[1]?.id).toBe("caos-b__img__1");
+    const untouched = await sql.query<{ price_cents: number }>("select price_cents from product_variants where id = 'var-1'");
+    expect(untouched.rows[0]?.price_cents).toBe(14990);
   });
 
   it("lista na vitrine o produto publicado do admin e esconde rascunho, oculto e arquivo", async () => {

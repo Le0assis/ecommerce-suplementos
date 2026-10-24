@@ -133,12 +133,44 @@ describe("login do admin", () => {
     );
     expect(counted.rows[0]?.failed_attempts).toBe(unauthorized);
     const flooded = await login(app, "dono@pulso.test", "senha-dona-pulso", attack);
-    expect(flooded.response.status).toBe(429);
-    expect(loginProofCount()).toBe(unauthorized);
+    expect(flooded.response.status).toBe(200);
+    expect(loginProofCount()).toBe(unauthorized + 1);
+    const reset = await sql.query<{ failed_attempts: number }>("select failed_attempts from admin_users where email = 'dono@pulso.test'");
+    expect(reset.rows[0]?.failed_attempts).toBe(0);
     const opened = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.78");
     expect(opened.response.status).toBe(200);
     expect(opened.body.user).toMatchObject({ email: "dono@pulso.test", role: "dono" });
   });
+
+  it("conta só falha no IP e a senha certa zera a parte daquele usuário", async () => {
+    const app = createAdminApp(sql);
+    const ip = "203.0.113.60";
+    for (let n = 0; n < 31; n += 1) {
+      const ok = await login(app, "editor@pulso.test", "senha-editor-pulso", ip);
+      expect(ok.response.status).toBe(200);
+    }
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const failed = await login(app, "dono@pulso.test", "senha-errada-pulso", ip);
+      expect(failed.response.status).toBe(401);
+      await wait(loginBackoffMs(attempt) + 40);
+    }
+    const opened = await login(app, "dono@pulso.test", "senha-dona-pulso", ip);
+    expect(opened.response.status).toBe(200);
+    const reset = await sql.query<{ failed_attempts: number }>("select failed_attempts from admin_users where email = 'dono@pulso.test'");
+    expect(reset.rows[0]?.failed_attempts).toBe(0);
+    for (let n = 0; n < 30; n += 1) {
+      const failed = await login(app, `ninguem-${n}@pulso.test`, "senha-errada-pulso", ip);
+      expect(failed.response.status).toBe(401);
+    }
+    const blocked = await login(app, "ninguem-30@pulso.test", "senha-errada-pulso", ip);
+    expect(blocked.response.status).toBe(429);
+    expect(blocked.response.headers.get("retry-after")).toBe("900");
+    const ownerBlocked = await login(app, "atendimento@pulso.test", "senha-atendimento", ip);
+    expect(ownerBlocked.response.status).toBe(429);
+    expect(ownerBlocked.response.headers.get("retry-after")).toBe("900");
+    const other = await login(app, "atendimento@pulso.test", "senha-atendimento", "203.0.113.61");
+    expect(other.response.status).toBe(200);
+  }, 60_000);
 
   it("recusa origem desconhecida e login sem segredo", async () => {
     const app = createAdminApp(sql);
@@ -198,26 +230,30 @@ describe("login do admin", () => {
     });
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
-    const attempt = (ip: string) =>
+    const attempt = (ip: string, email: string) =>
       fetch(`http://127.0.0.1:${port}/v1/admin/login`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-forwarded-for": ip },
-        body: JSON.stringify({ email: "dono@pulso.test", password: "senha-errada-pulso" }),
+        body: JSON.stringify({ email, password: "senha-errada-pulso" }),
       });
     try {
-      const burst = await Promise.all(Array.from({ length: 31 }, () => attempt("203.0.113.50")));
-      expect(burst.some((response) => response.status === 429)).toBe(true);
-      expect(burst.every((response) => response.status === 401 || response.status === 429)).toBe(true);
-      const other = await attempt("203.0.113.51");
+      for (let n = 0; n < 30; n += 1) {
+        const failed = await attempt("203.0.113.50", `fora-${n}@pulso.test`);
+        expect(failed.status).toBe(401);
+      }
+      const blocked = await attempt("203.0.113.50", "fora-30@pulso.test");
+      expect(blocked.status).toBe(429);
+      expect(blocked.headers.get("retry-after")).toBe("900");
+      const other = await attempt("203.0.113.51", "fora-30@pulso.test");
       expect(other.status).toBe(401);
-      const flooded = await attempt("203.0.113.50");
+      const flooded = await attempt("203.0.113.50", "fora-31@pulso.test");
       expect(flooded.status).toBe(429);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       if (previous === undefined) delete process.env.TRUSTED_PROXIES;
       else process.env.TRUSTED_PROXIES = previous;
     }
-  });
+  }, 60_000);
 
   it("lista a auditoria do dono com página, ator, entidade e data", async () => {
     const app = createAdminApp(sql);

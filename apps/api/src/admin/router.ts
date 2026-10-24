@@ -60,7 +60,14 @@ export function mountAdmin(app: Hono, options: AdminAppOptions = {}): void {
   });
   admin.onError((error, c) => {
     if (error instanceof HttpError) {
-      return c.json(error.fields ? { error: error.message, fields: error.fields } : { error: error.message }, error.status);
+      return c.json(
+        {
+          error: error.message,
+          ...(error.fields ? { fields: error.fields } : {}),
+          ...(error.code ? { code: error.code } : {}),
+        },
+        error.status,
+      );
     }
     console.error(error);
     return c.json({ error: "Erro interno." }, 500);

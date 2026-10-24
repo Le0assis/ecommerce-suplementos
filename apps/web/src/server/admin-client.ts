@@ -176,7 +176,7 @@ export async function handleAdminData(
   if (kind === "anonymize" && session.role !== "dono" && session.role !== "editor") {
     return { status: 403, body: { error: "Seu papel não faz isso." } };
   }
-  if (kind === "read" && session.role !== "dono" && session.role !== "editor" && session.role !== "atendimento") {
+  if (kind === "read" && session.role !== "dono" && session.role !== "atendimento") {
     return { status: 403, body: { error: "Seu papel não faz isso." } };
   }
   if (!kind && !canAccess(session.role, resource)) return { status: 403, body: { error: "Seu papel não faz isso." } };

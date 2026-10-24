@@ -461,7 +461,6 @@ const EDITOR: AdminResource[] = [
   "scratch-prizes",
   "banners",
   "uploads",
-  "waitlist",
 ];
 
 const ATENDIMENTO: AdminResource[] = ["orders", "reviews", "customers", "waitlist"];

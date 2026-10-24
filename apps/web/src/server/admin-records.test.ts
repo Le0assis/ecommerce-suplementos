@@ -175,7 +175,7 @@ test("editor não vê pedido nem fidelidade; atendimento vê pedido", async () =
     assert.equal((await handleAdminData(session("editor"), "GET", ["audit"], search, undefined)).status, 403);
     assert.equal((await handleAdminData(session("atendimento"), "GET", ["audit"], search, undefined)).status, 403);
     assert.equal((await handleAdminData(session("editor"), "GET", ["settings", "loyalty"], search, undefined)).status, 403);
-    assert.equal((await handleAdminData(session("editor"), "GET", ["drops", "drop-05", "waitlist"], search, undefined)).status, 401);
+    assert.equal((await handleAdminData(session("editor"), "GET", ["drops", "drop-05", "waitlist"], search, undefined)).status, 403);
     assert.equal((await handleAdminData(session("editor"), "DELETE", ["drops", "waitlist", "linha-1"], search, undefined)).status, 403);
     assert.equal((await handleAdminData(session("editor"), "POST", ["drops", "waitlist", "erase"], search, { email: "a@pulso.test" })).status, 403);
     const support = { ...session("atendimento"), src: "api" as const, apiToken: "token-de-teste" };

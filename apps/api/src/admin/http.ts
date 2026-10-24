@@ -13,6 +13,7 @@ export class HttpError extends Error {
     readonly status: ContentfulStatusCode,
     message: string,
     readonly fields?: Record<string, string>,
+    readonly code?: string,
   ) {
     super(message);
   }
@@ -135,7 +136,7 @@ export async function guard<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (error) {
-    if (error instanceof CatalogError) throw new HttpError(error.status as ContentfulStatusCode, error.message);
+    if (error instanceof CatalogError) throw new HttpError(error.status as ContentfulStatusCode, error.message, undefined, error.code);
     const code = typeof error === "object" && error && "code" in error ? String((error as { code: unknown }).code) : "";
     if (code === "23503") throw new HttpError(400, "O vínculo não existe.");
     if (code === "23505") throw new HttpError(409, "Já existe um registro com esse identificador.");
@@ -149,7 +150,7 @@ function pgCode(error: unknown): string {
 }
 
 export function raiseCatalog(error: unknown): never {
-  if (error instanceof CatalogError) throw new HttpError(error.status as ContentfulStatusCode, error.message);
+  if (error instanceof CatalogError) throw new HttpError(error.status as ContentfulStatusCode, error.message, undefined, error.code);
   if (pgCode(error) === "23503") throw new HttpError(409, "Este registro está em uso.");
   if (pgCode(error) === "23505") throw new HttpError(409, "Já existe um registro com esse identificador.");
   if (pgCode(error) === "23514") throw new HttpError(400, "Os dados não passam na regra do banco.");
