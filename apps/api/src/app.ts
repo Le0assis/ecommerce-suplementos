@@ -28,6 +28,7 @@ import { HttpError } from "./admin/http";
 import { mountPublicDrops } from "./admin/drop-routes";
 import { mountAdmin, type AdminAppOptions } from "./admin/router";
 import { loadProducts, pingPostgres, pingRedis } from "./catalog-source";
+import { buildCheckoutQuote, parseCheckoutQuote } from "./checkout-quote";
 
 const hits = new Map<string, { count: number; reset: number }>();
 
@@ -261,6 +262,16 @@ app.post("/v1/payments/sandbox", async (c) => {
   });
   if ("error" in charge) return c.json(charge, 400);
   return c.json(charge);
+});
+
+app.post("/v1/checkout/quote", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = parseCheckoutQuote(body);
+  if ("error" in parsed) return c.json({ error: parsed.error }, 400);
+  const quote = await buildCheckoutQuote(parsed, dataSql());
+  if ("error" in quote) return c.json({ error: quote.error }, quote.status);
+  c.header("cache-control", "no-store");
+  return c.json(quote);
 });
 
 app.post("/v1/checkout/simulate", async (c) => {

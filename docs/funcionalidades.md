@@ -60,7 +60,7 @@ Pedido Pix/boleto nasce `pagamento_pendente` e os pontos esperam o avanço de st
 
 Onde: `checkout-view.tsx`. A confirmação em `/pedido/confirmado?codigo=` mostra a mensagem do sandbox e o `externalId`. A função pura é `sandboxCharge` em `packages/domain/src/sandbox-payment.ts`. A API expõe `POST /v1/payments/sandbox`. A vitrine chama a função direto, para o pedido no navegador e a API não divergirem.
 
-O payload novo está em `serverCheckoutPayload`: `{ "lines": [{ "slug", "variant", "qty" }], "couponCode"?, "pointsToRedeem"? }`. `variant` é o id da variação (`slug__sabor__tamanho`). Preço e nome não entram. `CHECKOUT_QUOTE_SHA` está vazio, então a tela segue o `quoteCart` local e `POST /api/checkout/quote` responde 409 sem chamar a API. Quando o Backend publicar o SHA, o resumo visível passa a ser o que `POST /v1/checkout/quote` devolver. A revisão também lembra os 18 anos.
+O payload novo está em `serverCheckoutPayload`: `{ "lines": [{ "slug", "variant", "qty" }], "couponCode"?, "pointsToRedeem"? }`. `variant` é o id da variação. No catálogo o id é `slug__sabor__tamanho`, com o id do tamanho (`caos-pre-treino__limao__300`, não `__30`). Preço e nome não entram. `POST /v1/checkout/quote` responde `{ "summary": { "lines": [{ "name", "unitCents", "qty", "totalCents" }], "subtotalCents", "discountCents", "pointsRedeemed", "pointsEarned", "totalCents" } }`. Sem CEP no corpo, `shippingCents` fica de fora. `CHECKOUT_QUOTE_SHA` está vazio, então a tela segue o `quoteCart` local e `POST /api/checkout/quote` responde 409 sem chamar a API. Quando o SHA deste contrato entrar nessa constante, o resumo visível passa a ser o `summary`. A revisão também lembra os 18 anos.
 
 ## Conta
 

@@ -13,7 +13,9 @@
     "./resources": "./src/resources.ts",
     "./content": "./src/content.ts",
     "./drops": "./src/drops.ts",
-    "./password": "./src/password.ts"
+    "./password": "./src/password.ts",
+    "./audit-orphans": "./src/audit-orphans.ts",
+    "./cpf": "./src/cpf.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
@@ -22,7 +24,9 @@
     "test": "vitest run",
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed.ts",
-    "create-owner": "tsx src/create-owner.ts"
+    "create-owner": "tsx src/create-owner.ts",
+    "audit-orphans": "tsx src/audit-orphans.ts",
+    "backfill-cpf": "tsx src/backfill-cpf.ts"
   },
   "dependencies": {
     "@pulso/data": "workspace:*",

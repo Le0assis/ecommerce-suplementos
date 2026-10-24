@@ -19,7 +19,7 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
-`pnpm db:seed` grava o mock de exemplo. Banco vazio ou que ainda só tem esse exemplo aceita rodar de novo. `NODE_ENV=production`, produto fora do mock ou edição posterior ao marcador `example_seed` recusam, e os filhos do mock não são apagados. A exceção consciente é `PULSO_SEED_ALLOW_OVERWRITE=1` ou `--force-example`. Detalhe na seção 6 do README.
+`pnpm db:seed` grava o mock de exemplo. Banco vazio ou que ainda só tem esse exemplo aceita rodar de novo. `NODE_ENV=production`, produto fora do mock ou edição posterior ao marcador `example_seed` recusam, e os filhos do mock não são apagados. A exceção consciente é `PULSO_SEED_ALLOW_OVERWRITE=1` ou `--force-example`. Detalhe na seção 6 do README. `pnpm db:backfill-cpf` cifra o CPF já gravado nas colunas da migração `010` e não mexe em `customers.cpf`. `pnpm db:audit` só lista órfãos.
 
 No `.env`, `API_DATA_SOURCE=postgres` faz a API montar o catálogo pelas tabelas (`product_flavors`, variantes, rótulo, fotos). `products.payload` não é mais a leitura. A vitrine continua no mock até as páginas usarem `loadStorefront`. A conta dono nasce com `pnpm --filter @pulso/db create-owner` (senha num arquivo fora do repo, variável `ADMIN_OWNER_PASSWORD_FILE`).
 

@@ -340,6 +340,8 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
+O CPF em claro continua em `customers.cpf`. A migração `010` só acrescenta `cpf_enc`, `cpf_key_id` e `cpf_hash`. Com `CPF_KEY_ID`, `CPF_ENC_KEY` e `CPF_HMAC_KEY` no `.env`, `pnpm db:backfill-cpf` grava o AES-256-GCM e o HMAC e não reescreve o texto. Sem as três chaves, o comando sai com código 2 e não grava nada. `pnpm db:audit` só lista órfãos de variação e de slug.
+
 Se o Postgres ainda estiver acordando:
 
 ```bash

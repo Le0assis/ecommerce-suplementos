@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { CatalogError } from "./catalog";
+import { ilikeContains, ilikeMatch } from "./like";
 import type { Sql } from "./sql";
 
 export type DropStatus = "em_breve" | "no_ar" | "encerrado";
@@ -73,10 +74,6 @@ function shortFlavor(productId: string | null, flavorId: string | null): string 
   if (!flavorId) return null;
   const prefix = productId ? `${productId}__` : "";
   return prefix && flavorId.startsWith(prefix) ? flavorId.slice(prefix.length) : flavorId;
-}
-
-function like(value: string): string {
-  return `%${value.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
 }
 
 function pgCode(error: unknown): string {
@@ -197,8 +194,9 @@ export async function listDrops(
     where.push(`status = $${params.length}`);
   }
   if (query.q) {
-    params.push(like(query.q));
-    where.push(`(edition ilike $${params.length} or coalesce(name, '') ilike $${params.length})`);
+    params.push(ilikeContains(query.q));
+    const pattern = `$${params.length}`;
+    where.push(`(${ilikeMatch("edition", pattern)} or ${ilikeMatch("coalesce(name, '')", pattern)})`);
   }
   const clause = where.length ? `where ${where.join(" and ")}` : "";
   const total = await sql.query<{ count: number | string }>(`select count(*)::int as count from drops ${clause}`, params);

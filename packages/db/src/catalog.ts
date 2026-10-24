@@ -1,5 +1,6 @@
 import type { CatalogProduct } from "@pulso/data";
 import type { Badge, CategoryId, Coupon, FlavorFamily, GoalId, ProductLabel } from "@pulso/domain";
+import { ilikeContains, ilikeMatch } from "./like";
 import type { Sql, SqlClient } from "./sql";
 import { withTx } from "./sql";
 
@@ -515,8 +516,111 @@ export interface ProductListQuery {
   kitsOnly?: boolean;
 }
 
-function like(value: string): string {
-  return `%${value.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+const SLUG_REF_TABLES = ["reviews", "order_lines", "wishlist_items", "subscriptions"] as const;
+
+function legacySlugMatch(alias = ""): string {
+  const column = alias ? `${alias}.product_slug` : "product_slug";
+  return `(
+    ${column} = $1
+    or (
+      ${column} = $3
+      and ${column} <> $1
+      and ${column} <> $2
+      and not exists (select 1 from products other where other.slug = $3 and other.id <> $3)
+    )
+  )`;
+}
+
+async function productSlugCascades(sql: Sql, table: (typeof SLUG_REF_TABLES)[number]): Promise<boolean> {
+  const rows = await sql.query<{ action: string }>(
+    `select c.confupdtype::text as action
+     from pg_constraint c
+     join pg_attribute child
+       on child.attrelid = c.conrelid
+      and child.attnum = c.conkey[1]
+      and child.attname = 'product_slug'
+     join pg_attribute parent
+       on parent.attrelid = c.confrelid
+      and parent.attnum = c.confkey[1]
+      and parent.attname = 'slug'
+     where c.contype = 'f'
+       and c.conrelid = $1::regclass
+       and c.confrelid = 'products'::regclass
+       and coalesce(array_length(c.conkey, 1), 0) = 1`,
+    [table],
+  );
+  return rows.rows.length > 0 && rows.rows.every((row) => row.action === "c");
+}
+
+// A FK imediata sem CASCADE exige o slug novo e as filhas no mesmo comando.
+// Se a FK for ON UPDATE CASCADE, a filha não entra nesse comando: o Postgres já a atualiza.
+async function retargetProductSlug(sql: Sql, input: { productId: string; from: string; to: string }): Promise<void> {
+  await sql.query(
+    `delete from wishlist_items as old
+     where ${legacySlugMatch("old")}
+       and (
+         exists (
+           select 1 from wishlist_items as keep
+           where keep.customer_id = old.customer_id and keep.product_slug = $2
+         )
+         or exists (
+           select 1 from wishlist_items as keep
+           where keep.customer_id = old.customer_id
+             and keep.ctid < old.ctid
+             and ${legacySlugMatch("keep")}
+         )
+       )`,
+    [input.from, input.to, input.productId],
+  );
+
+  const manual: Array<(typeof SLUG_REF_TABLES)[number]> = [];
+  for (const table of SLUG_REF_TABLES) {
+    if (!(await productSlugCascades(sql, table))) manual.push(table);
+  }
+
+  const ctes = [
+    `renamed as (
+      update products set slug = $2 where id = $3 and slug = $1 returning id
+    )`,
+    ...manual.map(
+      (table, index) => `moved_${index} as (
+        update ${table} set product_slug = $2
+        where ${legacySlugMatch()}
+        returning 1
+      )`,
+    ),
+  ];
+  const renamed = await sql.query<{ id: string }>(`with ${ctes.join(", ")} select id from renamed`, [
+    input.from,
+    input.to,
+    input.productId,
+  ]);
+  if (!renamed.rows.length) throw new CatalogError(500, "O slug não foi atualizado.", "SLUG");
+
+  for (const table of SLUG_REF_TABLES) {
+    if (manual.includes(table)) continue;
+    await sql.query(
+      `update ${table} set product_slug = $2
+       where product_slug = $3
+         and product_slug <> $1
+         and product_slug <> $2
+         and not exists (select 1 from products other where other.slug = $3 and other.id <> $3)`,
+      [input.from, input.to, input.productId],
+    );
+  }
+}
+
+export async function resolveProductSlug(sql: Sql, ref: string): Promise<string> {
+  const found = await sql.query<{ slug: string }>(
+    `select slug from products
+     where slug = $1 or id = $1
+     order by case when slug = $1 then 0 else 1 end
+     limit 1`,
+    [ref],
+  );
+  const slug = found.rows[0]?.slug;
+  if (!slug) throw new CatalogError(400, "Produto não encontrado.", "PRODUCT_MISSING");
+  return slug;
 }
 
 export async function listAdminProducts(
@@ -533,10 +637,11 @@ export async function listAdminProducts(
     where.push(`p.status = $${params.length}`);
   }
   if (query.q) {
-    params.push(like(query.q));
+    params.push(ilikeContains(query.q));
     const index = params.length;
+    const pattern = `$${index}`;
     where.push(
-      `(p.name ilike $${index} or p.slug ilike $${index} or coalesce(p.line, '') ilike $${index} or exists (select 1 from product_variants v where v.product_id = p.id and v.sku ilike $${index}))`,
+      `(${ilikeMatch("p.name", pattern)} or ${ilikeMatch("p.slug", pattern)} or ${ilikeMatch("coalesce(p.line, '')", pattern)} or exists (select 1 from product_variants v where v.product_id = p.id and ${ilikeMatch("v.sku", pattern)}))`,
     );
   }
   const clause = where.length ? `where ${where.join(" and ")}` : "";
@@ -573,6 +678,9 @@ export async function saveAdminProduct(sql: SqlClient, input: AdminProduct): Pro
   return withTx(sql, async () => {
     const status = toDbStatus(input.status);
     const current = await sql.query<{ slug: string }>("select slug from products where id = $1", [input.id]);
+    const previousSlug = current.rows[0]?.slug;
+    const renaming = Boolean(previousSlug && previousSlug !== input.slug);
+    const storedSlug = renaming ? previousSlug : input.slug;
     const slugOwner = await sql.query("select id from products where slug = $1 and id <> $2", [input.slug, input.id]);
     if (slugOwner.rows.length) throw new CatalogError(409, "Já existe um produto com esse slug.", "SLUG_TAKEN");
     await assertRefs(sql, input);
@@ -628,7 +736,7 @@ export async function saveAdminProduct(sql: SqlClient, input: AdminProduct): Pro
          is_kit = excluded.is_kit`,
       [
         input.id,
-        input.slug,
+        storedSlug,
         input.name,
         input.categoryId,
         status === "ativo",
@@ -648,11 +756,8 @@ export async function saveAdminProduct(sql: SqlClient, input: AdminProduct): Pro
       ],
     );
 
-    const previousSlug = current.rows[0]?.slug;
-    if (previousSlug && previousSlug !== input.slug) {
-      await sql.query("update reviews set product_slug = $2 where product_slug = $1", [previousSlug, input.slug]);
-      await sql.query("update order_lines set product_slug = $2 where product_slug = $1", [previousSlug, input.slug]);
-      await sql.query("update wishlist_items set product_slug = $2 where product_slug = $1", [previousSlug, input.slug]);
+    if (renaming && previousSlug) {
+      await retargetProductSlug(sql, { productId: input.id, from: previousSlug, to: input.slug });
     }
 
     for (const [position, flavor] of input.flavors.entries()) {
@@ -823,8 +928,9 @@ export async function listAdminCoupons(
   if (query.active === "true") where.push("active = true");
   if (query.active === "false") where.push("active = false");
   if (query.q) {
-    params.push(like(query.q));
-    where.push(`(code ilike $${params.length} or label ilike $${params.length})`);
+    params.push(ilikeContains(query.q));
+    const pattern = `$${params.length}`;
+    where.push(`(${ilikeMatch("code", pattern)} or ${ilikeMatch("label", pattern)})`);
   }
   const clause = where.length ? `where ${where.join(" and ")}` : "";
   const total = await sql.query<{ count: number }>(`select count(*)::int as count from coupons ${clause}`, params);

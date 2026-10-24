@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Review, UgcPost } from "@pulso/domain";
-import { CatalogError } from "./catalog";
+import { CatalogError, resolveProductSlug } from "./catalog";
 import type { Sql } from "./sql";
 
 function pgCode(error: unknown): string {
@@ -871,8 +871,64 @@ export async function getOrderDetail(sql: Sql, id: string) {
   };
 }
 
+export interface SubscriptionWrite {
+  id: string;
+  customerId: string;
+  productSlug: string;
+  variantId: string;
+  quantity: number;
+  unitPriceCents: number;
+  intervalDays: number;
+  status: "ativa" | "pausada" | "cancelada";
+  nextChargeOn: string;
+}
+
+export async function saveSubscription(sql: Sql, input: SubscriptionWrite) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.nextChargeOn)) throw new CatalogError(400, "Data inválida.", "DATE");
+  const productSlug = await resolveProductSlug(sql, input.productSlug);
+  const existing = await sql.query("select id from subscriptions where id = $1", [input.id]);
+  const params = [
+    input.id,
+    input.customerId,
+    productSlug,
+    input.variantId,
+    input.quantity,
+    input.unitPriceCents,
+    input.intervalDays,
+    input.status,
+    input.nextChargeOn,
+  ];
+  if (existing.rows.length) {
+    await sql.query(
+      `update subscriptions
+       set customer_id = $2, product_slug = $3, variant_id = $4, quantity = $5,
+           unit_price_cents = $6, interval_days = $7, status = $8, next_charge_on = $9::date
+       where id = $1`,
+      params,
+    );
+  } else {
+    await sql.query(
+      `insert into subscriptions (
+         id, customer_id, product_slug, variant_id, quantity, unit_price_cents, interval_days, status, next_charge_on
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::date)`,
+      params,
+    );
+  }
+  const saved = (await listSubscriptions(sql)).find((row) => row.id === input.id);
+  if (!saved) throw new CatalogError(404, "Assinatura não encontrada.", "NOT_FOUND");
+  return saved;
+}
+
 export async function patchSubscription(sql: Sql, id: string, status: "ativa" | "pausada" | "cancelada") {
-  const updated = await sql.query("update subscriptions set status = $2 where id = $1 returning id", [id, status]);
+  const current = await sql.query<{ product_slug: string }>("select product_slug from subscriptions where id = $1", [id]);
+  const row = current.rows[0];
+  if (!row) throw new CatalogError(404, "Assinatura não encontrada.", "NOT_FOUND");
+  const productSlug = await resolveProductSlug(sql, row.product_slug);
+  const updated = await sql.query("update subscriptions set status = $2, product_slug = $3 where id = $1 returning id", [
+    id,
+    status,
+    productSlug,
+  ]);
   if (!updated.rows.length) throw new CatalogError(404, "Assinatura não encontrada.", "NOT_FOUND");
   const saved = (await listSubscriptions(sql)).find((row) => row.id === id);
   if (!saved) throw new CatalogError(404, "Assinatura não encontrada.", "NOT_FOUND");

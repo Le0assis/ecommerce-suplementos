@@ -87,6 +87,37 @@ O servidor **recalcula**. Não confia em total mandado pelo cliente. A resposta 
 
 A vitrine não chama esta rota. Ela usa `quoteCart` localmente. Os dois compartilham o domínio.
 
+### `POST /v1/checkout/quote`
+
+O checkout novo manda só isto. Preço e nome do cliente são ignorados.
+
+```json
+{
+  "lines": [{ "slug": "caos-pre-treino", "variant": "caos-pre-treino__limao__300", "qty": 1 }],
+  "couponCode": "PULSO10",
+  "pointsToRedeem": 0
+}
+```
+
+`variant` é o `id` gravado em `product_variants`. No catálogo isso é `slug__sabor__tamanho`, e `tamanho` é o id do tamanho (`300`, `900`, `60`, `1k`, `mes`), não o número de doses. O Caos limão é `caos-pre-treino__limao__300`. Uma variação criada no admin sem id explícito usa `idDoProduto__sabor__indice`. A rota exige o id que está naquele slug. Outro produto responde 404.
+
+O corpo não traz CEP nem meio de pagamento, então a resposta não tem Pix nem frete. `shippingCents` só entra quando o frete for calculado. Os centavos são inteiros.
+
+```json
+{
+  "summary": {
+    "lines": [{ "name": "Caos", "unitCents": 14990, "qty": 1, "totalCents": 14990 }],
+    "subtotalCents": 14990,
+    "discountCents": 1499,
+    "pointsRedeemed": 0,
+    "pointsEarned": 675,
+    "totalCents": 13491
+  }
+}
+```
+
+`pointsRedeemed` é a quantidade de pontos aceita, no máximo 20% do produto depois do cupom. `pointsEarned` não inclui o bônus do Pix, porque o meio de pagamento não veio no corpo. Cupom inexistente responde 400. `Cache-Control: no-store`.
+
 ## Admin
 
 Rotas em `/v1/admin`. Não passam pelo CORS aberto nem pelo limite de 60 `POST` por minuto. Sem cabeçalho `Origin` a chamada segue. Origem precisa ser `NEXT_PUBLIC_SITE_URL`, `ADMIN_CORS_ORIGIN` ou, fora de produção, `localhost` / `127.0.0.1`. Outra origem devolve 403.
