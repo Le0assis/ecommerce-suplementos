@@ -4,8 +4,9 @@ function normalizeIp(value: string): string {
   return trimmed;
 }
 
-function hopsOf(header: string | null | undefined): string[] {
-  return (header ?? "").split(",").map((item) => normalizeIp(item)).filter(Boolean);
+function firstHop(header: string | null | undefined): string | null {
+  const hop = (header ?? "").split(",").map((item) => normalizeIp(item)).find(Boolean);
+  return hop || null;
 }
 
 function socketAddress(request: { headers: Headers }): string | null {
@@ -14,20 +15,20 @@ function socketAddress(request: { headers: Headers }): string | null {
   return raw ? normalizeIp(raw) : null;
 }
 
-/** IP que este processo enxerga: o socket, ou o salto mais à direita já escrito no cabeçalho. */
+/**
+ * IP da infraestrutura. O X-Forwarded-For do cliente não entra:
+ * na Vercel vale x-vercel-forwarded-for, senão x-real-ip, senão o socket.
+ */
 export function observedClientIp(request: { headers: Headers }): string {
-  return socketAddress(request) ?? hopsOf(request.headers.get("x-forwarded-for")).at(-1) ?? "local";
+  return (
+    firstHop(request.headers.get("x-vercel-forwarded-for"))
+    ?? firstHop(request.headers.get("x-real-ip"))
+    ?? socketAddress(request)
+    ?? "local"
+  );
 }
 
-/** Acrescenta o IP observado. Não troca a cadeia que já chegou. */
-export function appendForwardedFor(existing: string | null | undefined, peer: string): string {
-  const hops = hopsOf(existing);
-  const clean = normalizeIp(peer);
-  if (!clean) return hops.join(", ");
-  if (hops.at(-1) === clean) return hops.join(", ");
-  return [...hops, clean].join(", ");
-}
-
+/** Só o IP confiável. A cadeia enviada pelo navegador não segue para a API. */
 export function forwardedForApi(request: { headers: Headers }): string {
-  return appendForwardedFor(request.headers.get("x-forwarded-for"), observedClientIp(request));
+  return observedClientIp(request);
 }

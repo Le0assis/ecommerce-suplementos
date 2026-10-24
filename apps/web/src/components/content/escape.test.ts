@@ -30,6 +30,7 @@ test("post, autor e nome de produto saem como texto", () => {
     authorName: payload,
     authorBio: payload,
     authorHref: null,
+    coverUrl: null,
     blocks: [
       { id: "p", type: "paragrafo", text: payload },
       { id: "t", type: "titulo", text: payload },
@@ -44,6 +45,24 @@ test("post, autor e nome de produto saem como texto", () => {
   const product = getProduct("caos-pre-treino");
   assert.ok(product);
   refusesRawHtml(htmlOf(createElement(ProductCard, { product: { ...product, name: payload } })));
+});
+
+test("a capa https do post vira imagem", () => {
+  const html = htmlOf(createElement(Article, {
+    article: {
+      title: "Capa",
+      excerpt: "Texto",
+      category: "Suplemento",
+      authorName: "Redação",
+      authorBio: "",
+      authorHref: null,
+      coverUrl: "https://cdn.pulso.test/capa.jpg",
+      blocks: [],
+      products: [],
+    },
+  }));
+  assert.match(html, /src="https:\/\/cdn\.pulso\.test\/capa\.jpg"/);
+  assert.equal(html.includes("javascript:"), false);
 });
 
 test("banner perigoso não vira link e o título não vira html", () => {

@@ -45,7 +45,7 @@ export function HomeView({ dropCard, banners }: { dropCard: HomeDropCard | null;
   const highlights = banners.filter((banner) => banner.slot === "destaque" || banner.slot === "hero");
 
   return (
-    <div>
+    <div className="min-w-0">
       <section className="mx-auto grid max-w-6xl items-center gap-8 px-4 pb-8 pt-8 lg:grid-cols-[1.1fr_.9fr] lg:pt-14">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-lime">Drop 04 · collab no ar · Gustavo apresenta</p>
@@ -77,10 +77,10 @@ export function HomeView({ dropCard, banners }: { dropCard: HomeDropCard | null;
       </div>
 
       {highlights.length ? (
-        <section className="mx-auto grid max-w-6xl gap-3 px-4 py-8 md:grid-cols-3">
+        <section className="mx-auto grid min-w-0 max-w-6xl gap-3 px-4 py-8 md:grid-cols-3">
           {highlights.map((banner) => (
-            <BannerLink key={banner.id} href={banner.href} className="rounded-[1.4rem] border border-white/10 p-5">
-              <p className="break-words font-display text-4xl leading-none">{banner.title}</p>
+            <BannerLink key={banner.id} href={banner.href} className="min-w-0 rounded-[1.4rem] border border-white/10 p-5 [overflow-wrap:anywhere]">
+              <p className="min-w-0 font-display text-4xl leading-none [overflow-wrap:anywhere]">{banner.title}</p>
               {banner.subtitle ? <p className="mt-2 text-sm text-muted-foreground">{banner.subtitle}</p> : null}
             </BannerLink>
           ))}

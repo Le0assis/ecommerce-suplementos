@@ -31,6 +31,7 @@ export interface PublicArticle {
   authorName: string;
   authorBio: string;
   authorHref: string | null;
+  coverUrl: string | null;
   blocks: AdminPostBlock[];
   products: { id: string; slug: string; name: string; line: string; hex: string }[];
 }
@@ -53,6 +54,10 @@ function instagramOf(handle: string, explicit: string | null | undefined): strin
   const bare = handle.replace(/^@/, "");
   if (/^[A-Za-z0-9._]+$/.test(bare)) return `https://instagram.com/${bare}`;
   return "https://instagram.com";
+}
+
+function safeCover(value: unknown): string | null {
+  return typeof value === "string" ? safeBannerHref(value) : null;
 }
 
 function publicSlug(slug: string): string | null {
@@ -315,6 +320,7 @@ export interface PublicPostCard {
   readMinutes: number;
   publishedAt: string;
   path: string;
+  coverUrl: string | null;
 }
 
 export function catalogPostCards(): PublicPostCard[] {
@@ -328,6 +334,7 @@ export function catalogPostCards(): PublicPostCard[] {
       readMinutes: post.readMinutes,
       publishedAt: post.publishedAt,
       path: `/blog/${post.slug}`,
+      coverUrl: null,
     }];
   });
 }
@@ -345,6 +352,7 @@ export async function loadPublicPosts(): Promise<PublicPostCard[]> {
       readMinutes: typeof post.readMinutes === "number" ? post.readMinutes : 1,
       publishedAt: post.publishedAt || "",
       path: `/blog/${post.slug}`,
+      coverUrl: safeCover(post.coverUrl),
     }];
   });
 }
@@ -373,6 +381,7 @@ export function resolveArticle(slug: string, now?: number): PublicArticle | null
     authorName: author?.name || catalog?.author || "Redação PULSO",
     authorBio: author?.bio ?? "",
     authorHref: influencer && publicSlug(influencer.slug) ? `/atletas/${influencer.slug}` : null,
+    coverUrl: safeCover(live?.coverUrl),
     blocks,
     products: articleProducts(productIds),
   };
@@ -384,6 +393,7 @@ function articleFromRemote(post: {
   category?: string;
   author?: string;
   authorBio?: string | null;
+  coverUrl?: string | null;
   blocks?: AdminPostBlock[];
   body?: string[];
   influencerSlug?: string;
@@ -400,6 +410,7 @@ function articleFromRemote(post: {
     authorName: post.author || "Redação PULSO",
     authorBio: post.authorBio ?? "",
     authorHref: influencer ? `/atletas/${influencer}` : null,
+    coverUrl: safeCover(post.coverUrl),
     blocks,
     products: articleProducts(productIds),
   };

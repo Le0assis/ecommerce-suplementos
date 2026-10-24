@@ -1,3 +1,4 @@
+import { RemoteImage } from "@/components/content/remote-image";
 import { catalogPostCards, loadPublicPosts, type PublicPostCard } from "@/server/public-content";
 import Link from "next/link";
 import { connection } from "next/server";
@@ -18,7 +19,12 @@ function BlogList({ posts }: { posts: PublicPostCard[] }) {
         {posts.map((post) => {
           const when = publishedLabel(post.publishedAt);
           return (
-            <Link key={post.slug} href={post.path} className="block rounded-[1.4rem] border border-white/10 p-5 hover:border-lime">
+            <Link key={post.slug} href={post.path} className="block min-w-0 rounded-[1.4rem] border border-white/10 p-5 hover:border-lime">
+              {post.coverUrl ? (
+                <span className="relative mb-4 block aspect-[16/9] overflow-hidden rounded-2xl">
+                  <RemoteImage src={post.coverUrl} alt="" fill className="object-cover" sizes="(min-width: 768px) 720px, 100vw" />
+                </span>
+              ) : null}
               <p className="text-xs uppercase tracking-[0.14em] text-lime">{post.category} · {post.readMinutes} min{when ? ` · ${when}` : ""}</p>
               <h2 className="break-words font-display text-5xl leading-none">{post.title}</h2>
               <p className="mt-2 text-sm text-muted-foreground">{post.excerpt}</p>

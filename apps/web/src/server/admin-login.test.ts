@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { afterEach, test } from "vitest";
 import { POST } from "@/app/api/admin/session/route";
 import { LOGIN_API_TIMEOUT_MS, loginAgainstApi } from "@/server/admin-client";
-import { appendForwardedFor, forwardedForApi } from "@/server/forwarded-for";
+import { forwardedForApi } from "@/server/forwarded-for";
 
 const previous = process.env.API_URL;
 
@@ -35,13 +35,31 @@ test("o login espera o atraso e devolve o erro com Retry-After", async () => {
   }
 });
 
-test("o IP observado entra no fim da cadeia", () => {
-  const request = new Request("http://127.0.0.1:43123/api/admin/session", {
+test("o XFF do cliente não muda o IP enviado à API", () => {
+  const forged = new Request("http://127.0.0.1:43123/api/admin/session", {
+    headers: { "x-forwarded-for": "1.1.1.1, 203.0.113.8" },
+  });
+  assert.equal(forwardedForApi(forged), "local");
+
+  const real = new Request("http://127.0.0.1:43123/api/admin/session", {
+    headers: { "x-forwarded-for": "1.1.1.1", "x-real-ip": "203.0.113.8" },
+  });
+  assert.equal(forwardedForApi(real), "203.0.113.8");
+
+  const vercel = new Request("http://127.0.0.1:43123/api/admin/session", {
+    headers: {
+      "x-forwarded-for": "9.9.9.9",
+      "x-real-ip": "203.0.113.8",
+      "x-vercel-forwarded-for": "::ffff:198.51.100.4, 10.0.0.1",
+    },
+  });
+  assert.equal(forwardedForApi(vercel), "198.51.100.4");
+
+  const socketed = new Request("http://127.0.0.1:43123/api/admin/session", {
     headers: { "x-forwarded-for": "1.1.1.1" },
   });
-  Object.assign(request, { socket: { remoteAddress: "::ffff:203.0.113.8" } });
-  assert.equal(forwardedForApi(request), "1.1.1.1, 203.0.113.8");
-  assert.equal(appendForwardedFor("203.0.113.10", "203.0.113.10"), "203.0.113.10");
+  Object.assign(socketed, { socket: { remoteAddress: "::ffff:203.0.113.8" } });
+  assert.equal(forwardedForApi(socketed), "203.0.113.8");
 });
 
 test("dois clientes no Next seguem com limites separados e o 429 da API passa inteiro", async () => {
@@ -61,14 +79,15 @@ test("dois clientes no Next seguem com limites separados e o 429 da API passa in
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;
   process.env.API_URL = `http://127.0.0.1:${port}`;
-  const post = (ip: string) =>
+  const post = (ip: string, forged?: string) =>
     POST(new Request("http://127.0.0.1:43123/api/admin/session", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         host: "127.0.0.1:43123",
         origin: "http://127.0.0.1:43123",
-        "x-forwarded-for": ip,
+        "x-real-ip": ip,
+        ...(forged ? { "x-forwarded-for": forged } : {}),
       },
       body: JSON.stringify({ email: "dono@pulso.test", password: "errada-pulso" }),
     }));
@@ -85,9 +104,13 @@ test("dois clientes no Next seguem com limites separados e o 429 da API passa in
       const again = await post("203.0.113.10");
       assert.equal(again.status, 401);
     }
+    const spoofed = await post("203.0.113.10", "198.51.100.99");
+    assert.equal(spoofed.status, 401);
     assert.equal(seen[0], "203.0.113.10");
     assert.equal(seen[1], "203.0.113.20");
-    assert.equal(seen.filter((ip) => ip === "203.0.113.10").length, 10);
+    assert.equal(seen.at(-1), "203.0.113.10");
+    assert.equal(seen.filter((ip) => ip === "203.0.113.10").length, 11);
+    assert.equal(seen.some((ip) => ip.includes("198.51.100.99")), false);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

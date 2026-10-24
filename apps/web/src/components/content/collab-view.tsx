@@ -67,8 +67,8 @@ export function CollabView({
   const copy = story.trim() || bio;
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 pb-28">
-      <div className="grid items-start gap-6 md:grid-cols-[280px_1fr]">
+    <div className="mx-auto min-w-0 max-w-5xl px-4 py-8 pb-28">
+      <div className="grid min-w-0 items-start gap-6 md:grid-cols-[280px_1fr]">
         {portrait?.url ? (
           <figure className="relative mx-auto h-[280px] w-full max-w-[280px]">
             <RemoteImage src={portrait.url} alt={portrait.alt} fill className="rounded-[1.8rem] border border-white/10 object-cover" sizes="280px" />
@@ -76,9 +76,9 @@ export function CollabView({
         ) : (
           <AthletePoster name={name} handle={handle} city={city} accent={accent} variant={variant} compact className="mx-auto h-[280px] w-full max-w-[280px]" />
         )}
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-lime">{sport} · {followers}</p>
-          <h1 className="break-words font-display text-6xl leading-[0.85] md:text-7xl">{name}</h1>
+          <h1 className="font-display text-6xl leading-[0.85] [overflow-wrap:anywhere] md:text-7xl">{name}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{handle} · {city}</p>
           <p className="mt-4 max-w-xl text-base leading-7">{copy}</p>
           {profile ? (

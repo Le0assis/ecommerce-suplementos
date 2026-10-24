@@ -439,6 +439,7 @@ export function toPublicPost(row: PostAdmin, author?: AuthorRow | null): Post & 
   authorSlug: string | null;
   authorAvatar: string | null;
   authorBio: string | null;
+  coverUrl: string | null;
   influencerSlug?: string;
 } {
   return {
@@ -453,6 +454,7 @@ export function toPublicPost(row: PostAdmin, author?: AuthorRow | null): Post & 
     authorBio: author?.bio ?? null,
     publishedAt: row.publishedAt ?? "",
     coverHex: row.coverHex ?? "#d6ff3c",
+    coverUrl: row.coverUrl,
     body: row.blocks.filter((block) => block.type === "paragrafo").map((block) => block.text),
     blocks: row.blocks,
     authorId: row.authorId,

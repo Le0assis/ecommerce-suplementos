@@ -175,6 +175,7 @@ test("a vitrine lê influencer e post da API e ignora o arquivo", async () => {
           authorBio: "Bio da API.",
           authorSlug: "redacao",
           authorAvatar: null,
+          coverUrl: "https://cdn.pulso.test/capa.jpg",
           blocks: [{ id: "p1", type: "paragrafo", text: "Parágrafo da API." }],
         },
       });
@@ -185,7 +186,10 @@ test("a vitrine lê influencer e post da API e ignora o arquivo", async () => {
     if (url.includes("/v1/posts")) {
       return Response.json({
         source: "mock",
-        posts: [{ slug: "texto-api", title: "Texto da API", excerpt: "Curto", category: "Collab", readMinutes: 2, publishedAt: "2026-10-01" }],
+        posts: [
+          { slug: "texto-api", title: "Texto da API", excerpt: "Curto", category: "Collab", readMinutes: 2, publishedAt: "2026-10-01", coverUrl: "https://cdn.pulso.test/capa.jpg" },
+          { slug: "capa-ruim", title: "Capa ruim", excerpt: "Sem foto", category: "Collab", readMinutes: 1, publishedAt: "2026-10-02", coverUrl: "javascript:alert(1)" },
+        ],
       });
     }
     return new Response("no", { status: 404 });
@@ -201,10 +205,13 @@ test("a vitrine lê influencer e post da API e ignora o arquivo", async () => {
   assert.equal(page?.instagramUrl, "https://instagram.com/nova");
   const posts = await loadPublicPosts();
   assert.equal(posts[0]?.path, "/blog/texto-api");
+  assert.equal(posts[0]?.coverUrl, "https://cdn.pulso.test/capa.jpg");
+  assert.equal(posts.find((post) => post.slug === "capa-ruim")?.coverUrl, null);
   const article = await loadPublicArticle("texto-api");
   assert.equal(article?.blocks[0]?.type, "paragrafo");
   assert.equal(article?.authorName, "Redação");
   assert.equal(article?.authorBio, "Bio da API.");
+  assert.equal(article?.coverUrl, "https://cdn.pulso.test/capa.jpg");
   assert.equal(await loadPublicArticle("pre-sem-passar-mal"), null);
   assert.equal(await loadPublicCollab("so-arquivo"), null);
 });

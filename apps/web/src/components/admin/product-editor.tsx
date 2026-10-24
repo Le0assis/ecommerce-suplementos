@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError, uploadAdminImage } from "@/lib/admin-fetch";
 import { omitEmptyIds, resolveSlug, uniqueSlug } from "@/lib/admin-payload";
 import { safePreview } from "@/lib/admin-preview";
+import { uniqueRecordId, variantSku } from "@/lib/record-id";
 import { blankProduct, PRODUCT_STATUSES, slugify, type AdminFlavor, type AdminImage, type AdminInfluencerRef, type AdminList, type AdminOne, type AdminProduct, type AdminVariant } from "@/lib/admin-types";
 import { CATEGORIES, GOALS, type FlavorFamily } from "@pulso/domain";
 
@@ -400,12 +401,21 @@ function newFlavor(flavors: AdminFlavor[]): AdminFlavor {
 
 function newVariant(product: AdminProduct): AdminVariant {
   const flavor = product.flavors[0];
-  const id = nextId("var", product.variants.map((item) => item.id));
+  const id = uniqueRecordId();
   const flavorId = flavor?.id ?? "sabor";
-  const sku = `PL-${(product.slug || "NOVO").toUpperCase()}-${id}`.replace(/[^A-Z0-9-]/g, "").slice(0, 48);
-  return { id, flavorId, size: "30 doses", sku, priceCents: 0, compareAtCents: null, stock: flavor?.stock ?? 0, weightGrams: 300, servings: 30 };
+  return {
+    id,
+    flavorId,
+    size: "30 doses",
+    sku: variantSku(product.slug, id),
+    priceCents: 0,
+    compareAtCents: null,
+    stock: flavor?.stock ?? 0,
+    weightGrams: 300,
+    servings: 30,
+  };
 }
 
 function newImage(images: AdminImage[]): AdminImage {
-  return { id: nextId("foto", images.map((item) => item.id)), flavorId: null, url: null, alt: "", position: images.length, isCover: images.length === 0 };
+  return { id: uniqueRecordId(), flavorId: null, url: null, alt: "", position: images.length, isCover: images.length === 0 };
 }

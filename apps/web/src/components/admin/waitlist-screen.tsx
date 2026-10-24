@@ -5,7 +5,7 @@ import { useAdminSession } from "@/components/admin/shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError } from "@/lib/admin-fetch";
-import type { AdminDrop, AdminList, AdminRole } from "@/lib/admin-types";
+import { canAccess, type AdminDrop, type AdminList, type AdminRole } from "@/lib/admin-types";
 import { useEffect, useState } from "react";
 
 interface DropOption {
@@ -55,6 +55,13 @@ export function WaitlistScreen({ publicDrops = NO_DROPS }: { publicDrops?: DropO
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      if (!canAccess(role, "drops")) {
+        if (cancelled) return;
+        setDrops(publicDrops);
+        setDropId((current) => current || publicDrops[0]?.id || "");
+        setLoading(false);
+        return;
+      }
       try {
         const list = await adminFetch<AdminList<AdminDrop>>("drops?pageSize=100");
         if (cancelled) return;
@@ -78,7 +85,7 @@ export function WaitlistScreen({ publicDrops = NO_DROPS }: { publicDrops?: DropO
     return () => {
       cancelled = true;
     };
-  }, [publicDrops]);
+  }, [publicDrops, role]);
 
   useEffect(() => {
     if (!dropId) return;

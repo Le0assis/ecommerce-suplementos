@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "vitest";
 import { POST } from "@/app/api/admin/session/route";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 function startApi(): Promise<{ port: number; stop: () => void }> {
   const env: NodeJS.ProcessEnv = { ...process.env, TRUSTED_PROXIES: "127.0.0.1" };
   delete env.REDIS_URL;
-  const child: ChildProcess = spawn("pnpm", ["--dir", "/workspace/apps/api", "exec", "tsx", "src/admin/limit-fixture.ts"], {
-    cwd: "/workspace",
+  const child: ChildProcess = spawn("pnpm", ["--dir", path.join(repoRoot, "apps/api"), "exec", "tsx", "src/admin/limit-fixture.ts"], {
+    cwd: repoRoot,
     env,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
@@ -42,7 +46,7 @@ function startApi(): Promise<{ port: number; stop: () => void }> {
   }));
 }
 
-function login(ip: string, email: string) {
+function login(ip: string, email: string, forgedForwardedFor?: string) {
   return POST(
     new Request("http://127.0.0.1:43123/api/admin/session", {
       method: "POST",
@@ -50,7 +54,8 @@ function login(ip: string, email: string) {
         "content-type": "application/json",
         host: "127.0.0.1:43123",
         origin: "http://127.0.0.1:43123",
-        "x-forwarded-for": ip,
+        "x-real-ip": ip,
+        ...(forgedForwardedFor ? { "x-forwarded-for": forgedForwardedFor } : {}),
       },
       body: JSON.stringify({ email, password: "senha-errada-pulso" }),
     }),
@@ -79,6 +84,14 @@ test("dois clientes no Next recebem limites de 30 separados na API", async () =>
     const other = await login("203.0.113.71", "outro@pulso.test");
     assert.equal(other.status, 401);
     assert.equal(other.headers.get("retry-after"), null);
+
+    const stillFlooded = await login("203.0.113.70", "xff-falso@pulso.test", "198.51.100.70");
+    assert.equal(stillFlooded.status, 429);
+    assert.equal(stillFlooded.headers.get("retry-after"), "900");
+
+    const spoofedKey = await login("203.0.113.72", "xff-do-cheio@pulso.test", "203.0.113.70");
+    assert.equal(spoofedKey.status, 401);
+    assert.equal(spoofedKey.headers.get("retry-after"), null);
   } finally {
     delete process.env.API_URL;
     api.stop();
