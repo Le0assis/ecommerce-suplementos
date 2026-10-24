@@ -95,7 +95,7 @@ describe("schema", () => {
 
   it("marca o seed de exemplo sem apagar dado", () => {
     const files = migrationFiles(sqlDir);
-    expect(files.at(-1)).toBe("009_example_seed.sql");
+    expect(files).toContain("009_example_seed.sql");
     expect(files.indexOf("009_example_seed.sql")).toBeGreaterThan(files.indexOf("008_indices.sql"));
     const sql = readFileSync(resolve(sqlDir, "009_example_seed.sql"), "utf8").toLowerCase();
     expect(sql).toContain("create table if not exists example_seed");
@@ -103,5 +103,23 @@ describe("schema", () => {
     expect(sql).not.toContain("drop table");
     expect(sql).not.toContain("delete from");
     expect(sql).not.toContain("truncate");
+  });
+
+  it("acrescenta o CPF cifrado sem mexer na coluna em claro", () => {
+    const files = migrationFiles(sqlDir);
+    expect(files.at(-1)).toBe("010_cpf_cifrado.sql");
+    expect(files.indexOf("010_cpf_cifrado.sql")).toBeGreaterThan(files.indexOf("009_example_seed.sql"));
+    const sql = readFileSync(resolve(sqlDir, "010_cpf_cifrado.sql"), "utf8").toLowerCase();
+    expect(sql).toContain("add column if not exists cpf_enc bytea");
+    expect(sql).toContain("add column if not exists cpf_key_id text");
+    expect(sql).toContain("add column if not exists cpf_hash text");
+    expect(sql).toContain("create unique index if not exists customers_cpf_hash_key");
+    expect(sql).toContain("where cpf_hash is not null");
+    expect(sql).toContain("ok do léo");
+    expect(sql).not.toContain("drop column");
+    expect(sql).not.toContain("drop table");
+    expect(sql).not.toContain("delete from");
+    expect(sql).not.toContain("truncate");
+    expect(sql).not.toContain("alter column cpf");
   });
 });
