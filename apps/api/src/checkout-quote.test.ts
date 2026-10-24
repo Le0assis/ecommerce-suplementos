@@ -58,18 +58,32 @@ describe("orçamento do checkout", () => {
       }),
     });
     expect(priced.status).toBe(400);
-    const capped = await app.request("/v1/checkout/quote", {
+  });
+
+  it("recusa pointsToRedeem maior que zero enquanto o saldo não vem do servidor", async () => {
+    const app = createApp();
+    const quote = await app.request("/v1/checkout/quote", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__300", qty: 1 }],
-        pointsToRedeem: 100000,
+        pointsToRedeem: 1,
       }),
     });
-    expect(capped.status).toBe(200);
-    const body = await capped.json();
-    expect(body.summary.pointsRedeemed).toBe(0);
-    expect(body.summary.totalCents).toBe(14990);
-    expect(body.summary.shippingCents).toBeUndefined();
+    expect(quote.status).toBe(422);
+    expect(await quote.json()).toEqual({
+      error: "O saldo de pontos ainda não está no servidor.",
+      code: "pontos_indisponiveis",
+    });
+    const zero = await app.request("/v1/checkout/quote", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__300", qty: 1 }],
+        pointsToRedeem: 0,
+      }),
+    });
+    expect(zero.status).toBe(200);
+    expect((await zero.json()).summary.pointsRedeemed).toBe(0);
   });
 });

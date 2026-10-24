@@ -13,6 +13,15 @@ import { saoPauloDateKey, scratchPrize } from "./scratch";
 import { lookupCep, resolveShippingCents, shippingRates } from "./shipping";
 import type { Coupon } from "./types";
 import { isValidCpf, isValidExpiry, luhn, validateCheckout } from "./validators";
+import { loginEmailIpKey } from "./login-key";
+
+describe("chave do login", () => {
+  it("normaliza o e-mail e separa pelo IP", () => {
+    expect(loginEmailIpKey("  Dono@Pulso.Test ", "203.0.113.1")).toBe("dono@pulso.test|203.0.113.1");
+    expect(loginEmailIpKey("DONO@pulso.test", "203.0.113.1")).toBe(loginEmailIpKey("dono@pulso.test", "203.0.113.1"));
+    expect(loginEmailIpKey("dono@pulso.test", "203.0.113.2")).not.toBe(loginEmailIpKey("dono@pulso.test", "203.0.113.1"));
+  });
+});
 
 const luna: Coupon = {
   code: "LUNA15",

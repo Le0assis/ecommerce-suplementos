@@ -4,7 +4,7 @@ Anotado na revisão do `apps/web`. O que a vitrine já faz está no código. O r
 
 ## Pontos
 
-`serverPointAccount` em `apps/api/src/checkout-quote.ts` devolve sempre `{ pointsBalance: 0, lifetimePoints: 0 }`. Sem sessão de cliente, `pointsRedeemed` sai 0 mesmo com `pointsToRedeem` alto.
+`serverPointAccount` em `apps/api/src/checkout-quote.ts` ainda devolve `null`. `pointsToRedeem` maior que zero responde 422 `{ "code": "pontos_indisponiveis" }`.
 
 A vitrine esconde o slider no checkout e o texto de resgate na conta quando o saldo é 0 ou não existe, e o payload não leva `pointsToRedeem`. O slider local continua só para a conta do navegador com saldo positivo. Volta a ir no corpo quando o Backend ler `customers.points_balance` dessa sessão.
 

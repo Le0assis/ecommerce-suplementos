@@ -79,7 +79,7 @@ A conta, o pedido e a raspadinha que você vê no site estão no `localStorage`,
 
 ## Conta e pedido no servidor (proposta para o DBA)
 
-A loja ainda não grava cliente nem pedido. Esta etapa não cria a rota: o preço do checkout já sai do catálogo, e o saldo de pontos no orçamento fica 0 até a sessão existir. Enquanto a API devolver saldo 0, o site esconde o resgate no checkout e na conta e não envia `pointsToRedeem`. A migração é do DBA. As tabelas `customers`, `addresses`, `orders`, `order_lines`, `payments`, `shipments` e `points_ledger` continuam. Falta o que autentica e o que o orçamento precisa ler sem confiar no navegador.
+A loja ainda não grava cliente nem pedido. Esta etapa não cria a rota: o preço do checkout já sai do catálogo, e o saldo de pontos no orçamento fica 0 até a sessão existir. Enquanto `serverPointAccount` não tiver saldo, `pointsToRedeem` maior que zero responde 422 `pontos_indisponiveis`. O site esconde o resgate e não envia o campo. A migração é do DBA. As tabelas `customers`, `addresses`, `orders`, `order_lines`, `payments`, `shipments` e `points_ledger` continuam. Falta o que autentica e o que o orçamento precisa ler sem confiar no navegador.
 
 `customers.cpf` (`001_init.sql`) continua `text` em claro. A migração `010` já acrescentou, sem apagar essa coluna:
 

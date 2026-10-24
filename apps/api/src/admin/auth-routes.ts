@@ -1,3 +1,4 @@
+import { loginEmailIpKey, normalizeLoginEmail } from "@pulso/domain";
 import { writeAudit } from "@pulso/db/audit";
 import { hashPassword, verifyPassword } from "@pulso/db/password";
 import { randomUUID } from "node:crypto";
@@ -24,6 +25,7 @@ export function loginBackoffMs(failedAttempts: number): number {
 }
 
 const ipHits = new Map<string, { failures: number; reset: number; byUser: Map<string, number> }>();
+const emailIpHits = new Map<string, { failures: number; reset: number }>();
 const slots = new Map<string, { inflight: boolean; notBefore: number }>();
 let dummyHash: string | null = null;
 let proofs = 0;
@@ -68,6 +70,21 @@ function clearIpUser(ip: string, email: string, now: number): void {
   bucket.failures = Math.max(0, bucket.failures - own);
   bucket.byUser.delete(email);
   if (bucket.failures <= 0) ipHits.delete(ip);
+}
+
+function noteEmailIpFailure(email: string, ip: string, now: number): boolean {
+  const key = loginEmailIpKey(email, ip);
+  let bucket = emailIpHits.get(key);
+  if (!bucket || bucket.reset <= now) {
+    bucket = { failures: 0, reset: now + LOCK_MS };
+    emailIpHits.set(key, bucket);
+  }
+  bucket.failures += 1;
+  return bucket.failures <= IP_LIMIT;
+}
+
+function clearEmailIp(email: string, ip: string): void {
+  emailIpHits.delete(loginEmailIpKey(email, ip));
 }
 
 function slotKey(email: string, ip: string): string {
@@ -136,6 +153,25 @@ async function noteIpFailureRedis(ip: string, email: string): Promise<boolean> {
   return count <= IP_LIMIT;
 }
 
+function emailIpRedisKey(email: string, ip: string): string {
+  return `pulso:login:emailip:${loginEmailIpKey(email, ip)}`;
+}
+
+async function noteEmailIpFailureRedis(email: string, ip: string): Promise<boolean> {
+  const client = redis();
+  if (!client) return false;
+  const key = emailIpRedisKey(email, ip);
+  const count = await client.incr(key);
+  if (count === 1 || (await client.ttl(key)) < 0) await client.expire(key, LOCK_MS / 1000);
+  return count <= IP_LIMIT;
+}
+
+async function clearEmailIpRedis(email: string, ip: string): Promise<void> {
+  const client = redis();
+  if (!client) return;
+  await client.del(emailIpRedisKey(email, ip));
+}
+
 async function clearIpUserRedis(ip: string, email: string): Promise<void> {
   const client = redis();
   if (!client) return;
@@ -175,6 +211,7 @@ export function loginProofCount(): number {
 
 export function resetLoginLimits(): void {
   ipHits.clear();
+  emailIpHits.clear();
   slots.clear();
   proofs = 0;
 }
@@ -197,7 +234,7 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
     const clock = now.getTime();
     const ip = clientIp(c);
     const body = parseInput(loginSchema, await readJson(c));
-    const email = body.email.toLowerCase();
+    const email = normalizeLoginEmail(body.email);
     let memory = !process.env.REDIS_URL;
     const blockedByOthers = async (): Promise<boolean> => {
       if (!memory) {
@@ -214,16 +251,21 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
       throw new HttpError(429, BUSY);
     }
     const recordFailure = async (): Promise<never> => {
-      let allowed = false;
+      let ipAllowed = false;
+      let emailAllowed = false;
       if (!memory) {
         try {
-          allowed = await noteIpFailureRedis(ip, email);
+          ipAllowed = await noteIpFailureRedis(ip, email);
+          emailAllowed = await noteEmailIpFailureRedis(email, ip);
         } catch {
           memory = true;
         }
       }
-      if (memory) allowed = noteIpFailure(ip, email, clock);
-      if (!allowed) {
+      if (memory) {
+        ipAllowed = noteIpFailure(ip, email, clock);
+        emailAllowed = noteEmailIpFailure(email, ip, clock);
+      }
+      if (!ipAllowed || !emailAllowed) {
         c.header("retry-after", "900");
         throw new HttpError(429, BUSY);
       }
@@ -233,12 +275,14 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
       if (!memory) {
         try {
           await clearIpUserRedis(ip, email);
+          await clearEmailIpRedis(email, ip);
           return;
         } catch {
           memory = true;
         }
       }
       clearIpUser(ip, email, clock);
+      clearEmailIp(email, ip);
     };
     const slotClock = Date.now();
     let gate: { ok: true } | { ok: false; retryAfter: number };

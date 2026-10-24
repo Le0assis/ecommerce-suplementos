@@ -69,9 +69,20 @@ function onlyKeys(row: Record<string, unknown>, allowed: Set<string>): boolean {
   return Object.keys(row).every((key) => allowed.has(key));
 }
 
-/** Saldo e pontos de vida não vêm do navegador. Sem sessão de cliente, os dois são zero. */
-export function serverPointAccount(): { pointsBalance: number; lifetimePoints: number } {
-  return { pointsBalance: 0, lifetimePoints: 0 };
+/**
+ * Saldo e pontos de vida não vêm do navegador.
+ * null enquanto não houver sessão de cliente no servidor.
+ */
+export function serverPointAccount(): { pointsBalance: number; lifetimePoints: number } | null {
+  return null;
+}
+
+type PointsBlock = { error: string; status: 422; code: "pontos_indisponiveis" };
+
+function unavailablePoints(pointsToRedeem: number | undefined, account: ReturnType<typeof serverPointAccount>): PointsBlock | null {
+  if ((pointsToRedeem ?? 0) <= 0) return null;
+  if (account && account.pointsBalance > 0) return null;
+  return { error: "O saldo de pontos ainda não está no servidor.", status: 422, code: "pontos_indisponiveis" };
 }
 
 function parseLines(root: Record<string, unknown>): CheckoutQuoteLineInput[] | { error: string } {
@@ -212,17 +223,20 @@ function loyaltyInput(loyalty: PricedCheckout["loyalty"]) {
 export async function buildCheckoutQuote(
   input: CheckoutQuoteInput,
   sql: Sql | null,
-): Promise<{ summary: CheckoutQuoteSummary } | { error: string; status: 400 | 404 }> {
+): Promise<{ summary: CheckoutQuoteSummary } | { error: string; status: 400 | 404 | 422; code?: "pontos_indisponiveis" }> {
   const priced = await priceCheckout(input, sql);
   if ("error" in priced) return priced;
   const account = serverPointAccount();
+  const blocked = unavailablePoints(input.pointsToRedeem, account);
+  if (blocked) return blocked;
+  const points = account ?? { pointsBalance: 0, lifetimePoints: 0 };
   const pointValue = priced.loyalty?.pointValueCents ?? POINT_VALUE_CENTS;
   const quote = quoteCart({
     lines: priced.quoteLines,
     coupon: priced.coupon,
     redeemPoints: input.pointsToRedeem ?? 0,
-    pointsBalance: account.pointsBalance,
-    lifetimePoints: account.lifetimePoints,
+    pointsBalance: points.pointsBalance,
+    lifetimePoints: points.lifetimePoints,
     payment: "boleto",
     shippingMethod: "pac",
     pacCents: 0,
@@ -243,7 +257,7 @@ export async function buildCheckoutQuote(
 export async function buildCheckoutSimulation(
   input: CheckoutSimulateInput,
   sql: Sql | null,
-): Promise<{ simulated: true; message: string; quote: Quote } | { error: string; status: 400 | 404; errors?: Record<string, string> }> {
+): Promise<{ simulated: true; message: string; quote: Quote } | { error: string; status: 400 | 404 | 422; code?: "pontos_indisponiveis"; errors?: Record<string, string> }> {
   const validated = validateCheckout(input.checkout);
   if (!validated.ok) return { error: "Pedido incompleto.", status: 400, errors: validated.errors };
   const rates = shippingRates(input.checkout.cep);
@@ -254,12 +268,15 @@ export async function buildCheckoutSimulation(
   const sedex = rates.rates.find((rate) => rate.id === "sedex");
   if (!pac || !sedex) return { error: "Frete indisponível.", status: 400 };
   const account = serverPointAccount();
+  const blocked = unavailablePoints(input.pointsToRedeem, account);
+  if (blocked) return blocked;
+  const points = account ?? { pointsBalance: 0, lifetimePoints: 0 };
   const quote = quoteCart({
     lines: priced.quoteLines,
     coupon: priced.coupon,
     redeemPoints: input.pointsToRedeem ?? 0,
-    pointsBalance: account.pointsBalance,
-    lifetimePoints: account.lifetimePoints,
+    pointsBalance: points.pointsBalance,
+    lifetimePoints: points.lifetimePoints,
     payment: input.checkout.paymentMethod,
     shippingMethod: input.checkout.shippingMethod,
     pacCents: pac.priceCents,

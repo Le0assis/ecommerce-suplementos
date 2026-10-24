@@ -272,7 +272,7 @@ app.post("/v1/checkout/quote", async (c) => {
   const parsed = parseCheckoutQuote(body);
   if ("error" in parsed) return c.json({ error: parsed.error }, 400);
   const quote = await buildCheckoutQuote(parsed, dataSql());
-  if ("error" in quote) return c.json({ error: quote.error }, quote.status);
+  if ("error" in quote) return c.json(quote.code ? { error: quote.error, code: quote.code } : { error: quote.error }, quote.status);
   c.header("cache-control", "no-store");
   return c.json(quote);
 });
@@ -283,7 +283,14 @@ app.post("/v1/checkout/simulate", async (c) => {
   if ("error" in parsed) return c.json({ error: parsed.error }, 400);
   const quote = await buildCheckoutSimulation(parsed, dataSql());
   if ("error" in quote) {
-    return c.json(quote.errors ? { error: quote.error, errors: quote.errors } : { error: quote.error }, quote.status);
+    return c.json(
+      {
+        error: quote.error,
+        ...(quote.code ? { code: quote.code } : {}),
+        ...(quote.errors ? { errors: quote.errors } : {}),
+      },
+      quote.status,
+    );
   }
   c.header("cache-control", "no-store");
   return c.json(quote);

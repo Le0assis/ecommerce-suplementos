@@ -172,6 +172,25 @@ describe("login do admin", () => {
     expect(other.response.status).toBe(200);
   }, 60_000);
 
+  it("o segundo balde junta o e-mail normalizado ao IP e a senha certa zera", async () => {
+    const app = createAdminApp(sql);
+    const ip = "203.0.113.90";
+    for (let n = 0; n < 30; n += 1) {
+      const failed = await login(app, n % 2 === 0 ? "Dono@Pulso.Test" : "dono@pulso.test", "senha-errada-pulso", ip);
+      expect(failed.response.status).toBe(401);
+      await sql.query("update admin_users set failed_attempts = 0 where email = 'dono@pulso.test'");
+    }
+    const blocked = await login(app, "DONO@pulso.test", "senha-errada-pulso", ip);
+    expect(blocked.response.status).toBe(429);
+    expect(blocked.response.headers.get("retry-after")).toBe("900");
+    const otherIp = await login(app, "dono@pulso.test", "senha-errada-pulso", "203.0.113.91");
+    expect(otherIp.response.status).toBe(401);
+    const opened = await login(app, "dono@pulso.test", "senha-dona-pulso", ip);
+    expect(opened.response.status).toBe(200);
+    const again = await login(app, "dono@pulso.test", "senha-errada-pulso", ip);
+    expect(again.response.status).toBe(401);
+  });
+
   it("recusa origem desconhecida e login sem segredo", async () => {
     const app = createAdminApp(sql);
     const origin = await app.request("/v1/admin/login", {

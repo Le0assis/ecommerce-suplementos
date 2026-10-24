@@ -34,13 +34,27 @@ describe("preço no servidor", () => {
       }),
     });
     expect(rejected.status).toBe(400);
-    const ok = await app.request("/v1/checkout/simulate", {
+    const points = await app.request("/v1/checkout/simulate", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__300", qty: 1 }],
         couponCode: "PULSO10",
         pointsToRedeem: 100000,
+        checkout,
+      }),
+    });
+    expect(points.status).toBe(422);
+    expect(await points.json()).toEqual({
+      error: "O saldo de pontos ainda não está no servidor.",
+      code: "pontos_indisponiveis",
+    });
+    const ok = await app.request("/v1/checkout/simulate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__300", qty: 1 }],
+        couponCode: "PULSO10",
         checkout,
       }),
     });
