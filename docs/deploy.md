@@ -19,7 +19,7 @@ Este guia publica a **demonstração**. Pix, boleto e cartão continuam sandbox.
 2. `pnpm install --frozen-lockfile` na raiz.
 3. Copie `.env.example` para `.env` e troque `NEXT_PUBLIC_SITE_URL` para o `https` do site. Ajuste `WEB_PORT` se o proxy usar outra porta.
 4. `pnpm build`.
-5. Suba o Postgres, aponte `DATABASE_URL`, rode `pnpm db:migrate` e `pnpm db:seed` uma vez, e ponha `API_DATA_SOURCE=postgres`. Em produção a API não sobe em modo mock.
+5. Suba o Postgres, aponte `DATABASE_URL` e rode `pnpm db:migrate`. A primeira carga do exemplo, com `NODE_ENV=production`, é `PULSO_SEED_ALLOW_OVERWRITE=1 pnpm db:seed` num banco vazio. Sem a flag o seed recusa produção e também recusa banco já editado. Ponha `API_DATA_SOURCE=postgres`. Em produção a API não sobe em modo mock.
 6. Suba dois processos: `pnpm start` e `pnpm start:api`. O proxy manda o domínio do site para `WEB_PORT` e, se quiser, `/api` ou um subdomínio para `API_PORT`. Se a API ficar atrás de proxy, `TRUSTED_PROXIES` é obrigatório e leva o IP desse proxy e o IP do Next. Na mesma máquina, `TRUSTED_PROXIES=127.0.0.1`. Sem a lista, o limite de login vê um IP só.
 7. Confira `GET /health` da API e a home do site. O teste de ponta a ponta, na máquina de quem desenvolve, é `pnpm --filter @pulso/web exec playwright install chromium` e `pnpm test:e2e`.
 

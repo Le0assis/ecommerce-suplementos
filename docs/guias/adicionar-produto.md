@@ -10,6 +10,6 @@
 8. A página `/loja/[slug]` entra sozinha via `generateStaticParams` porque lê a lista de produtos. Confira o sitemap: ele também lista os slugs.
 9. Rode `pnpm --filter @pulso/data test` e `pnpm --filter @pulso/web build`.
 
-Com Postgres no modo API, rode `pnpm db:seed` de novo. O seed faz upsert pelo slug.
+Com Postgres no modo API, rode `pnpm db:seed` de novo se o banco ainda for só o exemplo. Banco editado no admin ou `NODE_ENV=production` recusa; aí a flag é `PULSO_SEED_ALLOW_OVERWRITE=1`. O seed faz upsert pelo slug.
 
 Não coloque o produto só no JSX da home. A home deve ler o catálogo, senão busca e PDP divergem.

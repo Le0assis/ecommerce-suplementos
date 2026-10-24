@@ -20,18 +20,38 @@ import { coupons, influencers, posts, products, reviews, ugc, upcomingDrop, vide
 import type pg from "pg";
 import { loadEnv } from "./env";
 import { closePool, getPool } from "./pool";
+import { ExampleSeedRefused, inspectExampleSeed, type ExampleSeedOptions, type SeedClient } from "./seed-gate";
+
+export type { ExampleSeedOptions };
+import { EXAMPLE_QUIZ_IDS, exampleAuthorId, exampleBanners } from "./seed-keys";
 
 // Exemplo fictício, copiado do mock da vitrine. Não é cadastro de produção.
-// Rodar de novo regrava as chaves deste exemplo (nutrição, imagem, meta, selo,
-// item de kit, produto do influencer, opção do quiz e bloco do post) e não duplica.
+// O portão libera a gravação em banco vazio ou que ainda só tem este exemplo.
+// NODE_ENV=production, produto fora do mock, updated_at posterior ao marcador
+// example_seed ou outra edição do admin recusam, a menos que
+// PULSO_SEED_ALLOW_OVERWRITE=1 ou --force-example.
+// Apagar e recriar nutrição, imagem, meta, selo, kit, produto do atleta,
+// opção do quiz e bloco do post só roda com esse portão liberado.
 // Não mexe em pedido, cliente, lista de espera, sessão nem senha de admin.
 // Não zera uses do cupom nem a resposta de uma avaliação.
+
+export const EXAMPLE_SEED_OK =
+  "Exemplo gravado no Postgres. São dados fictícios do mock; pedido, lista de espera e senha de admin não entram aqui.";
+
+async function deleteMockChildren(client: SeedClient, replaceMockChildren: boolean, sql: string, params: unknown[] = []): Promise<void> {
+  if (!replaceMockChildren) {
+    throw new ExampleSeedRefused(
+      "Seed de exemplo recusado: apagar e recriar os filhos do mock só roda com o portão liberado. Nada foi regravado.",
+    );
+  }
+  await client.query(sql, params);
+}
 
 function instagramUrl(handle: string): string {
   return `https://instagram.com/${handle.replace(/^@/, "")}`;
 }
 
-async function seedCatalog(client: pg.PoolClient): Promise<void> {
+async function seedCatalog(client: SeedClient, replaceMockChildren: boolean): Promise<void> {
   for (const [position, category] of CATEGORIES.entries()) {
     await client.query(
       `insert into categories (slug, name, blurb, position)
@@ -224,7 +244,7 @@ async function seedCatalog(client: pg.PoolClient): Promise<void> {
       ],
     );
 
-    await client.query("delete from nutrition_rows where product_id = $1", [product.id]);
+    await deleteMockChildren(client, replaceMockChildren, "delete from nutrition_rows where product_id = $1", [product.id]);
     for (const [position, row] of product.label.nutrition.entries()) {
       await client.query(
         `insert into nutrition_rows (id, product_id, position, nutrient, amount, daily_value)
@@ -233,7 +253,7 @@ async function seedCatalog(client: pg.PoolClient): Promise<void> {
       );
     }
 
-    await client.query("delete from product_images where product_id = $1", [product.id]);
+    await deleteMockChildren(client, replaceMockChildren, "delete from product_images where product_id = $1", [product.id]);
     for (const [position, flavor] of product.flavors.entries()) {
       await client.query(
         `insert into product_images (id, product_id, flavor_id, url, alt, position, is_cover, fallback_hex)
@@ -242,19 +262,19 @@ async function seedCatalog(client: pg.PoolClient): Promise<void> {
       );
     }
 
-    await client.query("delete from product_goals where product_id = $1", [product.id]);
+    await deleteMockChildren(client, replaceMockChildren, "delete from product_goals where product_id = $1", [product.id]);
     for (const goal of product.goals) {
       await client.query("insert into product_goals (product_id, goal_id) values ($1, $2)", [product.id, goal]);
     }
 
-    await client.query("delete from product_badges where product_id = $1", [product.id]);
+    await deleteMockChildren(client, replaceMockChildren, "delete from product_badges where product_id = $1", [product.id]);
     for (const badge of product.badges) {
       await client.query("insert into product_badges (product_id, badge) values ($1, $2)", [product.id, badge]);
     }
   }
 
   const productIds = products.map((product) => product.id);
-  await client.query("delete from kit_items where kit_id = any($1::text[])", [productIds]);
+  await deleteMockChildren(client, replaceMockChildren, "delete from kit_items where kit_id = any($1::text[])", [productIds]);
   for (const product of products) {
     for (const [position, item] of (product.kitItems ?? []).entries()) {
       await client.query(
@@ -265,7 +285,7 @@ async function seedCatalog(client: pg.PoolClient): Promise<void> {
   }
 
   const influencerIds = influencers.map((influencer) => influencer.slug);
-  await client.query("delete from influencer_products where influencer_id = any($1::text[])", [influencerIds]);
+  await deleteMockChildren(client, replaceMockChildren, "delete from influencer_products where influencer_id = any($1::text[])", [influencerIds]);
   for (const influencer of influencers) {
     for (const [position, productId] of influencer.productSlugs.entries()) {
       await client.query(
@@ -363,12 +383,10 @@ function weights(products: Record<string, number> = {}, goals: Record<string, nu
   return { products, goals };
 }
 
-const MARQUEE = ["PIX 10% OFF", "SABOR ALTO", "FRETE NO CEP", "DROP 04", "CREATINA TODO DIA", "SEM DESCULPA DE RÓTULO", "COLLAB LUNA"];
-
-async function seedOperations(client: pg.PoolClient): Promise<void> {
+async function seedOperations(client: SeedClient, replaceMockChildren: boolean): Promise<void> {
   const questions: { id: string; prompt: string; answerKey: string; options: { value: string; label: string; weights: Weights }[] }[] = [
     {
-      id: "quiz-goal",
+      id: EXAMPLE_QUIZ_IDS.goal,
       prompt: "Qual é o objetivo agora?",
       answerKey: "goal",
       options: GOALS.map((goal) => ({
@@ -378,13 +396,13 @@ async function seedOperations(client: pg.PoolClient): Promise<void> {
       })),
     },
     {
-      id: "quiz-days",
+      id: EXAMPLE_QUIZ_IDS.days,
       prompt: "Quantos dias você treina?",
       answerKey: "days",
       options: [2, 3, 4, 5, 6].map((days) => ({ value: String(days), label: `${days} dias`, weights: weights() })),
     },
     {
-      id: "quiz-caffeine",
+      id: EXAMPLE_QUIZ_IDS.caffeine,
       prompt: "Cafeína, como é?",
       answerKey: "caffeine",
       options: [
@@ -394,7 +412,7 @@ async function seedOperations(client: pg.PoolClient): Promise<void> {
       ],
     },
     {
-      id: "quiz-flavor",
+      id: EXAMPLE_QUIZ_IDS.flavor,
       prompt: "Que sabor te representa?",
       answerKey: "flavor",
       options: [
@@ -405,7 +423,7 @@ async function seedOperations(client: pg.PoolClient): Promise<void> {
       ],
     },
     {
-      id: "quiz-budget",
+      id: EXAMPLE_QUIZ_IDS.budget,
       prompt: "Orçamento do mês",
       answerKey: "budget",
       options: [
@@ -424,7 +442,9 @@ async function seedOperations(client: pg.PoolClient): Promise<void> {
       [question.id, question.prompt, question.answerKey, position],
     );
   }
-  await client.query("delete from quiz_options where question_id = any($1::text[])", [questions.map((question) => question.id)]);
+  await deleteMockChildren(client, replaceMockChildren, "delete from quiz_options where question_id = any($1::text[])", [
+    questions.map((question) => question.id),
+  ]);
   for (const question of questions) {
     for (const [position, option] of question.options.entries()) {
       await client.query(
@@ -495,42 +515,7 @@ async function seedOperations(client: pg.PoolClient): Promise<void> {
     ],
   );
 
-  const banners: { id: string; slot: string; title: string; subtitle: string | null; href: string | null; position: number }[] = [
-    {
-      id: "banner-hero",
-      slot: "hero",
-      title: "Sabor alto. Treino mais alto.",
-      subtitle: "Pré, whey e creatina com cara de rua.",
-      href: "/loja/caos-pre-treino",
-      position: 0,
-    },
-    ...MARQUEE.map((title, position) => ({ id: `banner-marquee-${position}`, slot: "marquee", title, subtitle: null, href: null, position })),
-    {
-      id: "banner-pix",
-      slot: "destaque",
-      title: `Pix ${PIX_DISCOUNT_PERCENT}% off`,
-      subtitle: "Em tudo. Sem cupom. O desconto aparece no checkout.",
-      href: "/loja",
-      position: 0,
-    },
-    {
-      id: "banner-raspadinha",
-      slot: "destaque",
-      title: "Raspadinha",
-      subtitle: "Uma por dia. Pode vir frete, pontos ou quase.",
-      href: "/raspadinha",
-      position: 1,
-    },
-    {
-      id: "banner-calculadora",
-      slot: "destaque",
-      title: "Calcula a dose",
-      subtitle: "Proteína e creatina, com a letra miúda do lado.",
-      href: "/calculadora",
-      position: 2,
-    },
-  ];
-  for (const banner of banners) {
+  for (const banner of exampleBanners(PIX_DISCOUNT_PERCENT)) {
     await client.query(
       `insert into banners (id, slot, title, subtitle, href, position)
        values ($1, $2, $3, $4, $5, $6)
@@ -577,31 +562,21 @@ async function seedOperations(client: pg.PoolClient): Promise<void> {
   }
 }
 
-function authorId(name: string): string {
-  const slug = name
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return slug || "autor";
-}
-
-async function seedContent(client: pg.PoolClient): Promise<void> {
+async function seedContent(client: SeedClient, replaceMockChildren: boolean): Promise<void> {
   const names = [...new Set(posts.map((post) => post.author))];
   for (const name of names) {
     await client.query(
       `insert into authors (id, name)
        values ($1, $2)
        on conflict (id) do update set name = excluded.name`,
-      [authorId(name), name],
+      [exampleAuthorId(name), name],
     );
   }
 
   for (const post of posts) {
-    const id = authorId(post.author);
+    const id = exampleAuthorId(post.author);
     await client.query("update posts set author_id = $2 where slug = $1", [post.slug, id]);
-    await client.query("delete from post_blocks where post_id = $1", [post.slug]);
+    await deleteMockChildren(client, replaceMockChildren, "delete from post_blocks where post_id = $1", [post.slug]);
     for (const [position, text] of post.body.entries()) {
       await client.query(
         `insert into post_blocks (id, post_id, position, type, content)
@@ -613,7 +588,7 @@ async function seedContent(client: pg.PoolClient): Promise<void> {
 }
 
 async function upsertDrop(
-  client: pg.PoolClient,
+  client: SeedClient,
   drop: {
     id: string;
     edition: string;
@@ -643,7 +618,7 @@ async function upsertDrop(
   );
 }
 
-async function seedDrops(client: pg.PoolClient): Promise<void> {
+async function seedDrops(client: SeedClient): Promise<void> {
   for (const product of products) {
     if (!product.drop) continue;
     const flavor = product.flavors.find((item) => product.drop?.id.endsWith(`-${item.id}`));
@@ -673,32 +648,77 @@ async function seedDrops(client: pg.PoolClient): Promise<void> {
   });
 }
 
-export async function seed(): Promise<void> {
-  loadEnv();
-  const pool = getPool();
-  const client = await pool.connect();
+async function writeExampleMarker(client: SeedClient): Promise<void> {
+  await client.query(
+    `insert into example_seed (id, applied_at, source)
+     values ('mock', now(), 'exemplo fictício do mock')
+     on conflict (id) do update set applied_at = now(), source = excluded.source`,
+  );
+}
+
+async function runExampleSeed(client: SeedClient, options?: ExampleSeedOptions): Promise<void> {
+  const decision = await inspectExampleSeed(client, options);
+  if (!decision.allow || !decision.replaceMockChildren) {
+    throw new ExampleSeedRefused(decision.message || "Seed de exemplo recusado. Nada foi regravado.");
+  }
+  await seedCatalog(client, true);
+  await seedOperations(client, true);
+  await seedContent(client, true);
+  await seedDrops(client);
+  await writeExampleMarker(client);
+}
+
+async function withTransaction(client: SeedClient, run: () => Promise<void>): Promise<void> {
+  await client.query("begin");
   try {
-    await client.query("begin");
-    await seedCatalog(client);
-    await seedOperations(client);
-    await seedContent(client);
-    await seedDrops(client);
+    await run();
     await client.query("commit");
   } catch (error) {
     await client.query("rollback");
     throw error;
+  }
+}
+
+function asSeedClient(client: pg.PoolClient): SeedClient {
+  return {
+    query(text, params) {
+      return client.query(text, params);
+    },
+  };
+}
+
+export async function seed(options?: ExampleSeedOptions & { client?: SeedClient }): Promise<void> {
+  if (options?.client) {
+    await withTransaction(options.client, () => runExampleSeed(options.client as SeedClient, options));
+    return;
+  }
+  loadEnv();
+  const pool = getPool();
+  const client = await pool.connect();
+  const sql = asSeedClient(client);
+  try {
+    await withTransaction(sql, () => runExampleSeed(sql, options));
   } finally {
     client.release();
   }
 }
 
-if (process.argv[1] && process.argv[1].includes("seed")) {
-  seed()
-    .then(async () => {
-      console.log(
-        "Exemplo gravado no Postgres. São dados fictícios do mock; pedido, lista de espera e senha de admin não entram aqui.",
-      );
+export async function seedCli(options?: ExampleSeedOptions & { client?: SeedClient }): Promise<number> {
+  try {
+    await seed(options);
+    console.log(EXAMPLE_SEED_OK);
+    return 0;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    return 1;
+  }
+}
+
+if (process.argv[1] && process.argv[1].includes("seed.ts")) {
+  seedCli()
+    .then(async (code) => {
       await closePool();
+      process.exit(code);
     })
     .catch(async (error: unknown) => {
       console.error(error instanceof Error ? error.message : error);

@@ -80,7 +80,7 @@ describe("schema", () => {
 
   it("acrescenta índices das consultas reais sem apagar dado", () => {
     const files = migrationFiles(sqlDir);
-    expect(files.at(-1)).toBe("008_indices.sql");
+    expect(files).toContain("008_indices.sql");
     const sql = readFileSync(resolve(sqlDir, "008_indices.sql"), "utf8").toLowerCase();
     expect(sql).toContain("create index if not exists products_store_idx");
     expect(sql).toContain("create index if not exists reviews_public_idx");
@@ -91,5 +91,17 @@ describe("schema", () => {
     expect(sql).not.toContain("delete from");
     expect(sql).not.toContain("truncate");
     expect(sql).not.toContain("drop index");
+  });
+
+  it("marca o seed de exemplo sem apagar dado", () => {
+    const files = migrationFiles(sqlDir);
+    expect(files.at(-1)).toBe("009_example_seed.sql");
+    expect(files.indexOf("009_example_seed.sql")).toBeGreaterThan(files.indexOf("008_indices.sql"));
+    const sql = readFileSync(resolve(sqlDir, "009_example_seed.sql"), "utf8").toLowerCase();
+    expect(sql).toContain("create table if not exists example_seed");
+    expect(sql).toContain("applied_at timestamptz not null");
+    expect(sql).not.toContain("drop table");
+    expect(sql).not.toContain("delete from");
+    expect(sql).not.toContain("truncate");
   });
 });

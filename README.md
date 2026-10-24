@@ -313,7 +313,19 @@ Só faça isto se o Postgres estiver no ar. No modo mock, pule a seção.
 
 A migração aplica, em ordem, todos os arquivos `packages/db/sql/*.sql`. Eles são idempotentes (`create table if not exists`): rodar de novo não apaga dados.
 
-O seed grava produtos, cupons, atletas, posts e avaliações a partir do catálogo TypeScript, nas colunas normalizadas. A API, com `API_DATA_SOURCE=postgres`, lê essas colunas. Foto de mock fica com `url` nula e `fallback_hex` com a cor.
+O seed grava um exemplo fictício: produtos, cupons, atletas, posts e avaliações a partir do catálogo TypeScript, nas colunas normalizadas. A API, com `API_DATA_SOURCE=postgres`, lê essas colunas. Foto de mock fica com `url` nula e `fallback_hex` com a cor.
+
+Em banco vazio, ou que ainda só tem esse exemplo, `pnpm db:seed` pode rodar de novo. Atualiza as chaves do mock, não duplica, e recria os filhos dessas chaves (nutrição, imagem, meta, selo, item de kit, produto do atleta, opção do quiz e bloco do post). A conta dono, a sessão e o login não travam essa repetição. O marcador fica em `example_seed`.
+
+O comando recusa (código de saída diferente de zero, com a mensagem na saída de erro) quando `NODE_ENV=production`, ou quando o banco já tem algo que não veio do exemplo: produto fora das chaves do mock, `updated_at` posterior ao marcador, edição registrada na auditoria, pedido, cliente ou lista de espera. Nesse caso nada é regravado, e a parte que apaga e recria os filhos do mock não roda.
+
+Para regravar mesmo assim:
+
+```bash
+PULSO_SEED_ALLOW_OVERWRITE=1 pnpm db:seed
+```
+
+O mesmo vale para `pnpm --filter @pulso/db seed -- --force-example`. A flag não apaga pedido, cliente, lista de espera nem a senha do admin. Ela libera de novo a regravação das chaves do mock, inclusive os filhos. Em produção a primeira carga do exemplo também pede essa flag.
 
 A conta dono não entra no seed. Com o Postgres no ar, grave a senha num arquivo fora do repositório (modo 600) e rode o script que já existe:
 
