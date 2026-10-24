@@ -1,6 +1,7 @@
 "use client";
 
 import { AthletePoster } from "@/components/brand/athlete";
+import { RemoteImage } from "@/components/content/remote-image";
 import { ApplyCoupon } from "@/components/commerce/apply-coupon";
 import { ProductCard } from "@/components/product/product-card";
 import { Button } from "@/components/ui/button";
@@ -69,9 +70,8 @@ export function CollabView({
     <div className="mx-auto max-w-5xl px-4 py-8 pb-28">
       <div className="grid items-start gap-6 md:grid-cols-[280px_1fr]">
         {portrait?.url ? (
-          <figure className="mx-auto w-full max-w-[280px]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={portrait.url} alt={portrait.alt} className="h-[280px] w-full rounded-[1.8rem] border border-white/10 object-cover" />
+          <figure className="relative mx-auto h-[280px] w-full max-w-[280px]">
+            <RemoteImage src={portrait.url} alt={portrait.alt} fill className="rounded-[1.8rem] border border-white/10 object-cover" sizes="280px" />
           </figure>
         ) : (
           <AthletePoster name={name} handle={handle} city={city} accent={accent} variant={variant} compact className="mx-auto h-[280px] w-full max-w-[280px]" />
@@ -164,8 +164,9 @@ function PhotoCarousel({ images, fallbackHref }: { images: CollabImage[]; fallba
   if (!current) return null;
   const href = safeBannerHref(current.href) ?? safeBannerHref(fallbackHref);
   const frame = current.url ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={current.url} alt={current.alt} className="h-72 w-full object-cover md:h-96" />
+    <div className="relative h-72 md:h-96">
+      <RemoteImage src={current.url} alt={current.alt} fill className="object-cover" sizes="(min-width: 768px) 960px, 100vw" />
+    </div>
   ) : (
     <div className="grid h-72 place-items-center md:h-96" style={{ backgroundColor: current.hex }} role="img" aria-label={current.alt} />
   );

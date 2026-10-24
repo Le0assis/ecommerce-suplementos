@@ -1,5 +1,6 @@
 "use client";
 
+import { RemoteImage } from "@/components/content/remote-image";
 import { Countdown } from "@/components/gamification/countdown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,10 +35,7 @@ function ScarcityBar({ unitsLeft, unitsTotal }: { unitsLeft: number | null; unit
 function HeroMedia({ drop, blur }: { drop: PublicDropView; blur: boolean }) {
   const blurClass = blur ? "scale-110 blur-2xl" : "";
   if (drop.heroImageUrl) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={drop.heroImageUrl} alt="" className={`absolute inset-0 h-full w-full object-cover ${blurClass}`} />
-    );
+    return <RemoteImage src={drop.heroImageUrl} alt="" fill className={`object-cover ${blurClass}`} />;
   }
   return <div className={`absolute inset-0 ${blurClass}`} style={{ backgroundColor: drop.hex }} aria-hidden />;
 }

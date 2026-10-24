@@ -1,3 +1,4 @@
+import { RemoteImage } from "@/components/content/remote-image";
 import type { AdminPostBlock } from "@/lib/admin-types";
 import Link from "next/link";
 
@@ -27,8 +28,7 @@ export function ArticleBlocks({ blocks, products }: { blocks: AdminPostBlock[]; 
           return (
             <figure key={block.id}>
               {block.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={block.url} alt={block.alt} className="w-full rounded-[1.4rem] border border-white/10" />
+                <RemoteImage src={block.url} alt={block.alt} width={1600} height={1000} className="h-auto w-full rounded-[1.4rem] border border-white/10" />
               ) : (
                 <div className="grid h-48 place-items-center rounded-[1.4rem] border border-white/10 bg-white/5 text-sm text-muted-foreground">{block.alt}</div>
               )}

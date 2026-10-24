@@ -17,7 +17,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const register = usePulso((state) => state.register);
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", email: mode === "login" ? "ana@pulso.dev" : "", password: mode === "login" ? "pulso123" : "", marketing: false, referral: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", marketing: false, referral: "" });
 
   return (
     <div className="mx-auto max-w-md px-4 py-12">

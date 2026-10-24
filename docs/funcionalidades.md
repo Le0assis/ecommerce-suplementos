@@ -24,7 +24,7 @@ Estender: categoria nova entra em `CATEGORIES` no domínio e num produto. O tipo
 
 Onde: `apps/web/src/app/(loja)/loja/[slug]/page.tsx`, `buy-box.tsx`, `product-card.tsx`.
 
-Sabor esgotado desabilita comprar. Assinatura aplica o percentual da ficha.
+Sabor esgotado desabilita comprar. Assinatura aplica o percentual da ficha. Ao lado da compra, a ficha mostra que o produto não é medicamento, que a pessoa consulte um nutricionista ou médico, e que a venda é só para maiores de 18 anos.
 
 ## Quiz `/quiz`
 
@@ -60,11 +60,13 @@ Pedido Pix/boleto nasce `pagamento_pendente` e os pontos esperam o avanço de st
 
 Onde: `checkout-view.tsx`. A confirmação em `/pedido/confirmado?codigo=` mostra a mensagem do sandbox e o `externalId`. A função pura é `sandboxCharge` em `packages/domain/src/sandbox-payment.ts`. A API expõe `POST /v1/payments/sandbox`. A vitrine chama a função direto, para o pedido no navegador e a API não divergirem.
 
+O payload novo está em `serverCheckoutPayload`: `{ "lines": [{ "slug", "variant", "qty" }], "couponCode"?, "pointsToRedeem"? }`. `variant` é o id da variação (`slug__sabor__tamanho`). Preço e nome não entram. `CHECKOUT_QUOTE_SHA` está vazio, então a tela segue o `quoteCart` local e `POST /api/checkout/quote` responde 409 sem chamar a API. Quando o Backend publicar o SHA, o resumo visível passa a ser o que `POST /v1/checkout/quote` devolver. A revisão também lembra os 18 anos.
+
 ## Conta
 
 `/entrar`, `/criar-conta`, `/conta`, `/conta/pedidos`, `/conta/pontos`, `/conta/enderecos`, `/conta/assinaturas`, `/favoritos`.
 
-Login demo pré-preenchido. Senha comparada no browser. Wishlist de visitante funde no login.
+O login abre com e-mail e senha vazios. A conta demo `ana@pulso.dev` / `pulso123` continua no navegador, sem vir preenchida. Senha comparada no browser. Wishlist de visitante funde no login.
 
 Onde: `account-views.tsx`, `lib/demo.ts`, `lib/store.ts`.
 

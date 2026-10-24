@@ -1,6 +1,7 @@
 "use client";
 
 import { Pack } from "@/components/brand/pack";
+import { SupplementNotice } from "@/components/product/supplement-notice";
 import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/lib/config";
 import { usePulso } from "@/lib/store";
@@ -124,7 +125,8 @@ export function BuyBox({ product: initial }: { product: CatalogProduct }) {
         >
           {soldOut ? "Esgotado" : "Adiciona na sacola"}
         </Button>
-        <p className="mt-3 text-xs text-muted-foreground">Suplemento alimentar. Não é medicamento. {product.caffeineMg ? `${product.caffeineMg} mg de cafeína por dose.` : "Sem cafeína."}</p>
+        <p className="mt-3 text-sm text-muted-foreground">{product.caffeineMg ? `${product.caffeineMg} mg de cafeína por dose.` : "Sem cafeína."}</p>
+        <SupplementNotice className="mt-3" />
       </div>
     </div>
   );
