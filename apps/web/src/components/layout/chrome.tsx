@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { siteConfig } from "@/lib/config";
-import { useCurrentUser, usePulso } from "@/lib/store";
+import { selectHydratedCart, useCurrentUser, usePulso } from "@/lib/store";
 import { formatBRL, freeShippingProgress } from "@pulso/domain";
 import { Heart, Home, Menu, Search, ShoppingBag, Sparkles, User, X } from "lucide-react";
 import Link from "next/link";
@@ -251,7 +251,7 @@ export function Toaster() {
 export function CartDrawer() {
   const open = usePulso((state) => state.cartOpen);
   const setOpen = usePulso((state) => state.setCartOpen);
-  const cart = usePulso((state) => (state.hydrated ? state.cart : []));
+  const cart = usePulso(selectHydratedCart);
   const setQuantity = usePulso((state) => state.setQuantity);
   const removeLine = usePulso((state) => state.removeLine);
   const merchandise = cart.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0);

@@ -5,7 +5,7 @@ import { useAdminSession } from "@/components/admin/shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError } from "@/lib/admin-fetch";
-import { canAccess, type AdminDrop, type AdminList, type AdminRole } from "@/lib/admin-types";
+import { canAccess, WAITLIST_DENIED, type AdminDrop, type AdminList, type AdminRole } from "@/lib/admin-types";
 import { maskEmail } from "@/lib/mask-email";
 import { useEffect, useState } from "react";
 
@@ -150,7 +150,7 @@ export function WaitlistScreen({ publicDrops = NO_DROPS }: { publicDrops?: DropO
       <div className="mx-auto max-w-5xl">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-lime">LGPD</p>
         <h1 className="font-display text-6xl leading-none">Lista de espera</h1>
-        <p className="mt-3 max-w-xl text-sm text-muted-foreground">Seu papel não vê esta lista.</p>
+        <p className="mt-3 max-w-xl text-sm text-muted-foreground">{WAITLIST_DENIED}</p>
       </div>
     );
   }

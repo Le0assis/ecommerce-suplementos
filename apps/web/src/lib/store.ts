@@ -440,6 +440,14 @@ function findOrder(state: Pick<PulsoState, "users" | "guestOrders">, code: strin
   return state.guestOrders.find((order) => order.code === code);
 }
 
+const EMPTY_CART: CartLine[] = [];
+const EMPTY_WISHLIST: string[] = [];
+
+/** O array vazio é o mesmo objeto. Um `[]` novo a cada snapshot dispara o aviso do React. */
+export function selectHydratedCart(state: Pick<PulsoState, "hydrated" | "cart">): CartLine[] {
+  return state.hydrated ? state.cart : EMPTY_CART;
+}
+
 export function useCurrentUser(): AccountUser | null {
   return usePulso((state) => state.users.find((user) => user.id === state.currentUserId) ?? null);
 }
@@ -447,7 +455,7 @@ export function useCurrentUser(): AccountUser | null {
 export function useWishlist(): string[] {
   const userId = usePulso((state) => state.currentUserId);
   const wishlist = usePulso((state) => state.wishlist);
-  return wishlist[wishlistKey(userId)] ?? [];
+  return wishlist[wishlistKey(userId)] ?? EMPTY_WISHLIST;
 }
 
 export function buildSimulatedPayment(input: {

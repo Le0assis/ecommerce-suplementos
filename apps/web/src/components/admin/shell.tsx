@@ -2,7 +2,7 @@
 
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
-import { ADMIN_NAV, canAccess, resourceForAdminPath, ROLE_LABEL, type AdminSessionView } from "@/lib/admin-types";
+import { ADMIN_NAV, WAITLIST_DENIED, canAccess, deniedAdminCopy, resourceForAdminPath, ROLE_LABEL, type AdminSessionView } from "@/lib/admin-types";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
@@ -20,7 +20,7 @@ export function AdminShell({ session, children }: { session: AdminSessionView; c
   const router = useRouter();
   const [leaving, setLeaving] = useState(false);
   const items = ADMIN_NAV.filter((item) => canAccess(session.user.role, item.resource));
-  const allowed = canAccess(session.user.role, resourceForAdminPath(pathname));
+  const denial = deniedAdminCopy(session.user.role, resourceForAdminPath(pathname));
 
   useEffect(() => {
     function leave() {
@@ -77,7 +77,7 @@ export function AdminShell({ session, children }: { session: AdminSessionView; c
           </p>
         ) : null}
         <div className="px-4 py-6 md:px-6">
-          {allowed ? children : <p className="text-sm text-muted-foreground">Seu papel não faz isso.</p>}
+          {denial && denial !== WAITLIST_DENIED ? <p className="text-sm text-muted-foreground">{denial}</p> : children}
         </div>
       </div>
     </div>

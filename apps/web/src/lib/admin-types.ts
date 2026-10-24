@@ -466,11 +466,20 @@ const EDITOR: AdminResource[] = [
 
 const ATENDIMENTO: AdminResource[] = ["orders", "reviews", "customers", "waitlist"];
 
+export const ADMIN_DENIED = "Seu papel não faz isso.";
+export const WAITLIST_DENIED = "Seu papel não vê esta lista.";
+
 export function canAccess(role: AdminRole, resource: AdminResource | null): boolean {
   if (resource === null) return true;
   if (role === "dono") return true;
   if (role === "editor") return EDITOR.includes(resource);
   return ATENDIMENTO.includes(resource);
+}
+
+export function deniedAdminCopy(role: AdminRole, resource: AdminResource | null): string | null {
+  if (canAccess(role, resource)) return null;
+  if (resource === "waitlist") return WAITLIST_DENIED;
+  return ADMIN_DENIED;
 }
 
 export const ROLE_LABEL: Record<AdminRole, string> = {

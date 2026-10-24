@@ -29,6 +29,7 @@ export function observedClientIp(request: { headers: Headers }, env: NodeJS.Proc
   if (env.VERCEL === "1") {
     return firstHop(request.headers.get("x-vercel-forwarded-for")) ?? firstHop(request.headers.get("x-real-ip")) ?? socket ?? "local";
   }
+  if (env.TRUSTED_PROXY === "1") return firstHop(request.headers.get("x-real-ip")) ?? socket ?? "local";
   return socket ?? "local";
 }
 

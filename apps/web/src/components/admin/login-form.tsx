@@ -3,6 +3,7 @@
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { loginLimitMessage } from "@/lib/login-wait";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
@@ -34,7 +35,7 @@ export function LoginForm() {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
     setPending(false);
     if (!response.ok) {
-      setError(body.error ?? "Não foi possível entrar.");
+      setError(response.status === 429 ? loginLimitMessage(body.error, response.headers.get("retry-after")) : (body.error ?? "Não foi possível entrar."));
       return;
     }
     router.push("/admin");

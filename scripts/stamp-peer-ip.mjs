@@ -12,7 +12,7 @@ function normalizeIp(value) {
 export function stampPeerHeaders(headers, remoteAddress, env = process.env) {
   if (env.VERCEL !== "1") {
     delete headers["x-vercel-forwarded-for"];
-    delete headers["x-real-ip"];
+    if (env.TRUSTED_PROXY !== "1") delete headers["x-real-ip"];
   }
   const peer = remoteAddress ? normalizeIp(remoteAddress) : "";
   if (peer) headers[SOCKET_IP_HEADER] = peer;

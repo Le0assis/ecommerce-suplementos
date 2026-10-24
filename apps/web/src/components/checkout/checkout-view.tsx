@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { siteConfig } from "@/lib/config";
-import { canRedeemPoints, readServerQuote, serverCheckoutActive, serverCheckoutPayload, type ServerQuoteSummary } from "@/lib/checkout-quote";
-import { buildSimulatedPayment, makeOrderCode, quoteFromCart, useCurrentUser, usePulso } from "@/lib/store";
+import { pointsUnavailableMessage, readServerQuote, serverCheckoutActive, serverCheckoutPayload, type ServerQuoteSummary } from "@/lib/checkout-quote";
+import { buildSimulatedPayment, makeOrderCode, quoteFromCart, selectHydratedCart, useCurrentUser, usePulso } from "@/lib/store";
 import type { OrderRecord, SavedAddress } from "@/lib/types";
 import {
   UF_LIST,
@@ -33,7 +33,7 @@ import { useEffect, useState } from "react";
 const steps = ["Contato", "Entrega", "Pagamento", "Revisão"];
 
 export function CheckoutView() {
-  const cart = usePulso((state) => (state.hydrated ? state.cart : []));
+  const cart = usePulso(selectHydratedCart);
   const hydrated = usePulso((state) => state.hydrated);
   const couponCode = usePulso((state) => state.couponCode);
   const applyCoupon = usePulso((state) => state.applyCoupon);
@@ -43,7 +43,7 @@ export function CheckoutView() {
   const [step, setStep] = useState(0);
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState<string | null>(null);
-  const [redeem, setRedeem] = useState(0);
+  const [pointsMessage, setPointsMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>("pac");
   const [payment, setPayment] = useState<PaymentMethod>("pix");
@@ -73,13 +73,11 @@ export function CheckoutView() {
   const rates = shippingRates(form.cep);
   const pac = rates.ok ? rates.rates[0]!.priceCents : 0;
   const sedex = rates.ok ? rates.rates[1]!.priceCents : 0;
-  const pointsBalance = user?.pointsBalance;
-  const redeemPoints = canRedeemPoints(pointsBalance) ? redeem : 0;
   const quote = quoteFromCart({
     cart,
     couponCode,
-    redeemPoints,
-    pointsBalance: pointsBalance ?? 0,
+    redeemPoints: 0,
+    pointsBalance: 0,
     lifetimePoints: user?.pointsLifetime ?? 0,
     payment,
     shippingMethod,
@@ -105,7 +103,9 @@ export function CheckoutView() {
         });
         const json = (await response.json().catch(() => null)) as unknown;
         if (cancelled) return;
-        setServerSummary(response.ok ? readServerQuote(json) : null);
+        const unavailable = pointsUnavailableMessage(json, response.status);
+        setPointsMessage(unavailable);
+        setServerSummary(unavailable || !response.ok ? null : readServerQuote(json));
       } catch {
         if (!cancelled) setServerSummary(null);
       }
@@ -182,8 +182,8 @@ export function CheckoutView() {
           totalCents: serverSummary.totalCents,
           discountCents: serverSummary.discountCents,
           discountLabel: serverSummary.discountLabel,
-          pointsCents: serverSummary.pointsCents,
-          pointsUsed: serverSummary.pointsUsed,
+          pointsCents: 0,
+          pointsUsed: 0,
           pointsEarned: serverSummary.pointsEarned,
           pixCents: serverSummary.pixCents,
           ...(serverSummary.merchandiseCents != null ? { merchandiseCents: serverSummary.merchandiseCents } : {}),
@@ -375,17 +375,12 @@ export function CheckoutView() {
         </div>
         {couponError ? <p className="mt-2 text-sm text-pink">{couponError}</p> : null}
         {couponCode ? <p className="mt-2 text-sm text-lime">Cupom {couponCode}</p> : null}
-        {canRedeemPoints(pointsBalance) ? (
-          <label className="mt-3 block text-sm">Usar pontos (saldo {pointsBalance})
-            <input type="range" min={0} max={pointsBalance} value={redeem} onChange={(event) => setRedeem(Number(event.target.value))} className="mt-2 w-full accent-lime" />
-          </label>
-        ) : null}
+        {pointsMessage ? <p className="mt-3 text-sm text-muted-foreground" role="status">{pointsMessage}</p> : null}
         <dl className="mt-4 space-y-1 text-sm">
           {serverSummary ? (
             <>
               {serverSummary.merchandiseCents != null ? <Row label="Produtos" value={formatBRL(serverSummary.merchandiseCents)} /> : null}
               {serverSummary.discountCents ? <Row label={serverSummary.discountLabel ?? "Desconto"} value={`- ${formatBRL(serverSummary.discountCents)}`} /> : null}
-              {serverSummary.pointsCents ? <Row label="Pontos" value={`- ${formatBRL(serverSummary.pointsCents)}`} /> : null}
               {serverSummary.pixCents ? <Row label="Pix" value={`- ${formatBRL(serverSummary.pixCents)}`} /> : null}
               <Row label="Frete" value={serverSummary.shippingCents == null ? (quote.shippingFree ? "Grátis" : formatBRL(quote.shippingCents)) : serverSummary.shippingCents === 0 ? "Grátis" : formatBRL(serverSummary.shippingCents)} />
               <Row label="Total" value={formatBRL(chargedTotal)} strong />
@@ -396,7 +391,6 @@ export function CheckoutView() {
               <Row label="Produtos" value={formatBRL(quote.grossCents)} />
               {quote.subscriptionSavingsCents ? <Row label="Assinatura" value={`- ${formatBRL(quote.subscriptionSavingsCents)}`} /> : null}
               {quote.discountCents ? <Row label={quote.discountLabel ?? "Desconto"} value={`- ${formatBRL(quote.discountCents)}`} /> : null}
-              {quote.pointsCents ? <Row label="Pontos" value={`- ${formatBRL(quote.pointsCents)}`} /> : null}
               {quote.pixCents ? <Row label="Pix" value={`- ${formatBRL(quote.pixCents)}`} /> : null}
               <Row label="Frete" value={quote.shippingFree ? "Grátis" : formatBRL(quote.shippingCents)} />
               <Row label="Total" value={formatBRL(quote.totalCents)} strong />

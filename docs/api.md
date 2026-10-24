@@ -100,7 +100,7 @@ Sem token no JSON.
 
 `DELETE /api/admin/session` chama `POST /v1/admin/logout` com o bearer, apaga `pulso_admin_session` e responde `{ "ok": true }`. `POST` e `DELETE` de outra origem respondem `403`.
 
-O site não conta falha de login. `POST /api/admin/session` repassa o status, o JSON e o `Retry-After` da API. `401` chega como `{ "error": "E-mail ou senha não confere." }`. `429` chega como `{ "error": "Muitas tentativas de login. Espera alguns minutos." }` com o `Retry-After` da API.
+O site também conta falha de login, com a mesma chave `loginEmailIpKey` (`e-mail` com `trim` e minúsculas, `|`, IP) e o balde só do IP. Os dois são 30 falhas em 15 minutos. A 31ª responde `429`, `Retry-After: 900` e `{ "error": "Muitas tentativas de login. Espera 15 minutos." }`. A senha certa zera a parte daquela conta nos dois baldes. Quem não falhou naquele IP espera se outras contas já encheram as 30. `401` da API segue `{ "error": "E-mail ou senha não confere." }`. `429` da API passa o JSON e o `Retry-After` dela; a tela de login troca “alguns minutos” pelo tempo desse cabeçalho. Fora da Vercel, `TRUSTED_PROXY=1` faz o site ler `x-real-ip` quando um proxy confiável sobrescreve esse cabeçalho. Sem o carimbo do socket e sem essa variável, o IP vira `local` e o balde do IP é compartilhado.
 
 O CRUD do painel não grava `apps/web/.data/admin-mock.json`. Se a API não responde, a tela mostra o erro e não diz que salvou. `/api/admin/data` é o outro proxy do admin: cada chamada acrescenta o mesmo IP (socket, ou o cabeçalho da Vercel quando `VERCEL=1`) no fim de `X-Forwarded-For` e repassa o status da API. Rota ainda inexistente vira erro (`A API não tem GET /v1/admin/...`), sem cair no mock.
 

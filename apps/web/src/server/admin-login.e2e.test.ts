@@ -78,7 +78,7 @@ test("dois clientes no Next recebem limites de 30 separados na API", async () =>
     const flooded = await login("203.0.113.70", "visitante-cheio@pulso.test");
     assert.equal(flooded.status, 429);
     assert.equal(flooded.headers.get("retry-after"), "900");
-    assert.deepEqual(await flooded.json(), { error: "Muitas tentativas de login. Espera alguns minutos." });
+    assert.deepEqual(await flooded.json(), { error: "Muitas tentativas de login. Espera 15 minutos." });
 
     const other = await login("203.0.113.71", "outro@pulso.test");
     assert.equal(other.status, 401);

@@ -6,6 +6,7 @@
 export const CHECKOUT_QUOTE_SHA = "";
 
 export const CHECKOUT_QUOTE_PATH = "/v1/checkout/quote";
+export const CHECKOUT_SIMULATE_PATH = "/v1/checkout/simulate";
 
 export interface ServerCheckoutLine {
   slug: string;
@@ -95,6 +96,24 @@ export function onlyQuoteFields(body: unknown): ServerCheckoutPayload | null {
   const payload: ServerCheckoutPayload = { lines };
   if (typeof root.couponCode === "string" && root.couponCode.trim()) payload.couponCode = root.couponCode.trim().toUpperCase();
   return payload;
+}
+
+export const POINTS_UNAVAILABLE_CODE = "pontos_indisponiveis";
+export const POINTS_UNAVAILABLE_MESSAGE = "O saldo de pontos ainda não está no servidor.";
+
+/** Enquanto o saldo não vem da sessão, pedir resgate responde 422. */
+export function rejectPointsRedeem(body: unknown): { status: 422; body: { error: string; code: typeof POINTS_UNAVAILABLE_CODE } } | null {
+  const root = record(body);
+  const points = typeof root?.pointsToRedeem === "number" ? Math.floor(root.pointsToRedeem) : 0;
+  if (points > 0) return { status: 422, body: { error: POINTS_UNAVAILABLE_MESSAGE, code: POINTS_UNAVAILABLE_CODE } };
+  return null;
+}
+
+export function pointsUnavailableMessage(body: unknown, status: number): string | null {
+  if (status !== 422) return null;
+  const root = record(body);
+  if (root?.code !== POINTS_UNAVAILABLE_CODE) return null;
+  return typeof root.error === "string" && root.error ? root.error : POINTS_UNAVAILABLE_MESSAGE;
 }
 
 export function heldQuoteResponse(): { status: number; body: { error: string } } | null {

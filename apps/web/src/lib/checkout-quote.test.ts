@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { forwardCheckoutQuote } from "@/server/checkout-quote";
+import { forwardCheckoutQuote, forwardCheckoutSimulate } from "@/server/checkout-quote";
 import {
   CHECKOUT_QUOTE_SHA,
+  POINTS_UNAVAILABLE_MESSAGE,
   canRedeemPoints,
   onlyQuoteFields,
+  pointsUnavailableMessage,
   readServerQuote,
+  rejectPointsRedeem,
   serverCheckoutActive,
   serverCheckoutPayload,
 } from "@/lib/checkout-quote";
@@ -83,6 +86,35 @@ test("o resumo do servidor traz nome, desconto e pontos", () => {
   assert.equal(summary?.pointsEarned, 12);
   assert.equal(summary?.totalCents, 11691);
   assert.equal(summary?.shippingCents, null);
+});
+
+test("pointsToRedeem acima de zero responde 422 e não vira desconto", async () => {
+  const rejected = rejectPointsRedeem({
+    lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__30", qty: 1 }],
+    pointsToRedeem: 860,
+  });
+  assert.equal(rejected?.status, 422);
+  assert.equal(rejected?.body.code, "pontos_indisponiveis");
+  assert.equal(pointsUnavailableMessage(rejected?.body, 422), POINTS_UNAVAILABLE_MESSAGE);
+  assert.equal(rejectPointsRedeem({ lines: [{ slug: "caos", variant: "v", qty: 1 }], pointsToRedeem: 0 }), null);
+  const held = await forwardCheckoutQuote({
+    lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__30", qty: 1 }],
+    pointsToRedeem: 40,
+  });
+  assert.equal(held.status, 422);
+  assert.equal((held.body as { code: string }).code, "pontos_indisponiveis");
+  assert.equal((held.body as { error: string }).error, POINTS_UNAVAILABLE_MESSAGE);
+  const simulated = await forwardCheckoutSimulate({
+    lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__30", qty: 1 }],
+    pointsToRedeem: 40,
+  });
+  assert.equal(simulated.status, 422);
+  assert.equal((simulated.body as { code: string }).code, "pontos_indisponiveis");
+  assert.equal((simulated.body as { error: string }).error, POINTS_UNAVAILABLE_MESSAGE);
+  const open = await forwardCheckoutSimulate({
+    lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__30", qty: 1 }],
+  });
+  assert.equal(open.status, 409);
 });
 
 test("sem o SHA do Backend o contrato atual continua e a rota não chama a API", async () => {

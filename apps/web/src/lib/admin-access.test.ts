@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { isEndedAdminSession } from "@/lib/admin-fetch";
-import { canAccess, resourceForAdminPath } from "@/lib/admin-types";
+import { WAITLIST_DENIED, canAccess, deniedAdminCopy, resourceForAdminPath } from "@/lib/admin-types";
 
 test("o menu separa dono, editor e atendimento", () => {
   assert.equal(canAccess("dono", "loyalty"), true);
@@ -23,6 +23,10 @@ test("o menu separa dono, editor e atendimento", () => {
   assert.equal(resourceForAdminPath("/admin/auditoria"), "audit");
   assert.equal(canAccess("dono", "waitlist"), true);
   assert.equal(canAccess("editor", "waitlist"), false);
+  assert.equal(deniedAdminCopy("editor", "waitlist"), WAITLIST_DENIED);
+  assert.equal(deniedAdminCopy("editor", "orders"), "Seu papel não faz isso.");
+  assert.equal(deniedAdminCopy("dono", "waitlist"), null);
+  assert.equal(deniedAdminCopy("atendimento", "waitlist"), null);
   assert.equal(canAccess("atendimento", "waitlist"), true);
   assert.equal(resourceForAdminPath("/admin/lista-espera"), "waitlist");
   assert.equal(resourceForAdminPath("/admin"), null);
