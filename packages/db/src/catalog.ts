@@ -676,12 +676,27 @@ async function assertRefs(sql: Sql, input: AdminProduct): Promise<void> {
 
 type ScopedTable = "product_variants" | "product_images";
 
+function foreignIdError(table: ScopedTable): { message: string; code: string; repeat: string } {
+  if (table === "product_variants") {
+    return {
+      message: "Essa variação pertence a outro produto.",
+      code: "variacao_de_outro_produto",
+      repeat: "Essa variação está repetida no envio.",
+    };
+  }
+  return {
+    message: "Essa foto pertence a outro produto.",
+    code: "imagem_de_outro_produto",
+    repeat: "Essa foto está repetida no envio.",
+  };
+}
+
 async function rowIdExists(sql: Sql, table: ScopedTable, id: string): Promise<boolean> {
   const found = await sql.query(`select id from ${table} where id = $1`, [id]);
   return found.rows.length > 0;
 }
 
-/** Id que já é deste produto permanece. Qualquer outro (vazio, repetido ou de outro produto) nasce aqui. */
+/** Id deste produto atualiza. Id livre fica como o cliente mandou. Id de outro produto recusa. Sem id, o servidor gera. */
 async function assignScopedIds(
   sql: Sql,
   table: ScopedTable,
@@ -690,19 +705,23 @@ async function assignScopedIds(
   mint: (index: number) => string,
 ): Promise<string[]> {
   const asked = requested.map((id) => id?.trim() ?? "").filter(Boolean);
-  const owned = new Set<string>();
+  const owners = new Map<string, string>();
   if (asked.length) {
-    const found = await sql.query<{ id: string }>(
-      `select id from ${table} where product_id = $1 and id = any($2::text[])`,
-      [productId, asked],
+    const found = await sql.query<{ id: string; product_id: string }>(
+      `select id, product_id from ${table} where id = any($1::text[])`,
+      [asked],
     );
-    for (const row of found.rows) owned.add(row.id);
+    for (const row of found.rows) owners.set(row.id, row.product_id);
   }
+  const conflict = foreignIdError(table);
   const used = new Set<string>();
   const ids: string[] = [];
   for (let index = 0; index < requested.length; index += 1) {
     const requestedId = requested[index]?.trim() ?? "";
-    if (requestedId && owned.has(requestedId) && !used.has(requestedId)) {
+    if (requestedId) {
+      const owner = owners.get(requestedId);
+      if (owner && owner !== productId) throw new CatalogError(409, conflict.message, conflict.code);
+      if (used.has(requestedId)) throw new CatalogError(409, conflict.repeat, conflict.code);
       used.add(requestedId);
       ids.push(requestedId);
       continue;
@@ -712,7 +731,7 @@ async function assignScopedIds(
     while (used.has(next) || (await rowIdExists(sql, table, next))) {
       bump += 1;
       next = `${mint(index)}__${bump}`;
-      if (bump > 1000) throw new CatalogError(409, "Não deu para gerar um id livre.", table === "product_variants" ? "variacao_de_outro_produto" : "IMAGE_ID");
+      if (bump > 1000) throw new CatalogError(409, "Não deu para gerar um id livre.", conflict.code);
     }
     used.add(next);
     ids.push(next);
@@ -737,6 +756,13 @@ export async function saveAdminProduct(sql: SqlClient, input: AdminProduct): Pro
       input.id,
       input.variants.map((variant) => variant.id),
       (index) => `${input.id}__${input.variants[index]?.flavorId ?? "sabor"}__${index}`,
+    );
+    const imageIds = await assignScopedIds(
+      sql,
+      "product_images",
+      input.id,
+      input.images.map((image) => image.id),
+      (index) => `${input.id}__img__${index}`,
     );
     const seenSku = new Set<string>();
     for (const [index, variant] of input.variants.entries()) {
@@ -886,14 +912,6 @@ export async function saveAdminProduct(sql: SqlClient, input: AdminProduct): Pro
         [`${input.id}__nut__${position}`, input.id, position, row.nutrient, row.amount, row.dailyValue ?? null],
       );
     }
-
-    const imageIds = await assignScopedIds(
-      sql,
-      "product_images",
-      input.id,
-      input.images.map((image) => image.id),
-      (index) => `${input.id}__img__${index}`,
-    );
 
     await sql.query("delete from product_images where product_id = $1", [input.id]);
     const images = input.images.map((image, index) => ({ ...image, id: imageIds[index] ?? `${input.id}__img__${index}`, position: index, isCover: image.isCover }));
