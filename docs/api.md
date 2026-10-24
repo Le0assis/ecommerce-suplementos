@@ -221,6 +221,7 @@ Com `API_DATA_SOURCE=postgres` e banco, a leitura é a tabela. Sem banco, a resp
       "authorBio": "Textos da casa.",
       "publishedAt": "2026-10-01",
       "coverHex": "#d6ff3c",
+      "coverUrl": "https://cdn.pulso.test/capa.jpg",
       "body": ["Suplemento alimentar não é medicamento."],
       "blocks": [{ "id": "…", "type": "paragrafo", "text": "…" }],
       "authorId": "redacao",
@@ -232,6 +233,8 @@ Com `API_DATA_SOURCE=postgres` e banco, a leitura é a tabela. Sem banco, a resp
 ```
 
 `author` é o nome. `authorSlug`, `authorAvatar` e `authorBio` vêm do autor (`authors.id`, `photo_url`, `bio`) e saem `null` quando não há autor ou o campo está vazio. O mock usa o mesmo formato, com esses três em `null`. `body` continua sendo só os parágrafos. `blocks` traz `paragrafo`, `titulo`, `imagem`, `citacao_lateral` e `produto`. `GET /v1/posts/:slug` devolve `{ "source", "post" }` ou `404` `{ "error": "Texto não encontrado." }`.
+
+A lista e o detalhe só trazem post `publicado`, ou `agendado` com `publishedAt` até a data UTC de hoje. Rascunho, arquivo e agendado futuro ficam de fora (o detalhe responde 404). `coverUrl`, `authorAvatar` e a `url` de um bloco `imagem` só saem se forem `https://` ou um caminho com uma barra; `javascript:`, `data:`, `http:` e `//` viram `null`. O JSON público não traz `status`, `seoTitle`, `seoDescription` nem `shareImageUrl`. O admin continua vendo esses campos.
 
 ## Auditoria
 

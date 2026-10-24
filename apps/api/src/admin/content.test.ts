@@ -124,6 +124,60 @@ describe("autores, blocos e fotos do influencer", () => {
     expect(blocked.status).toBe(403);
   });
 
+  it("esconde rascunho, arquivo e agendado futuro e zera capa que não é https", async () => {
+    const app = createAdminApp(sql);
+    const editor = await login(app, "editor@pulso.test", "senha-editor-pulso", "203.0.113.70");
+    const headers = auth(editor.token, "203.0.113.70");
+    const create = (body: Record<string, unknown>) =>
+      app.request("/v1/admin/posts", { method: "POST", headers, body: JSON.stringify(body) });
+    expect((await create({
+      slug: "capa-ok",
+      title: "Capa ok",
+      status: "publicado",
+      publishedAt: "2026-10-01",
+      coverUrl: "https://cdn.pulso.test/capa.jpg",
+      seoTitle: "Segredo de busca",
+      seoDescription: "Não listar",
+      shareImageUrl: "https://cdn.pulso.test/share.jpg",
+      blocks: [
+        { type: "paragrafo", text: "Texto." },
+        { type: "imagem", url: "https://cdn.pulso.test/bloco.jpg", alt: "Bloco", caption: "" },
+      ],
+    })).status).toBe(201);
+    expect((await create({ slug: "ainda-rascunho", title: "Rascunho", status: "rascunho", coverUrl: "https://cdn.pulso.test/rascunho.jpg", blocks: [{ type: "paragrafo", text: "Fora." }] })).status).toBe(201);
+    expect((await create({ slug: "futuro", title: "Futuro", status: "agendado", publishedAt: "2099-01-01", coverUrl: "https://cdn.pulso.test/futuro.jpg", blocks: [{ type: "paragrafo", text: "Ainda não." }] })).status).toBe(201);
+    expect((await create({ slug: "ja-saiu", title: "Já saiu", status: "agendado", publishedAt: "2020-01-01", blocks: [{ type: "paragrafo", text: "No ar." }] })).status).toBe(201);
+    expect((await create({ slug: "arquivo", title: "Arquivo", status: "arquivado", publishedAt: "2020-01-01", blocks: [] })).status).toBe(201);
+
+    const listed = await (await app.request("/v1/posts")).json();
+    const slugs = listed.posts.map((item: { slug: string }) => item.slug);
+    expect(slugs).toEqual(expect.arrayContaining(["capa-ok", "ja-saiu"]));
+    for (const hidden of ["ainda-rascunho", "futuro", "arquivo"]) {
+      expect(slugs).not.toContain(hidden);
+      expect((await app.request(`/v1/posts/${hidden}`)).status).toBe(404);
+    }
+    const live = listed.posts.find((item: { slug: string }) => item.slug === "capa-ok");
+    expect(live.coverUrl).toBe("https://cdn.pulso.test/capa.jpg");
+    expect(live.blocks.find((block: { type: string }) => block.type === "imagem").url).toBe("https://cdn.pulso.test/bloco.jpg");
+    for (const field of ["status", "seoTitle", "seoDescription", "shareImageUrl", "payload"]) {
+      expect(live).not.toHaveProperty(field);
+    }
+
+    await sql.query("update posts set cover_url = $1 where slug = 'capa-ok'", ["javascript:alert(1)"]);
+    await sql.query(
+      "update post_blocks set content = jsonb_set(content, '{url}', $1::jsonb) where post_id = 'capa-ok' and type = 'imagem'",
+      [JSON.stringify("data:text/html,hi")],
+    );
+    const detail = await (await app.request("/v1/posts/capa-ok")).json();
+    expect(detail.post.coverUrl).toBeNull();
+    expect(detail.post.blocks.find((block: { type: string }) => block.type === "imagem").url).toBeNull();
+    expect(detail.post).not.toHaveProperty("seoTitle");
+    expect(detail.post).not.toHaveProperty("shareImageUrl");
+    const admin = await (await app.request("/v1/admin/posts/capa-ok", { headers })).json();
+    expect(admin.item.coverUrl).toBe("javascript:alert(1)");
+    expect(admin.item.seoTitle).toBe("Segredo de busca");
+  });
+
   it("abre e atualiza influencer, autor e post pelo id, com 404 e 409", async () => {
     const app = createAdminApp(sql);
     const editor = await login(app, "editor@pulso.test", "senha-editor-pulso", "203.0.113.62");

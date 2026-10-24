@@ -113,6 +113,29 @@ function blockContent(block: PostBlock): Record<string, unknown> {
   return { text: block.text };
 }
 
+const CONTROL = /[\u0000-\u001F\u007F]/;
+
+/** URL pública de capa ou foto: https:// ou um caminho com uma barra. Recusa //, javascript:, data: e http:. */
+export function safePublicAssetUrl(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const href = value.trim();
+  if (!href || CONTROL.test(href)) return null;
+  if (href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/\\")) return href;
+  if (/^https:\/\//i.test(href)) return href;
+  return null;
+}
+
+function publicBlocks(blocks: PostBlock[]): PostBlock[] {
+  return blocks.map((block) => (block.type === "imagem" ? { ...block, url: safePublicAssetUrl(block.url) } : block));
+}
+
+/** Publicado, ou agendado com data até hoje (UTC). Rascunho, arquivo e agendado futuro ficam de fora. */
+export function isPublicPost(post: Pick<PostAdmin, "status" | "publishedAt">, now = new Date()): boolean {
+  if (post.status === "publicado") return true;
+  if (post.status !== "agendado" || !post.publishedAt) return false;
+  return post.publishedAt <= now.toISOString().slice(0, 10);
+}
+
 export async function listInfluencers(sql: Sql, includeInactive: boolean): Promise<InfluencerAdmin[]> {
   const rows = await sql.query<{
     slug: string;
@@ -450,13 +473,13 @@ export function toPublicPost(row: PostAdmin, author?: AuthorRow | null): Post & 
     readMinutes: row.readMinutes,
     author: author?.name || "Redação PULSO",
     authorSlug: author?.id ?? null,
-    authorAvatar: author?.photoUrl ?? null,
+    authorAvatar: safePublicAssetUrl(author?.photoUrl),
     authorBio: author?.bio ?? null,
     publishedAt: row.publishedAt ?? "",
     coverHex: row.coverHex ?? "#d6ff3c",
-    coverUrl: row.coverUrl,
+    coverUrl: safePublicAssetUrl(row.coverUrl),
     body: row.blocks.filter((block) => block.type === "paragrafo").map((block) => block.text),
-    blocks: row.blocks,
+    blocks: publicBlocks(row.blocks),
     authorId: row.authorId,
     ...(row.influencerId ? { influencerSlug: row.influencerId } : {}),
   };
@@ -465,8 +488,7 @@ export function toPublicPost(row: PostAdmin, author?: AuthorRow | null): Post & 
 export async function readPublicPosts(sql: Sql, influencer?: string, now = new Date()): Promise<Array<Post & { blocks: PostBlock[] }>> {
   const posts = await listPosts(sql, influencer);
   const authors = await listAuthors(sql);
-  const today = now.toISOString().slice(0, 10);
   return posts
-    .filter((post) => post.status === "publicado" || (post.status === "agendado" && post.publishedAt && post.publishedAt <= today))
+    .filter((post) => isPublicPost(post, now))
     .map((post) => toPublicPost(post, authors.find((item) => item.id === post.authorId)));
 }

@@ -30,6 +30,8 @@ Filtro simples por nome, linha e sabor no servidor. A busca da vitrine, hoje, us
 
 ### `GET /v1/posts` e `GET /v1/posts/:slug`
 
+Só entra post `publicado`, ou `agendado` com `publishedAt` até a data UTC de hoje. Rascunho, arquivo e agendado futuro não entram na lista; o detalhe é 404. `coverUrl`, `authorAvatar` e a `url` do bloco `imagem` saem só como `https://` ou caminho com uma barra. `javascript:`, `data:`, `http:` e `//` viram `null`. O JSON não traz `status`, `seoTitle`, `seoDescription` nem `shareImageUrl`.
+
 ### `GET /v1/ugc`
 
 ### `GET /v1/coupons`

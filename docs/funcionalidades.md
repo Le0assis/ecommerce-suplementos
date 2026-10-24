@@ -96,7 +96,7 @@ Spots em `packages/data/src/videos.ts`. O player troca de quadro e mostra a tran
 
 ## Blog e institucionais
 
-`/blog`, `/blog/[slug]`, `/social`, `/sobre`, `/privacidade`, `/entrega`, `/trocas`, `/rotulos`, `/ajuda`. Textos em `info-page.tsx` e `content.ts`. O índice e o texto vêm de `GET /v1/posts` e `GET /v1/posts/:slug`, não do arquivo do adaptador. O post publicado mostra o card do autor. Os blocos (parágrafo, subtítulo, imagem, citação, produto) são texto do React. O autor pode levar à collab. Post ausente, rascunho ou arquivado responde 404. Sem resposta da API, o blog continua no catálogo.
+`/blog`, `/blog/[slug]`, `/social`, `/sobre`, `/privacidade`, `/entrega`, `/trocas`, `/rotulos`, `/ajuda`. Textos em `info-page.tsx` e `content.ts`. O índice e o texto vêm de `GET /v1/posts` e `GET /v1/posts/:slug`, não do arquivo do adaptador. O post publicado mostra o card do autor. Os blocos (parágrafo, subtítulo, imagem, citação, produto) são texto do React. O autor pode levar à collab. Post ausente, rascunho, arquivado ou agendado para depois de hoje responde 404. A capa só aparece se a URL for `https://` ou um caminho do site. Sem resposta da API, o blog continua no catálogo.
 
 ## Admin `/admin`
 
