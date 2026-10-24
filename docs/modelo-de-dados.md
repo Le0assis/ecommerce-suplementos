@@ -86,7 +86,19 @@ A conta, o pedido e a raspadinha que você vê no site estão no `localStorage`,
 
 A loja ainda não grava cliente nem pedido. Esta etapa não cria a rota: o preço do checkout já sai do catálogo, e o saldo de pontos no orçamento fica 0 até a sessão existir. A migração é do DBA. As tabelas `customers`, `addresses`, `orders`, `order_lines`, `payments`, `shipments` e `points_ledger` continuam. Falta o que autentica e o que o orçamento precisa ler sem confiar no navegador.
 
-`customers`, além do que já existe (`id`, `email` único, `name`, `cpf`, `cpf_enc`, `cpf_key_id`, `cpf_hash`, `phone`, `points_balance`, `points_lifetime`, `marketing_opt_in`, `created_at`):
+`customers.cpf` (`001_init.sql`) continua `text` em claro. A migração `010` já acrescentou, sem apagar essa coluna:
+
+| Coluna | Tipo | Papel |
+| --- | --- | --- |
+| `cpf_enc` | `bytea` | AES-256-GCM. Os 12 bytes do nonce vêm na frente, depois a tag de 16 e o texto cifrado. Nonce novo a cada gravação |
+| `cpf_key_id` | `text` | Id da chave (`CPF_KEY_ID`), para trocar a chave sem misturar o material |
+| `cpf_hash` | `text` | HMAC-SHA256, em hex, do CPF com 11 dígitos. Chave separada (`CPF_HMAC_KEY`) |
+
+Índice único parcial `customers_cpf_hash_key` em `cpf_hash` onde ele não é nulo. Busca e unicidade usam o hash, sem decifrar. `CPF_ENC_KEY` e `CPF_HMAC_KEY` são 32 bytes em base64 e não entram no repositório.
+
+A aplicação lê e grava essas colunas. `pnpm db:backfill-cpf` copia o que ainda está em claro e não altera `customers.cpf`. Escrita nova (`PATCH /v1/admin/customers/:id` com `cpf`) preenche só `cpf_enc`, `cpf_key_id` e `cpf_hash`. A resposta do admin e o `audit_log` levam `cpfMasked` (`***.***.***-25`), nunca os 11 dígitos. Tirar a coluna `cpf` fica para o DBA, depois do backfill e com o OK do Léo.
+
+`customers`, além do que já existe (`id`, `email` único, `name`, `phone`, `points_balance`, `points_lifetime`, `marketing_opt_in`, `created_at`, e as colunas de CPF acima):
 
 | Coluna | Tipo | Papel |
 | --- | --- | --- |

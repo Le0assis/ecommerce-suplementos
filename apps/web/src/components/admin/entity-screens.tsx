@@ -751,6 +751,7 @@ export function CustomersScreen() {
         columns={[
           { header: "Nome", cell: (item) => item.name },
           { header: "E-mail", cell: (item) => item.email },
+          { header: "CPF", cell: (item) => item.cpfMasked ?? "—" },
           { header: "Pontos", cell: (item) => item.pointsBalance },
         ]}
         renderEditor={(draft, update) => (

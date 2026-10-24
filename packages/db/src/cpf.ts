@@ -61,6 +61,27 @@ export function decryptCpf(payload: Uint8Array, keys: CpfKeys): string {
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
 }
 
+export function maskCpf(value: string): string {
+  const tail = value.replace(/\D/g, "").slice(-2);
+  return `***.***.***-${tail.length === 2 ? tail : "**"}`;
+}
+
+export function presentCustomerCpf(
+  row: { cpf: string | null; cpf_enc: Uint8Array | null; cpf_key_id: string | null },
+  keys: CpfKeys | null,
+): string | null {
+  if (row.cpf_enc) {
+    if (!keys || (row.cpf_key_id && row.cpf_key_id !== keys.keyId)) return null;
+    try {
+      return maskCpf(decryptCpf(row.cpf_enc, keys));
+    } catch {
+      return null;
+    }
+  }
+  if (row.cpf) return maskCpf(row.cpf);
+  return null;
+}
+
 export function sealCpf(plain: string, keys: CpfKeys): SealedCpf | null {
   const normalized = normalizeCpf(plain);
   if (!normalized) return null;

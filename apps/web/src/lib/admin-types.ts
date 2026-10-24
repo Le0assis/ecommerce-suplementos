@@ -422,6 +422,7 @@ export interface AdminCustomer {
   pointsBalance: number;
   pointsLifetime: number;
   marketingOptIn: boolean;
+  cpfMasked: string | null;
   subscriptions: AdminSubscription[];
 }
 

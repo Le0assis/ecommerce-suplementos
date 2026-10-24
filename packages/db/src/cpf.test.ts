@@ -4,8 +4,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { redactSecrets } from "./audit";
 import { backfillCpf } from "./backfill-cpf";
-import { decryptCpf, hashCpf, loadCpfKeys, sealCpf, type CpfKeys } from "./cpf";
+import { decryptCpf, hashCpf, loadCpfKeys, maskCpf, presentCustomerCpf, sealCpf, type CpfKeys } from "./cpf";
+import { findCustomerIdByCpf, writeCustomerCpf } from "./resources";
 import type { SqlClient } from "./sql";
 
 const sqlDir = resolve(dirname(fileURLToPath(import.meta.url)), "../sql");
@@ -51,6 +53,13 @@ describe("CPF cifrado", () => {
     expect(first!.cpfKeyId).toBe("local-1");
     expect(sealCpf("12345678901", material)).toBeNull();
     expect(loadCpfKeys({})).toBeNull();
+    expect(maskCpf("529.982.247-25")).toBe("***.***.***-25");
+    expect(maskCpf("529.982.247-25")).not.toContain("52998224725");
+    const redacted = JSON.stringify(redactSecrets({ cpf: "52998224725", note: "529.982.247-25", email: "ana@exemplo.invalid" }));
+    expect(redacted).not.toContain("52998224725");
+    expect(redacted).not.toContain("529.982.247-25");
+    expect(redacted).toContain("***.***.***-25");
+    expect(redacted).toContain("ana@exemplo.invalid");
   });
 
   it("preenche cpf_enc, cpf_key_id e cpf_hash e deixa cpf em claro", async () => {
@@ -79,6 +88,24 @@ describe("CPF cifrado", () => {
     expect(again).toMatchObject({ sealed: 0, ready: 1, invalid: ["ruim"], duplicate: ["copia"] });
     const kept = await sql.query<{ cpf: string }>("select cpf from customers where id = 'ana'");
     expect(kept.rows[0]?.cpf).toBe("529.982.247-25");
+    await db.close();
+  });
+
+  it("grava e busca pelo hash, sem reescrever o cpf em claro", async () => {
+    const { db, sql } = await database();
+    const material = keys();
+    await sql.query("insert into customers (id, email, name, cpf) values ('ana', 'ana@exemplo.invalid', 'Ana', '529.982.247-25')");
+    await writeCustomerCpf(sql, "ana", "390.533.447-05", material);
+    const row = await sql.query<{ cpf: string; cpf_key_id: string; cpf_hash: string; cpf_enc: Uint8Array }>(
+      "select cpf, cpf_key_id, cpf_hash, cpf_enc from customers where id = 'ana'",
+    );
+    expect(row.rows[0]?.cpf).toBe("529.982.247-25");
+    expect(row.rows[0]?.cpf_hash).toBe(hashCpf("39053344705", material));
+    expect(decryptCpf(row.rows[0]!.cpf_enc, material)).toBe("39053344705");
+    expect(await findCustomerIdByCpf(sql, "39053344705", material)).toBe("ana");
+    expect(presentCustomerCpf({ cpf: row.rows[0]!.cpf, cpf_enc: row.rows[0]!.cpf_enc, cpf_key_id: row.rows[0]!.cpf_key_id }, material)).toBe(
+      "***.***.***-05",
+    );
     await db.close();
   });
 });

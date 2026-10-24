@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Review, UgcPost } from "@pulso/domain";
 import { CatalogError, resolveProductSlug } from "./catalog";
+import { loadCpfKeys, presentCustomerCpf, sealCpf, hashCpf, normalizeCpf, type CpfKeys } from "./cpf";
 import type { Sql } from "./sql";
 
 function pgCode(error: unknown): string {
@@ -801,14 +802,42 @@ export async function listSubscriptions(sql: Sql) {
   }));
 }
 
+export async function writeCustomerCpf(sql: Sql, id: string, plain: string, keys: CpfKeys): Promise<void> {
+  const sealed = sealCpf(plain, keys);
+  if (!sealed) throw new CatalogError(400, "CPF inválido.", "CPF");
+  const exists = await sql.query("select id from customers where id = $1", [id]);
+  if (!exists.rows.length) throw new CatalogError(404, "Cliente não encontrado.", "NOT_FOUND");
+  try {
+    await sql.query(
+      `update customers set cpf_enc = $2, cpf_key_id = $3, cpf_hash = $4 where id = $1`,
+      [id, sealed.cpfEnc, sealed.cpfKeyId, sealed.cpfHash],
+    );
+  } catch (error) {
+    if (pgCode(error) === "23505") throw new CatalogError(409, "Já existe um cliente com esse CPF.", "CPF_TAKEN");
+    throw error;
+  }
+}
+
+export async function findCustomerIdByCpf(sql: Sql, plain: string, keys: CpfKeys): Promise<string | null> {
+  const normalized = normalizeCpf(plain);
+  if (!normalized) return null;
+  const rows = await sql.query<{ id: string }>("select id from customers where cpf_hash = $1", [hashCpf(normalized, keys)]);
+  return rows.rows[0]?.id ?? null;
+}
+
 export async function listAdminCustomers(sql: Sql) {
   const people = await listCustomers(sql);
-  const flags = await sql.query<{ id: string; marketing_opt_in: boolean }>("select id, marketing_opt_in from customers");
+  const flags = await sql.query<{ id: string; marketing_opt_in: boolean; cpf: string | null; cpf_enc: Uint8Array | null; cpf_key_id: string | null }>(
+    "select id, marketing_opt_in, cpf, cpf_enc, cpf_key_id from customers",
+  );
+  const keys = loadCpfKeys();
   const optIn = new Map(flags.rows.map((row) => [row.id, row.marketing_opt_in]));
+  const masked = new Map(flags.rows.map((row) => [row.id, presentCustomerCpf(row, keys)]));
   const subscriptions = await listSubscriptions(sql);
   return people.map((person) => ({
     ...person,
     marketingOptIn: optIn.get(person.id) ?? false,
+    cpfMasked: masked.get(person.id) ?? null,
     subscriptions: subscriptions
       .filter((item) => item.customerId === person.id)
       .map((item) => ({

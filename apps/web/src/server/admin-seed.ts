@@ -495,6 +495,7 @@ function seedCustomer(): AdminCustomer {
     pointsBalance: demoUser.pointsBalance,
     pointsLifetime: demoUser.pointsLifetime,
     marketingOptIn: demoUser.marketingOptIn,
+    cpfMasked: "***.***.***-25",
     subscriptions: demoUser.subscriptions.map((subscription) => ({
       id: subscription.id,
       productId: subscription.productSlug,

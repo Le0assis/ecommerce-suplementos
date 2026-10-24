@@ -145,7 +145,7 @@ O identificador da URL é o da coluna abaixo. Onde o painel chama o campo de `id
 
 `POST /kits` e `PATCH /kits/:id` aceitam o corpo completo de produto, com `isKit: true`, ou o formulário curto do painel: `{ "name", "discountPercent", "kitItems": [{ "productId", "quantity" }] }`. No `PATCH` curto o slug não muda. O desconto do kit fica entre 0% e 12%. `DELETE /kits/:id` arquiva.
 
-Pedido, cliente e avaliação não nascem no admin. A avaliação se aprova, responde ou oculta. O cliente ajusta pontos e o status da assinatura. O pedido muda status e rastreio. `GET /orders/:id` inclui `lines`. `GET /customers` inclui `subscriptions`.
+Pedido, cliente e avaliação não nascem no admin. A avaliação se aprova, responde ou oculta. O cliente ajusta pontos e o status da assinatura. O pedido muda status e rastreio. `GET /orders/:id` inclui `lines`. `GET /customers` inclui `subscriptions` e `cpfMasked` (`***.***.***-25`). O JSON não traz o CPF inteiro. `PATCH /customers/:id` pode mandar `cpf`; a API grava `cpf_enc`, `cpf_key_id` e `cpf_hash` e não reescreve `customers.cpf`. A auditoria também sai mascarada. Sem `CPF_ENC_KEY`, `CPF_HMAC_KEY` e `CPF_KEY_ID`, esse PATCH responde 503.
 
 `POST` de um slug ou id que já existe responde `409`, não grava por cima. A atualização é o `PATCH`.
 

@@ -1,4 +1,5 @@
 import { writeAudit } from "@pulso/db/audit";
+import { loadCpfKeys } from "@pulso/db/cpf";
 import { archiveAdminProduct, getAdminProduct, listAdminProducts, saveAdminProduct, type AdminProduct } from "@pulso/db/catalog";
 import {
   adjustPoints,
@@ -25,6 +26,7 @@ import {
   patchReview,
   patchSubscription,
   readLoyalty,
+  writeCustomerCpf,
   saveBanner,
   saveLoyalty,
   saveNamed,
@@ -206,6 +208,7 @@ const customerPatch = z.object({
   pointsBalance: z.number().int().nonnegative().optional(),
   pointsLifetime: z.number().int().nonnegative().optional(),
   marketingOptIn: z.boolean().optional(),
+  cpf: z.string().trim().max(14).optional(),
   subscriptions: z
     .array(z.object({ id: z.string().trim().min(1), status: z.enum(["ativa", "pausada", "cancelada"]) }))
     .optional(),
@@ -768,6 +771,11 @@ export function mountOps(admin: Hono, runtime: () => AdminRuntime): void {
     }
     if (typeof body.marketingOptIn === "boolean") {
       await ctx.sql.query("update customers set marketing_opt_in = $2 where id = $1", [current.id, body.marketingOptIn]);
+    }
+    if (body.cpf) {
+      const keys = loadCpfKeys();
+      if (!keys) throw new HttpError(503, "CPF cifrado indisponível.");
+      await guard(() => writeCustomerCpf(ctx.sql, current.id, body.cpf!, keys));
     }
     for (const subscription of body.subscriptions ?? []) {
       if (!current.subscriptions.some((item) => item.id === subscription.id)) throw new HttpError(404, "Assinatura não encontrada.");
