@@ -23,7 +23,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
     }
   }
   const url = new URL(request.url);
-  const result = await handleAdminData(session, request.method, path, url.searchParams, body, forwardedForApi(request));
+  const result = await handleAdminData(session, request.method, path, url.searchParams, body, forwardedForApi(request) ?? undefined);
   return NextResponse.json(result.body, { status: result.status, headers: { "cache-control": "no-store" } });
 }
 

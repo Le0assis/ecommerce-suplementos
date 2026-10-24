@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { afterEach, test } from "vitest";
 import { POST } from "@/app/api/admin/session/route";
 import { LOGIN_API_TIMEOUT_MS, loginAgainstApi } from "@/server/admin-client";
-import { SOCKET_IP_HEADER, forwardedForApi, observedClientIp } from "@/server/forwarded-for";
+import { SOCKET_IP_HEADER, assertProductionClientIp, forwardedForApi, observedClientIp } from "@/server/forwarded-for";
 import { resetLoginLimits } from "@/server/login-limit";
 import { SOCKET_IP_HEADER as STAMP_HEADER, installPeerStamp, stampPeerHeaders, uninstallPeerStamp } from "../../../../scripts/stamp-peer-ip.mjs";
 
@@ -48,6 +48,12 @@ test("o XFF do cliente não muda o IP enviado à API", () => {
     },
   });
   assert.equal(forwardedForApi(forged, off), "local");
+  assert.equal(forwardedForApi(forged, { NODE_ENV: "production" }), null);
+  assert.throws(() => assertProductionClientIp({ NODE_ENV: "production" }));
+  assertProductionClientIp({ NODE_ENV: "production", TRUSTED_PROXY: "1" });
+  assertProductionClientIp({ NODE_ENV: "production", VERCEL: "1", VERCEL_ENV: "production" });
+  assertProductionClientIp({ NODE_ENV: "production", PULSO_STAMP_PEER: "1" });
+  assertProductionClientIp({ NODE_ENV: "production", NEXT_PHASE: "phase-production-build" });
 
   const socketed = new Request("http://127.0.0.1:43123/api/admin/session", {
     headers: {
@@ -290,8 +296,10 @@ test("a 31ª falha no par e-mail e IP responde 429 e a senha certa zera o contad
     for (let n = 0; n < 30; n += 1) {
       assert.equal((await post("203.0.113.10", "dono@pulso.test")).status, 401);
     }
+    assert.equal(hits, 30);
     const blocked = await post("203.0.113.10", "  DONO@pulso.test ");
     assert.equal(blocked.status, 429);
+    assert.equal(hits, 30);
     assert.equal(blocked.headers.get("retry-after"), "900");
     assert.match(String(((await blocked.json()) as { error: string }).error), /15 minutos/);
     const beforeOther = hits;

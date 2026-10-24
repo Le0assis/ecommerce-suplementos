@@ -85,5 +85,15 @@ describe("orçamento do checkout", () => {
     });
     expect(zero.status).toBe(200);
     expect((await zero.json()).summary.pointsRedeemed).toBe(0);
+    const negative = await app.request("/v1/checkout/quote", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__300", qty: 1 }],
+        pointsToRedeem: -1,
+      }),
+    });
+    expect(negative.status).toBe(400);
+    expect(await negative.json()).toEqual({ error: "Os pontos não podem ser negativos." });
   });
 });

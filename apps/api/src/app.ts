@@ -94,8 +94,10 @@ export function createApp(options: AdminAppOptions = {}): Hono {
 
   app.use("*", async (c, next) => {
     if (c.req.path.startsWith("/v1/admin")) return next();
-    if (c.req.method === "POST" && limited(clientIp(c))) {
-      return c.json({ error: "Calma. Muitas tentativas por minuto." }, 429);
+    if (c.req.method === "POST") {
+      const ip = clientIp(c);
+      if (!ip) return c.json({ error: "Não deu para identificar o IP." }, 503);
+      if (limited(ip)) return c.json({ error: "Calma. Muitas tentativas por minuto." }, 429);
     }
     await next();
   });

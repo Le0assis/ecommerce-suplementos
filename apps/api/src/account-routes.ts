@@ -113,9 +113,12 @@ function memoryBucket(ip: string, now: number) {
 
 function memoryBlocked(ip: string, email: string, now: number): boolean {
   const bucket = memoryBucket(ip, now);
-  if (!bucket) return false;
-  const own = bucket.byUser.get(email) ?? 0;
-  return bucket.failures - own >= IP_LIMIT;
+  if (bucket) {
+    const own = bucket.byUser.get(email) ?? 0;
+    if (bucket.failures - own >= IP_LIMIT) return true;
+  }
+  const pair = emailIpHits.get(loginEmailIpKey(email, ip));
+  return Boolean(pair && pair.reset > now && pair.failures >= IP_LIMIT);
 }
 
 function memoryNote(ip: string, email: string, now: number): boolean {

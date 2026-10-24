@@ -251,13 +251,13 @@ Abra o `.env` num editor de texto. Cada linha `NOME=valor` é uma variável. Lin
 | `API_PORT` | `8787` | Porta da API Hono. |
 | `API_DATA_SOURCE` | `mock` | `mock`: a API responde com o catálogo em memória. `postgres`: a API monta o produto pelas tabelas normalizadas (`product_flavors`, `product_variants`, rótulo, fotos). A coluna `products.payload` deixa de ser a leitura. Aí você precisa do Docker, da migração e do seed. |
 | `DATABASE_URL` | `postgres://pulso:pulso@127.0.0.1:5432/pulso` | Conexão do Postgres local. Usuário `pulso`, senha `pulso`, banco `pulso`, porta `5432`. Só vale para esta máquina. |
-| `REDIS_URL` | `redis://127.0.0.1:6379` | Cache opcional da API (chave `catalog:products`, 60 segundos). Se apagar a linha, a API não tenta Redis. |
+| `REDIS_URL` | `redis://127.0.0.1:6379` | Cache da API (chave `catalog:products`, 60 segundos) e baldes do login (`pulso:login:*`). O site em produção só lê essas chaves. Sem a URL, o login do site responde 503. Fora de produção, o limite do site cai num `Map` do processo. |
 | `ADMIN_SESSION_SECRET` | (troque o exemplo) | Segredo que assina a sessão do admin (12 horas). O site usa o cookie `pulso_admin_session`. A API usa o cookie `pulso_admin`. O painel manda esse token como Bearer e confere `GET /v1/admin/me`. Só o servidor lê. Em produção o valor `pulso-dev-session-change-me` não assina. |
 | `PAYMENT_GATEWAY` | `auto` | Sandbox. `auto` manda Pix e boleto ao Mercado Pago e cartão à Pagar.me. `mercadopago` ou `pagarme` força o gateway. Não coloque token real. A confirmação mostra um id `mp_sandbox_` ou `pm_sandbox_`. |
 
 O arquivo `.env` está no `.gitignore`. Não faça commit dele.
 
-Na Vercel, `x-vercel-forwarded-for` e `x-real-ip` só entram no IP do cliente quando `VERCEL=1` e existe `VERCEL_ENV` ou `VERCEL_URL`. A plataforma preenche os três e sobrescreve esses cabeçalhos. `VERCEL=1` sozinho não basta: o processo do Next apaga os dois e usa o IP do socket. Fora da Vercel, `TRUSTED_PROXY=1` deixa o site ler `x-real-ip` quando um proxy confiável sobrescreve esse cabeçalho. O `X-Forwarded-For` do navegador não segue para a API. O contrato está em [docs/api.md](docs/api.md).
+Na Vercel, `x-vercel-forwarded-for` e `x-real-ip` só entram no IP do cliente quando `VERCEL=1` e existe `VERCEL_ENV` ou `VERCEL_URL`. A plataforma preenche os três e sobrescreve esses cabeçalhos. `VERCEL=1` sozinho não basta: o processo do Next apaga os dois e usa o IP do socket. Fora da Vercel, `TRUSTED_PROXY=1` deixa o site ler só `x-real-ip`, e só se o proxy sobrescrever esse cabeçalho. `X-Forwarded-For` não entra. Sem a Vercel, sem `TRUSTED_PROXY=1` e sem o carimbo do socket, o Next em produção não sobe. Sem IP na requisição, o login responde 503 e não agrupa os clientes em `local`. O contrato está em [docs/api.md](docs/api.md).
 
 ---
 

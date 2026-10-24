@@ -201,6 +201,38 @@ describe("conta da loja", () => {
     expect(otherIp.status).toBe(200);
   }, 20_000);
 
+  it("o par e-mail+IP já nas 30 falhas recusa a senha certa no mesmo IP", async () => {
+    const app = createAdminApp(sql);
+    const ip = "203.0.113.33";
+    const created = await app.request("/v1/account/register", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": ip },
+      body: JSON.stringify({ name: "Ana Luz", email: "ana.par@pulso.test", password: PASSWORD }),
+    });
+    expect(created.status).toBe(201);
+    for (let n = 0; n < 30; n += 1) {
+      const failed = await app.request("/v1/account/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": ip },
+        body: JSON.stringify({ email: "ana.par@pulso.test", password: "senha-errada-pulso" }),
+      });
+      expect(failed.status).toBe(401);
+    }
+    const sameIp = await app.request("/v1/account/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": ip },
+      body: JSON.stringify({ email: "ana.par@pulso.test", password: PASSWORD }),
+    });
+    expect(sameIp.status).toBe(429);
+    expect(sameIp.headers.get("retry-after")).toBe("900");
+    const other = await app.request("/v1/account/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.34" },
+      body: JSON.stringify({ email: "ana.par@pulso.test", password: PASSWORD }),
+    });
+    expect(other.status).toBe(200);
+  }, 20_000);
+
   it("grava o pedido da sessão com preço do servidor e a outra conta não vê", async () => {
     const app = createAdminApp(sql);
     const ip = "203.0.113.40";

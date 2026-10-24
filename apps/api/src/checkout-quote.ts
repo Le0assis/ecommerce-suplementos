@@ -119,9 +119,10 @@ function parseOptionalQuoteFields(root: Record<string, unknown>, lines: Checkout
     parsed.couponCode = root.couponCode.trim().toUpperCase();
   }
   if (root.pointsToRedeem !== undefined && root.pointsToRedeem !== null) {
-    if (typeof root.pointsToRedeem !== "number" || !Number.isInteger(root.pointsToRedeem) || root.pointsToRedeem < 0) {
+    if (typeof root.pointsToRedeem !== "number" || !Number.isInteger(root.pointsToRedeem)) {
       return { error: "Os pontos precisam ser um inteiro." };
     }
+    if (root.pointsToRedeem < 0) return { error: "Os pontos não podem ser negativos." };
     if (root.pointsToRedeem > 0) parsed.pointsToRedeem = root.pointsToRedeem;
   }
   return parsed;

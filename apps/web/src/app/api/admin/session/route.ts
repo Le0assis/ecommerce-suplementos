@@ -3,7 +3,7 @@ import { loginAgainstApi } from "@/server/admin-client";
 import { currentAdminView, currentSession } from "@/server/admin-current";
 import { forwardedForApi } from "@/server/forwarded-for";
 import { loginLimitMessage } from "@/lib/login-wait";
-import { LOGIN_BUSY, LOGIN_RETRY_AFTER, admitLogin, clearLoginEmail, noteLoginFailure } from "@/server/login-limit";
+import { LOGIN_BUSY, LOGIN_NO_IP, LOGIN_NO_REDIS, LOGIN_RETRY_AFTER, admitLogin, clearLoginEmail, loginStoreMode, noteLoginFailure } from "@/server/login-limit";
 import { COOKIE_NAME, SESSION_SECONDS, signSession, toPublicUser, type SessionPayload } from "@/server/admin-session";
 
 function cookieSecure(request: Request): boolean {
@@ -50,8 +50,12 @@ export async function POST(request: Request) {
   if (!email.includes("@") || !password) return NextResponse.json({ error: "Informe e-mail e senha." }, { status: 400 });
 
   const ip = forwardedForApi(request);
+  if (!ip) return NextResponse.json({ error: LOGIN_NO_IP }, { status: 503 });
+  if (loginStoreMode() === "unavailable") return NextResponse.json({ error: LOGIN_NO_REDIS }, { status: 503 });
   const now = Date.now();
-  if (!admitLogin(email, ip, now).ok) {
+  const gate = await admitLogin(email, ip, now);
+  if (!gate.ok) {
+    if (gate.status === 503) return NextResponse.json({ error: LOGIN_NO_REDIS }, { status: 503 });
     return NextResponse.json(
       { error: loginLimitMessage(LOGIN_BUSY, LOGIN_RETRY_AFTER) },
       { status: 429, headers: { "retry-after": LOGIN_RETRY_AFTER } },
@@ -63,7 +67,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A API de admin está fora do ar." }, { status: 503 });
   }
   if (!remote.ok) {
-    if (remote.status === 401 && !noteLoginFailure(email, ip, now)) {
+    if (remote.status === 401 && !(await noteLoginFailure(email, ip, now))) {
       return NextResponse.json(
         { error: loginLimitMessage(LOGIN_BUSY, LOGIN_RETRY_AFTER) },
         { status: 429, headers: { "retry-after": LOGIN_RETRY_AFTER } },
@@ -73,7 +77,7 @@ export async function POST(request: Request) {
     if (remote.retryAfter) headers.set("retry-after", remote.retryAfter);
     return NextResponse.json({ error: remote.error }, { status: remote.status, headers });
   }
-  clearLoginEmail(email, ip, now);
+  await clearLoginEmail(email, ip, now);
 
   const payload: SessionPayload = {
     v: 1,

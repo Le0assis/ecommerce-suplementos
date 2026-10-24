@@ -78,8 +78,11 @@ export function clientAddress(input: {
   vercelForwardedFor: string | null;
   trustedProxies: readonly string[];
   vercel: boolean;
+  /** Produção sem socket não cai em `local`: string vazia, e o login responde 503. */
+  missingSocket?: string;
 }): string {
-  const socket = input.socketAddress ? normalizeIp(input.socketAddress) : "local";
+  const socket = input.socketAddress ? normalizeIp(input.socketAddress) : (input.missingSocket ?? "local");
+  if (!socket) return "";
   const trusted = trustedProxySet(input.trustedProxies);
   if (!trusted.has(socket)) return socket;
   const header = input.vercel && input.vercelForwardedFor ? input.vercelForwardedFor : input.forwardedFor;
@@ -101,6 +104,7 @@ export function clientIp(c: Context, env: NodeJS.ProcessEnv = process.env): stri
     vercelForwardedFor: c.req.header("x-vercel-forwarded-for") ?? null,
     trustedProxies,
     vercel: env.VERCEL === "1",
+    missingSocket: env.NODE_ENV === "production" ? "" : "local",
   });
 }
 

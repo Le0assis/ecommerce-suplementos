@@ -88,6 +88,12 @@ function clearEmailIp(email: string, ip: string): void {
   emailIpHits.delete(loginEmailIpKey(email, ip));
 }
 
+function emailIpBlocked(email: string, ip: string, now: number): boolean {
+  const bucket = emailIpHits.get(loginEmailIpKey(email, ip));
+  if (!bucket || bucket.reset <= now) return false;
+  return bucket.failures >= IP_LIMIT;
+}
+
 function slotKey(email: string, ip: string): string {
   return `${email}\n${ip}`;
 }
@@ -199,6 +205,13 @@ async function noteEmailIpFailureRedis(email: string, ip: string): Promise<boole
   return count <= IP_LIMIT;
 }
 
+async function emailIpBlockedRedis(email: string, ip: string): Promise<boolean> {
+  const client = await openRedis();
+  if (!client) return false;
+  const count = Number((await client.get(emailIpRedisKey(email, ip))) ?? 0);
+  return count >= IP_LIMIT;
+}
+
 async function clearEmailIpRedis(email: string, ip: string): Promise<void> {
   const client = await openRedis();
   if (!client) return;
@@ -266,20 +279,21 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
     const now = ctx.now();
     const clock = now.getTime();
     const ip = clientIp(c);
+    if (!ip) throw new HttpError(503, "Não deu para identificar o IP. O login não segue sem ele.");
     const body = parseInput(loginSchema, await readJson(c));
     const email = normalizeLoginEmail(body.email);
     let memory = !process.env.REDIS_URL;
-    const blockedByOthers = async (): Promise<boolean> => {
+    const blockedBeforePassword = async (): Promise<boolean> => {
       if (!memory) {
         try {
-          return await ipBlockedByOthersRedis(ip, email);
+          return (await ipBlockedByOthersRedis(ip, email)) || (await emailIpBlockedRedis(email, ip));
         } catch {
           memory = true;
         }
       }
-      return ipBlockedByOthers(ip, email, clock);
+      return ipBlockedByOthers(ip, email, clock) || emailIpBlocked(email, ip, clock);
     };
-    if (await blockedByOthers()) {
+    if (await blockedBeforePassword()) {
       c.header("retry-after", "900");
       throw new HttpError(429, BUSY);
     }

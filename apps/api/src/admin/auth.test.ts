@@ -358,14 +358,22 @@ describe("login do admin", () => {
       expect(failed.response.status).toBe(401);
       await sql.query("update admin_users set failed_attempts = 0 where email = 'dono@pulso.test'");
     }
+    const proofs = loginProofCount();
+    const audits = await sql.query<{ total: number }>("select count(*)::int as total from audit_log where action = 'login_failed'");
     const blocked = await login(app, "DONO@pulso.test", "senha-errada-pulso", ip);
     expect(blocked.response.status).toBe(429);
     expect(blocked.response.headers.get("retry-after")).toBe("900");
+    expect(loginProofCount()).toBe(proofs);
+    const afterBlock = await sql.query<{ total: number }>("select count(*)::int as total from audit_log where action = 'login_failed'");
+    expect(afterBlock.rows[0]?.total).toBe(audits.rows[0]?.total);
+    const stillBlocked = await login(app, "dono@pulso.test", "senha-dona-pulso", ip);
+    expect(stillBlocked.response.status).toBe(429);
+    expect(loginProofCount()).toBe(proofs);
     const otherIp = await login(app, "dono@pulso.test", "senha-errada-pulso", "203.0.113.91");
     expect(otherIp.response.status).toBe(401);
-    const opened = await login(app, "dono@pulso.test", "senha-dona-pulso", ip);
+    const opened = await login(app, "dono@pulso.test", "senha-dona-pulso", "203.0.113.92");
     expect(opened.response.status).toBe(200);
-    const again = await login(app, "dono@pulso.test", "senha-errada-pulso", ip);
+    const again = await login(app, "dono@pulso.test", "senha-errada-pulso", "203.0.113.92");
     expect(again.response.status).toBe(401);
   });
 
@@ -416,6 +424,59 @@ describe("login do admin", () => {
       trustedProxies: ["203.0.113.8"],
       vercel: true,
     })).toBe("198.51.100.20");
+    expect(clientAddress({
+      socketAddress: null,
+      forwardedFor: "203.0.113.9",
+      vercelForwardedFor: null,
+      trustedProxies: ["local"],
+      vercel: false,
+      missingSocket: "",
+    })).toBe("");
+    expect(clientAddress({
+      socketAddress: null,
+      forwardedFor: "203.0.113.9",
+      vercelForwardedFor: null,
+      trustedProxies: ["local"],
+      vercel: false,
+    })).toBe("203.0.113.9");
+  });
+
+  it("em produção, sem IP, o login e o POST público respondem 503", async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const previousNode = env.NODE_ENV;
+    const previousSource = env.API_DATA_SOURCE;
+    const previousDatabase = env.DATABASE_URL;
+    const previousProxiesHere = env.TRUSTED_PROXIES;
+    env.NODE_ENV = "production";
+    env.API_DATA_SOURCE = "postgres";
+    env.DATABASE_URL = previousDatabase || "postgres://pulso:pulso@127.0.0.1:5432/pulso";
+    env.TRUSTED_PROXIES = "127.0.0.1";
+    try {
+      const app = createAdminApp(sql);
+      const loginResponse = await app.request("/v1/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.9" },
+        body: JSON.stringify({ email: "dono@pulso.test", password: "senha-dona-pulso" }),
+      });
+      expect(loginResponse.status).toBe(503);
+      expect(await loginResponse.json()).toEqual({ error: "Não deu para identificar o IP. O login não segue sem ele." });
+      const quote = await app.request("/v1/checkout/quote", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.9" },
+        body: JSON.stringify({ lines: [] }),
+      });
+      expect(quote.status).toBe(503);
+      expect(await quote.json()).toEqual({ error: "Não deu para identificar o IP." });
+    } finally {
+      if (previousNode === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNode;
+      if (previousSource === undefined) delete env.API_DATA_SOURCE;
+      else env.API_DATA_SOURCE = previousSource;
+      if (previousDatabase === undefined) delete env.DATABASE_URL;
+      else env.DATABASE_URL = previousDatabase;
+      if (previousProxiesHere === undefined) delete env.TRUSTED_PROXIES;
+      else env.TRUSTED_PROXIES = previousProxiesHere;
+    }
   });
 
   it("separa o limite de dois IPs encaminhados pelo Next", async () => {
