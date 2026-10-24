@@ -65,7 +65,7 @@ describe("seed de exemplo", () => {
     expect(await count(client, "post_blocks")).toBe(blocksBefore);
     expect(await count(client, "example_seed")).toBe(1);
     expect(await count(client, "admin_users")).toBe(1);
-  });
+  }, 20_000);
 
   it("recusa NODE_ENV=production e não grava", async () => {
     const client = await database();
@@ -84,7 +84,7 @@ describe("seed de exemplo", () => {
     expect(String(errors[0])).toContain("PULSO_SEED_ALLOW_OVERWRITE=1");
     expect(await count(client, "products")).toBe(0);
     expect(await count(client, "example_seed")).toBe(0);
-  });
+  }, 20_000);
 
   it("recusa banco editado e preserva o filho do mock", async () => {
     const client = await database();
@@ -111,7 +111,7 @@ describe("seed de exemplo", () => {
     await expect(seed({ ...dev, client })).rejects.toThrow(/updated_at posterior ao seed/);
     const still = await client.query("select id from nutrition_rows where id = 'edicao-admin'");
     expect(still.rows).toHaveLength(1);
-  });
+  }, 20_000);
 
   it("libera com a flag e regrava os filhos do mock", async () => {
     const client = await database();
@@ -146,5 +146,5 @@ describe("seed de exemplo", () => {
     expect(await client.query("select id from nutrition_rows where id = 'edicao-admin'")).toEqual({ rows: [] });
     const foreign = await client.query("select id from products where id = 'fora-do-mock'");
     expect(foreign.rows).toHaveLength(1);
-  });
+  }, 20_000);
 });

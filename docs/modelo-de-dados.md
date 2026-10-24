@@ -32,14 +32,7 @@ Drops ficam em `drops` (`005_drops.sql`). `units_total` e `units_left` podem ser
 
 `GET /v1/coupons` só devolve `active` e `public`. `POST /v1/coupons/validate` acha o código mesmo sem `public`. No mock, públicos: `LUNA15`, `CAIO10`, `NANDA10`, `THEO10`, `PULSO10`. A raspadinha (`RASPA5`, `RASPA10`, `RASPAFRETE`) fica de fora da lista. `VENCIDO` está inativo.
 
-A coluna ainda não está na migração. O DBA acrescenta:
-
-```sql
-alter table coupons
-  add column public boolean not null default false;
-```
-
-Enquanto ela não existir, a API devolve lista vazia. O seed pode marcar `public = true` nos cinco códigos anunciados. O padrão `false` não vaza a raspadinha.
+A migração `011_consulta_cupom_cpf.sql` acrescenta `coupons.public boolean not null default false`. Cupom que já existia fica de fora da lista anunciada. O seed de exemplo marca `public = true` em `LUNA15`, `CAIO10`, `NANDA10`, `THEO10` e `PULSO10`. O padrão `false` não vaza a raspadinha.
 
 Ordem do orçamento em `quoteCart`:
 

@@ -297,8 +297,8 @@ async function seedCatalog(client: SeedClient, replaceMockChildren: boolean): Pr
 
   for (const coupon of coupons) {
     await client.query(
-      `insert into coupons (code, label, kind, percent, value, influencer_slug, influencer_id, active, updated_at)
-       values ($1, $2, $3, $4, $5, $6, $6, $7, now())
+      `insert into coupons (code, label, kind, percent, value, influencer_slug, influencer_id, active, public, updated_at)
+       values ($1, $2, $3, $4, $5, $6, $6, $7, $8, now())
        on conflict (code) do update set
          label = excluded.label,
          kind = excluded.kind,
@@ -307,8 +307,18 @@ async function seedCatalog(client: SeedClient, replaceMockChildren: boolean): Pr
          influencer_slug = excluded.influencer_slug,
          influencer_id = excluded.influencer_id,
          active = excluded.active,
+         public = excluded.public,
          updated_at = now()`,
-      [coupon.code, coupon.label, coupon.kind, coupon.percent ?? null, coupon.percent ?? null, coupon.influencerSlug ?? null, coupon.active],
+      [
+        coupon.code,
+        coupon.label,
+        coupon.kind,
+        coupon.percent ?? null,
+        coupon.percent ?? null,
+        coupon.influencerSlug ?? null,
+        coupon.active,
+        coupon.public === true,
+      ],
     );
   }
 

@@ -107,7 +107,7 @@ describe("schema", () => {
 
   it("acrescenta o CPF cifrado sem mexer na coluna em claro", () => {
     const files = migrationFiles(sqlDir);
-    expect(files.at(-1)).toBe("010_cpf_cifrado.sql");
+    expect(files).toContain("010_cpf_cifrado.sql");
     expect(files.indexOf("010_cpf_cifrado.sql")).toBeGreaterThan(files.indexOf("009_example_seed.sql"));
     const sql = readFileSync(resolve(sqlDir, "010_cpf_cifrado.sql"), "utf8").toLowerCase();
     expect(sql).toContain("add column if not exists cpf_enc bytea");
@@ -121,5 +121,22 @@ describe("schema", () => {
     expect(sql).not.toContain("delete from");
     expect(sql).not.toContain("truncate");
     expect(sql).not.toContain("alter column cpf");
+  });
+
+  it("acrescenta o cupom público e os índices novos sem apagar dado", () => {
+    const files = migrationFiles(sqlDir);
+    expect(files.at(-1)).toBe("011_consulta_cupom_cpf.sql");
+    expect(files.indexOf("011_consulta_cupom_cpf.sql")).toBeGreaterThan(files.indexOf("010_cpf_cifrado.sql"));
+    const sql = readFileSync(resolve(sqlDir, "011_consulta_cupom_cpf.sql"), "utf8").toLowerCase();
+    expect(sql).toContain("add column if not exists public boolean not null default false");
+    expect(sql).toContain("create index if not exists coupons_public_code_idx");
+    expect(sql).toContain("create index if not exists subscriptions_product_slug_idx");
+    expect(sql).toContain("create index if not exists subscriptions_variant_idx");
+    expect(sql).toContain("create index if not exists customers_cpf_plain_idx");
+    expect(sql).not.toContain("drop table");
+    expect(sql).not.toContain("drop column");
+    expect(sql).not.toContain("delete from");
+    expect(sql).not.toContain("truncate");
+    expect(sql).not.toContain("update ");
   });
 });
