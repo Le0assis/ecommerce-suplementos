@@ -162,6 +162,8 @@ export interface Coupon {
   minCents?: number;
   influencerSlug?: string;
   active: boolean;
+  /** Cupom que a vitrine pode listar. Os outros só entram pelo código, em POST /v1/coupons/validate. */
+  public?: boolean;
 }
 
 export interface Level {

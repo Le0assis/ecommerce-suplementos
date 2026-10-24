@@ -1,6 +1,6 @@
 import { coupons, getInfluencer, getPost, getReviews, influencers, posts, ugc } from "@pulso/data";
 import { listInfluencers, readPublicPosts, toPublicInfluencer } from "@pulso/db/content";
-import { couponBlockReason, getAdminCoupon, readPublicCoupons, type AdminCoupon } from "@pulso/db/catalog";
+import { couponBlockReason, getAdminCoupon, listAdvertisedCoupons, readPublicCoupons, type AdminCoupon } from "@pulso/db/catalog";
 import { getPool } from "@pulso/db/pool";
 import { listBanners, listUgc, listVideos, readLoyalty, readPublicReviews, ugcPublic } from "@pulso/db/resources";
 import { fromPgPool, type Sql } from "@pulso/db/sql";
@@ -9,26 +9,21 @@ import {
   findCoupon,
   proteinPlan,
   quizResult,
-  quoteCart,
   sandboxCharge,
   shippingRates,
-  validateCheckout,
-  type CheckoutInput,
   type Coupon,
   type GoalId,
   type PaymentGateway,
   type PaymentMethod,
   type QuizAnswers,
-  type QuoteLine,
-  type ShippingMethod,
 } from "@pulso/domain";
 import { Hono } from "hono";
-import { cors } from "hono/cors";
-import { HttpError } from "./admin/http";
+import { clientIp, HttpError } from "./admin/http";
+import { applyPublicCors } from "./cors";
+import { buildCheckoutQuote, buildCheckoutSimulation, parseCheckoutQuote, parseCheckoutSimulate } from "./checkout-quote";
 import { mountPublicDrops } from "./admin/drop-routes";
 import { mountAdmin, type AdminAppOptions } from "./admin/router";
 import { loadProducts, pingPostgres, pingRedis } from "./catalog-source";
-import { buildCheckoutQuote, parseCheckoutQuote } from "./checkout-quote";
 
 const hits = new Map<string, { count: number; reset: number }>();
 
@@ -91,12 +86,14 @@ export function createApp(options: AdminAppOptions = {}): Hono {
 
   app.use("*", async (c, next) => {
     if (c.req.path.startsWith("/v1/admin")) return next();
-    return cors()(c, next);
+    const blocked = applyPublicCors(c);
+    if (blocked) return blocked;
+    await next();
   });
 
   app.use("*", async (c, next) => {
     if (c.req.path.startsWith("/v1/admin")) return next();
-    if (c.req.method === "POST" && limited(c.req.header("x-forwarded-for") ?? "local")) {
+    if (c.req.method === "POST" && limited(clientIp(c))) {
       return c.json({ error: "Calma. Muitas tentativas por minuto." }, 429);
     }
     await next();
@@ -204,8 +201,14 @@ app.get("/v1/products/:slug", async (c) => {
     return c.json({ item: await readLoyalty(sql), source: "postgres" });
   });
   app.get("/v1/coupons", async (c) => {
-    const list = await couponSource(dataSql() ?? undefined);
-    return c.json({ coupons: list.filter((coupon) => coupon.active).map(({ code, label, kind, percent }) => ({ code, label, kind, percent })) });
+    const sql = dataSql();
+    if (!sql) {
+      return c.json({
+        coupons: coupons.filter((coupon) => coupon.active && coupon.public).map(({ code, label, kind, percent }) => ({ code, label, kind, percent })),
+      });
+    }
+    const listed = await listAdvertisedCoupons(sql);
+    return c.json({ coupons: listed ?? [] });
   });
 
 app.post("/v1/quotes/shipping", async (c) => {
@@ -276,46 +279,14 @@ app.post("/v1/checkout/quote", async (c) => {
 
 app.post("/v1/checkout/simulate", async (c) => {
   const body = await c.req.json().catch(() => null);
-  if (!body?.checkout || !Array.isArray(body.lines)) return c.json({ error: "Pedido incompleto." }, 400);
-  const checkout = body.checkout as CheckoutInput;
-  const validated = validateCheckout(checkout);
-  if (!validated.ok) return c.json(validated, 400);
-  const rates = shippingRates(checkout.cep);
-  if (!rates.ok) return c.json({ error: rates.error }, 400);
-  const pac = rates.rates.find((rate) => rate.id === "pac")!;
-  const sedex = rates.rates.find((rate) => rate.id === "sedex")!;
-  const sql = dataSql();
-  const list = await couponSource(sql ?? undefined);
-  const stored = sql && body.couponCode ? await getAdminCoupon(sql, String(body.couponCode).trim().toUpperCase()) : null;
-  const coupon = body.couponCode ? resolveCoupon(String(body.couponCode), list, stored, new Date()).coupon : null;
-  const loyalty = sql ? await readLoyalty(sql) : null;
-  const quote = quoteCart({
-    lines: body.lines as QuoteLine[],
-    coupon,
-    redeemPoints: Number(body.redeemPoints ?? 0),
-    pointsBalance: Number(body.pointsBalance ?? 0),
-    lifetimePoints: Number(body.lifetimePoints ?? 0),
-    payment: checkout.paymentMethod as PaymentMethod,
-    shippingMethod: checkout.shippingMethod as ShippingMethod,
-    pacCents: pac.priceCents,
-    sedexCents: sedex.priceCents,
-    ...(loyalty
-      ? {
-          pixDiscountPercent: loyalty.pixDiscountPercent,
-          freeShippingBaseCents: loyalty.freeShippingCents,
-          kitDiscountPercent: loyalty.kitDiscountPercent,
-          maxPointsRedeemRatio: loyalty.maxPointsRedeemRatio,
-          pointsPerReal: loyalty.pointsPerReal,
-          pixPointsBonus: loyalty.pixPointsBonus,
-          pointValueCents: loyalty.pointValueCents,
-        }
-      : {}),
-  });
-  return c.json({
-    simulated: true,
-    message: "Nenhum valor foi cobrado. Pix, boleto e cartão são simulação de Mercado Pago / Pagar.me.",
-    quote,
-  });
+  const parsed = parseCheckoutSimulate(body);
+  if ("error" in parsed) return c.json({ error: parsed.error }, 400);
+  const quote = await buildCheckoutSimulation(parsed, dataSql());
+  if ("error" in quote) {
+    return c.json(quote.errors ? { error: quote.error, errors: quote.errors } : { error: quote.error }, quote.status);
+  }
+  c.header("cache-control", "no-store");
+  return c.json(quote);
 });
 
   mountPublicDrops(app, dataSql, options.now ?? (() => new Date()));

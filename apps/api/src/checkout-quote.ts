@@ -5,10 +5,38 @@ import {
   POINT_VALUE_CENTS,
   findCoupon,
   quoteCart,
+  shippingRates,
+  validateCheckout,
+  type CheckoutInput,
   type Coupon,
+  type Quote,
   type QuoteLine,
 } from "@pulso/domain";
 import { loadProducts } from "./catalog-source";
+
+const LINE_KEYS = new Set(["slug", "variant", "qty"]);
+const QUOTE_KEYS = new Set(["lines", "couponCode", "pointsToRedeem"]);
+const SIMULATE_KEYS = new Set(["lines", "couponCode", "pointsToRedeem", "checkout"]);
+const CHECKOUT_KEYS = new Set([
+  "name",
+  "email",
+  "cpf",
+  "phone",
+  "cep",
+  "street",
+  "number",
+  "complement",
+  "neighborhood",
+  "city",
+  "state",
+  "shippingMethod",
+  "paymentMethod",
+  "card",
+  "acceptLgpd",
+  "acceptAge",
+  "acceptTerms",
+]);
+const CARD_KEYS = new Set(["number", "name", "expiry", "cvv", "installments"]);
 
 export interface CheckoutQuoteLineInput {
   slug: string;
@@ -37,15 +65,27 @@ function record(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-export function parseCheckoutQuote(body: unknown): CheckoutQuoteInput | { error: string } {
-  const root = record(body);
-  if (!root || !Array.isArray(root.lines) || root.lines.length === 0 || root.lines.length > 40) {
+function onlyKeys(row: Record<string, unknown>, allowed: Set<string>): boolean {
+  return Object.keys(row).every((key) => allowed.has(key));
+}
+
+/** Saldo e pontos de vida não vêm do navegador. Sem sessão de cliente, os dois são zero. */
+export function serverPointAccount(): { pointsBalance: number; lifetimePoints: number } {
+  return { pointsBalance: 0, lifetimePoints: 0 };
+}
+
+function parseLines(root: Record<string, unknown>): CheckoutQuoteLineInput[] | { error: string } {
+  if (!onlyKeys(root, root.checkout === undefined ? QUOTE_KEYS : SIMULATE_KEYS)) {
+    return { error: "O preço é calculado no servidor." };
+  }
+  if (!Array.isArray(root.lines) || root.lines.length === 0 || root.lines.length > 40) {
     return { error: "Informe slug, variant e qty." };
   }
   const lines: CheckoutQuoteLineInput[] = [];
   for (const item of root.lines) {
     const row = record(item);
-    if (!row || typeof row.slug !== "string" || typeof row.variant !== "string" || typeof row.qty !== "number") {
+    if (!row || !onlyKeys(row, LINE_KEYS)) return { error: "O preço é calculado no servidor." };
+    if (typeof row.slug !== "string" || typeof row.variant !== "string" || typeof row.qty !== "number") {
       return { error: "Informe slug, variant e qty." };
     }
     const slug = row.slug.trim();
@@ -53,6 +93,10 @@ export function parseCheckoutQuote(body: unknown): CheckoutQuoteInput | { error:
     if (!slug || !variant || !Number.isInteger(row.qty) || row.qty < 1) return { error: "Informe slug, variant e qty." };
     lines.push({ slug, variant, qty: row.qty });
   }
+  return lines;
+}
+
+function parseOptionalQuoteFields(root: Record<string, unknown>, lines: CheckoutQuoteLineInput[]): CheckoutQuoteInput | { error: string } {
   const parsed: CheckoutQuoteInput = { lines };
   if (root.couponCode !== undefined && root.couponCode !== null && root.couponCode !== "") {
     if (typeof root.couponCode !== "string" || !root.couponCode.trim()) return { error: "Cupom inválido." };
@@ -65,6 +109,45 @@ export function parseCheckoutQuote(body: unknown): CheckoutQuoteInput | { error:
     if (root.pointsToRedeem > 0) parsed.pointsToRedeem = root.pointsToRedeem;
   }
   return parsed;
+}
+
+export function parseCheckoutQuote(body: unknown): CheckoutQuoteInput | { error: string } {
+  const root = record(body);
+  if (!root) return { error: "Informe slug, variant e qty." };
+  if (!onlyKeys(root, QUOTE_KEYS)) return { error: "O preço é calculado no servidor." };
+  const lines = parseLines(root);
+  if ("error" in lines) return lines;
+  return parseOptionalQuoteFields(root, lines);
+}
+
+export interface CheckoutSimulateInput extends CheckoutQuoteInput {
+  checkout: CheckoutInput;
+}
+
+export function parseCheckoutSimulate(body: unknown): CheckoutSimulateInput | { error: string } {
+  const root = record(body);
+  if (!root) return { error: "Pedido incompleto." };
+  if (!onlyKeys(root, SIMULATE_KEYS)) return { error: "O preço é calculado no servidor." };
+  const checkout = record(root.checkout);
+  if (!checkout || !onlyKeys(checkout, CHECKOUT_KEYS)) return { error: "O preço é calculado no servidor." };
+  const card = checkout.card;
+  if (card !== undefined && card !== null) {
+    const cardRow = record(card);
+    if (!cardRow || !onlyKeys(cardRow, CARD_KEYS)) return { error: "O preço é calculado no servidor." };
+  }
+  const textFields = ["name", "email", "cpf", "phone", "cep", "street", "number", "neighborhood", "city", "state", "shippingMethod", "paymentMethod"] as const;
+  if (textFields.some((key) => typeof checkout[key] !== "string")) return { error: "Pedido incompleto." };
+  if (checkout.complement !== undefined && checkout.complement !== null && typeof checkout.complement !== "string") {
+    return { error: "Pedido incompleto." };
+  }
+  if (typeof checkout.acceptLgpd !== "boolean" || typeof checkout.acceptAge !== "boolean" || typeof checkout.acceptTerms !== "boolean") {
+    return { error: "Pedido incompleto." };
+  }
+  const lines = parseLines(root);
+  if ("error" in lines) return lines;
+  const priced = parseOptionalQuoteFields(root, lines);
+  if ("error" in priced) return priced;
+  return { ...priced, checkout: checkout as unknown as CheckoutInput };
 }
 
 async function couponList(sql: Sql | null): Promise<Coupon[]> {
@@ -82,10 +165,14 @@ async function resolveCoupon(sql: Sql | null, code: string): Promise<{ coupon: C
   return findCoupon(code, await couponList(sql));
 }
 
-export async function buildCheckoutQuote(
-  input: CheckoutQuoteInput,
-  sql: Sql | null,
-): Promise<{ summary: CheckoutQuoteSummary } | { error: string; status: 400 | 404 }> {
+interface PricedCheckout {
+  quoteLines: QuoteLine[];
+  summaryLines: CheckoutQuoteSummary["lines"];
+  coupon: Coupon | null;
+  loyalty: Awaited<ReturnType<typeof readLoyalty>> | null;
+}
+
+async function priceCheckout(input: CheckoutQuoteInput, sql: Sql | null): Promise<PricedCheckout | { error: string; status: 400 | 404 }> {
   const loaded = await loadProducts(sql ?? undefined);
   const quoteLines: QuoteLine[] = [];
   const summaryLines: CheckoutQuoteSummary["lines"] = [];
@@ -106,33 +193,44 @@ export async function buildCheckoutQuote(
   }
   const resolved = input.couponCode ? await resolveCoupon(sql, input.couponCode) : { coupon: null };
   if (input.couponCode && resolved.error) return { error: resolved.error, status: 400 };
-  const loyalty = sql ? await readLoyalty(sql) : null;
-  const points = input.pointsToRedeem ?? 0;
-  const pointValue = loyalty?.pointValueCents ?? POINT_VALUE_CENTS;
+  return { quoteLines, summaryLines, coupon: resolved.coupon, loyalty: sql ? await readLoyalty(sql) : null };
+}
+
+function loyaltyInput(loyalty: PricedCheckout["loyalty"]) {
+  if (!loyalty) return {};
+  return {
+    pixDiscountPercent: loyalty.pixDiscountPercent,
+    freeShippingBaseCents: loyalty.freeShippingCents,
+    kitDiscountPercent: loyalty.kitDiscountPercent,
+    maxPointsRedeemRatio: loyalty.maxPointsRedeemRatio,
+    pointsPerReal: loyalty.pointsPerReal,
+    pixPointsBonus: loyalty.pixPointsBonus,
+    pointValueCents: loyalty.pointValueCents,
+  };
+}
+
+export async function buildCheckoutQuote(
+  input: CheckoutQuoteInput,
+  sql: Sql | null,
+): Promise<{ summary: CheckoutQuoteSummary } | { error: string; status: 400 | 404 }> {
+  const priced = await priceCheckout(input, sql);
+  if ("error" in priced) return priced;
+  const account = serverPointAccount();
+  const pointValue = priced.loyalty?.pointValueCents ?? POINT_VALUE_CENTS;
   const quote = quoteCart({
-    lines: quoteLines,
-    coupon: resolved.coupon,
-    redeemPoints: points,
-    pointsBalance: points,
-    lifetimePoints: 0,
+    lines: priced.quoteLines,
+    coupon: priced.coupon,
+    redeemPoints: input.pointsToRedeem ?? 0,
+    pointsBalance: account.pointsBalance,
+    lifetimePoints: account.lifetimePoints,
     payment: "boleto",
     shippingMethod: "pac",
     pacCents: 0,
     sedexCents: 0,
-    ...(loyalty
-      ? {
-          pixDiscountPercent: loyalty.pixDiscountPercent,
-          freeShippingBaseCents: loyalty.freeShippingCents,
-          kitDiscountPercent: loyalty.kitDiscountPercent,
-          maxPointsRedeemRatio: loyalty.maxPointsRedeemRatio,
-          pointsPerReal: loyalty.pointsPerReal,
-          pixPointsBonus: loyalty.pixPointsBonus,
-          pointValueCents: loyalty.pointValueCents,
-        }
-      : {}),
+    ...loyaltyInput(priced.loyalty),
   });
   const summary: CheckoutQuoteSummary = {
-    lines: summaryLines,
+    lines: priced.summaryLines,
     subtotalCents: quote.grossCents,
     discountCents: quote.discountCents,
     pointsRedeemed: pointValue > 0 ? Math.floor(quote.pointsCents / pointValue) : 0,
@@ -140,4 +238,37 @@ export async function buildCheckoutQuote(
     totalCents: quote.productAfterDiscountsCents,
   };
   return { summary };
+}
+
+export async function buildCheckoutSimulation(
+  input: CheckoutSimulateInput,
+  sql: Sql | null,
+): Promise<{ simulated: true; message: string; quote: Quote } | { error: string; status: 400 | 404; errors?: Record<string, string> }> {
+  const validated = validateCheckout(input.checkout);
+  if (!validated.ok) return { error: "Pedido incompleto.", status: 400, errors: validated.errors };
+  const rates = shippingRates(input.checkout.cep);
+  if (!rates.ok) return { error: rates.error, status: 400 };
+  const priced = await priceCheckout(input, sql);
+  if ("error" in priced) return priced;
+  const pac = rates.rates.find((rate) => rate.id === "pac");
+  const sedex = rates.rates.find((rate) => rate.id === "sedex");
+  if (!pac || !sedex) return { error: "Frete indisponível.", status: 400 };
+  const account = serverPointAccount();
+  const quote = quoteCart({
+    lines: priced.quoteLines,
+    coupon: priced.coupon,
+    redeemPoints: input.pointsToRedeem ?? 0,
+    pointsBalance: account.pointsBalance,
+    lifetimePoints: account.lifetimePoints,
+    payment: input.checkout.paymentMethod,
+    shippingMethod: input.checkout.shippingMethod,
+    pacCents: pac.priceCents,
+    sedexCents: sedex.priceCents,
+    ...loyaltyInput(priced.loyalty),
+  });
+  return {
+    simulated: true,
+    message: "Nenhum valor foi cobrado. Pix, boleto e cartão são simulação de Mercado Pago / Pagar.me.",
+    quote,
+  };
 }

@@ -1029,6 +1029,35 @@ export async function removeAdminCoupon(sql: Sql, code: string): Promise<{ delet
   return { deleted: true, coupon: null };
 }
 
+export interface AdvertisedCoupon {
+  code: string;
+  label: string;
+  kind: "percent" | "shipping";
+  percent: number | null;
+}
+
+/** Cupons com `public = true`. `null` se a coluna ainda não existe: a lista fecha, não vaza o restante. */
+export async function listAdvertisedCoupons(sql: Sql): Promise<AdvertisedCoupon[] | null> {
+  try {
+    const rows = await sql.query<AdvertisedCoupon>(
+      `select code, label, kind, percent
+       from coupons
+       where active = true and public = true
+       order by code asc`,
+    );
+    return rows.rows.map((row) => ({
+      code: row.code,
+      label: row.label,
+      kind: row.kind,
+      percent: row.kind === "percent" ? row.percent : null,
+    }));
+  } catch (error) {
+    const missing = pgCode(error) === "42703" || (error instanceof Error && /column ["']?public["']?/i.test(error.message));
+    if (missing) return null;
+    throw error;
+  }
+}
+
 export async function readPublicCoupons(sql: Sql, now = new Date()): Promise<Coupon[]> {
   const rows = await sql.query<CouponRow>(
     `select code, label, kind, percent, value, min_cents, starts_at, ends_at, max_uses, uses, influencer_id, active

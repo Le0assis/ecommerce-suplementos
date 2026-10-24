@@ -1,6 +1,6 @@
 # Contratos da API
 
-Base: `http://127.0.0.1:8787`. Sobe com `pnpm dev:api`. JSON. CORS aberto. `POST` acima de 60 por minuto no mesmo IP devolve `429` com `{ "error": "Calma. Muitas tentativas por minuto." }`. O contador é memória do processo: reiniciar zera.
+Base: `http://127.0.0.1:8787`. Sobe com `pnpm dev:api`. JSON. A origem da vitrine só passa se estiver em `CORS_ORIGINS`, `NEXT_PUBLIC_SITE_URL` ou `ADMIN_CORS_ORIGIN`. Em produção, lista vazia ou origem de fora recebe 403. Fora de produção, `localhost` e `127.0.0.1` também passam. Sem `Origin`, a chamada segue. `POST` acima de 60 por minuto no mesmo IP devolve `429` com `{ "error": "Calma. Muitas tentativas por minuto." }`. O IP é o do socket. `X-Forwarded-For` só vale se esse socket estiver em `TRUSTED_PROXIES`, a mesma regra do login. O contador é memória do processo: reiniciar zera.
 
 Erros de negócio usam `{ "error": "mensagem em pt-BR" }` e status 400 ou 404.
 
@@ -34,7 +34,7 @@ Filtro simples por nome, linha e sabor no servidor. A busca da vitrine, hoje, us
 
 ### `GET /v1/coupons`
 
-Só cupons ativos, e só `code`, `label`, `kind`, `percent`. Sem slug interno além do que o cupom já carrega no objeto filtrado.
+Só cupom com `active` e `public`. A resposta traz `code`, `label`, `kind` e `percent`. Raspadinha (`RASPA5`, `RASPA10`, `RASPAFRETE`) não entra. Sem a coluna `coupons.public`, a lista volta vazia.
 
 ## Escrita simulada
 
@@ -44,7 +44,7 @@ Body: `{ "cep": "01310100" }`. Resposta: taxas PAC e SEDEX, ou 400.
 
 ### `POST /v1/coupons/validate`
 
-Body: `{ "code": "LUNA15" }`. 404 se não existe ou está inativo.
+Body: `{ "code": "LUNA15" }`. Este é o jeito de conferir um código, inclusive cupom que não é público. 404 se não existe ou está inativo. A resposta é um cupom, não a lista.
 
 ### `POST /v1/calculators/protein`
 
@@ -72,18 +72,32 @@ Body:
 
 ```json
 {
-  "checkout": { "cep": "01310100", "paymentMethod": "pix", "shippingMethod": "pac" },
-  "lines": [{ "unitPriceCents": 14990, "quantity": 1, "subscription": false, "subscriptionDiscountPercent": 0, "category": "pre-treino" }],
-  "couponCode": "LUNA15",
-  "redeemPoints": 0,
-  "pointsBalance": 0,
-  "lifetimePoints": 0
+  "lines": [{ "slug": "caos-pre-treino", "variant": "caos-pre-treino__limao__300", "qty": 1 }],
+  "couponCode": "PULSO10",
+  "pointsToRedeem": 0,
+  "checkout": {
+    "name": "Ana Luz",
+    "email": "ana@pulso.dev",
+    "cpf": "52998224725",
+    "phone": "11987654321",
+    "cep": "01310100",
+    "street": "Avenida Paulista",
+    "number": "1000",
+    "neighborhood": "Bela Vista",
+    "city": "São Paulo",
+    "state": "SP",
+    "shippingMethod": "pac",
+    "paymentMethod": "pix",
+    "acceptLgpd": true,
+    "acceptAge": true,
+    "acceptTerms": true
+  }
 }
 ```
 
-O servidor **recalcula**. Não confia em total mandado pelo cliente. A resposta traz `simulated: true`, uma frase dizendo que Mercado Pago e Pagar.me não cobraram, e o `quote`.
+Cada linha só tem `slug`, `variant` e `qty`. Preço, desconto, `pointsBalance`, `lifetimePoints` e `redeemPoints` no corpo respondem 400 `{ "error": "O preço é calculado no servidor." }`. O preço sai de `product_variants`. O cupom sai da tabela. O saldo de pontos no servidor é 0 até existir sessão de cliente, então `pointsUsed` volta 0 mesmo que `pointsToRedeem` seja alto.
 
-`checkout` passa por `validateCheckout`. No teste da API o body mínimo que passa é o usado em `apps/api/src/app.test.ts`.
+Com o Caos limão, `PULSO10` e Pix/PAC no CEP `01310100`, o `quote` traz `discountCents` 1499, `pixCents` 1349, `shippingCents` 1890 e `totalCents` 14032. A resposta também traz `simulated: true` e a frase de que Mercado Pago e Pagar.me não cobraram. `checkout` passa por `validateCheckout`. Erro de formulário: 400 `{ "error": "Pedido incompleto.", "errors": { ... } }`.
 
 A vitrine não chama esta rota. Ela usa `quoteCart` localmente. Os dois compartilham o domínio.
 
@@ -116,11 +130,11 @@ O corpo não traz CEP nem meio de pagamento, então a resposta não tem Pix nem 
 }
 ```
 
-`pointsRedeemed` é a quantidade de pontos aceita, no máximo 20% do produto depois do cupom. `pointsEarned` não inclui o bônus do Pix, porque o meio de pagamento não veio no corpo. Cupom inexistente responde 400. `Cache-Control: no-store`.
+`pointsToRedeem` é o pedido. O saldo não vem do navegador: sem sessão de cliente, `pointsRedeemed` é 0. `pointsEarned` não inclui o bônus do Pix, porque o meio de pagamento não veio no corpo. Campo de dinheiro a mais responde 400. Cupom inexistente responde 400. `Cache-Control: no-store`.
 
 ## Admin
 
-Rotas em `/v1/admin`. Não passam pelo CORS aberto nem pelo limite de 60 `POST` por minuto. Sem cabeçalho `Origin` a chamada segue. Origem precisa ser `NEXT_PUBLIC_SITE_URL`, `ADMIN_CORS_ORIGIN` ou, fora de produção, `localhost` / `127.0.0.1`. Outra origem devolve 403.
+Rotas em `/v1/admin`. Não passam pelo CORS da vitrine nem pelo limite de 60 `POST` por minuto. Sem cabeçalho `Origin` a chamada segue. Origem precisa ser `NEXT_PUBLIC_SITE_URL`, `ADMIN_CORS_ORIGIN` ou, fora de produção, `localhost` / `127.0.0.1`. Outra origem devolve 403.
 
 A sessão dura 12 h. O contrato fechado, com o cookie do site e as rotas públicas novas, está em [api.md](api.md). `POST /v1/admin/login` devolve `{ "user": { "id", "email", "name", "role" } }` e grava o cookie `pulso_admin` (`HttpOnly`, `SameSite=Lax`, `Secure`, `Path=/`, `Max-Age=43200`). O token não vai no JSON. O painel Next não tem senha própria: `POST /api/admin/session` só entra se a API responder, lê o `Set-Cookie` e manda o mesmo valor em `Authorization: Bearer`, porque o cookie da API fica no host dela. Cada login grava um `jti` em `admin_sessions`. `POST /v1/admin/logout` preenche `revoked_at` e o bearer deixa de valer na hora. O painel confere `GET /v1/admin/me` a cada abertura. Papéis no banco: `dono`, `editor`, `atendimento`. Sem `ADMIN_SESSION_SECRET` (mínimo 16 caracteres), ou com o valor de exemplo em produção, o login responde 503.
 

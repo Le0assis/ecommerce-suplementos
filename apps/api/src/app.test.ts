@@ -37,9 +37,7 @@ describe("API", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         couponCode: "PULSO10",
-        lines: [
-          { unitPriceCents: 14990, quantity: 1, subscription: false, subscriptionDiscountPercent: 10, category: "pre-treino" },
-        ],
+        lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__300", qty: 1 }],
         checkout: {
           name: "Ana Luz",
           email: "ana@pulso.dev",
