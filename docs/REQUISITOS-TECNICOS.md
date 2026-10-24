@@ -154,7 +154,7 @@ Protótipo: `packages/domain/src/shipping.ts`. Não há chamada à ViaCEP.
 
 Cadastro e login locais, pedidos, pontos, endereços, assinaturas, favoritos. Conta demo Ana.
 
-Protótipo: `/entrar`, `/criar-conta`, `/conta` e subpáginas, `/favoritos`. Senha fica no `localStorage`. Isso não é autenticação.
+Protótipo: `/entrar`, `/criar-conta`, `/conta` e subpáginas ainda usam a memória da vitrine. Senha e CPF não vão mais para o `localStorage`. A API autentica com scrypt e cookie httpOnly (`POST /v1/account/login`).
 
 ### RF18 — Rastreio
 

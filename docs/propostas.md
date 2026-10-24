@@ -4,9 +4,9 @@ Anotado na revisão do `apps/web`. O que a vitrine já faz está no código. O r
 
 ## Pontos
 
-`serverPointAccount` em `apps/api/src/checkout-quote.ts` ainda devolve `null`. `pointsToRedeem` maior que zero responde 422 `{ "error": "O saldo de pontos ainda não está no servidor.", "code": "pontos_indisponiveis" }` no quote e no simulate. O site devolve o mesmo 422 em `/api/checkout/quote` e `/api/checkout/simulate`, e o checkout mostra essa frase.
+Com cookie `pulso_customer` e `points_balance` positivo, quote, simulate e `POST /v1/account/orders` leem esse saldo. Sem sessão, ou com saldo zero, `pointsToRedeem` maior que zero responde 422 `{ "error": "O saldo de pontos ainda não está no servidor.", "code": "pontos_indisponiveis" }`. O site devolve o mesmo 422 em `/api/checkout/quote` e `/api/checkout/simulate`, e o checkout mostra essa frase.
 
-A vitrine não mostra resgate no checkout, nem para a Ana com 860 pontos no navegador, e o total local não aplica desconto de pontos. O payload não leva `pointsToRedeem`. A conta ainda mostra o saldo local quando ele é positivo. O campo volta quando o Backend ler `customers.points_balance` dessa sessão.
+A vitrine não mostra resgate no checkout, nem para a Ana com 860 pontos no navegador, e o total local não aplica desconto de pontos. O payload não leva `pointsToRedeem`. A conta demo ainda mostra o saldo local quando ele é positivo. O campo na vitrine volta quando as páginas passarem a mandar o cookie.
 
 ## Lista de espera
 
@@ -22,7 +22,7 @@ Upload sem `BLOB_READ_WRITE_TOKEN` responde 503. A tela não guarda a foto em da
 
 ## Vitrine
 
-- A conta da loja ainda mora no `localStorage`.
+- A chave `pulso-store` não grava mais conta, senha, CPF nem pedido. A API de conta está em `POST /v1/account/*`. As páginas `/entrar` e `/conta` ainda usam a memória da demo e não chamam essa API.
 - Capa com `next/image` está `unoptimized`. `remotePatterns` pediria `next.config.ts`.
 - A inscrição pública da lista responde 200 para e-mail novo e repetido, e a página não distingue.
 - Slug de categoria, objetivo, influencer e post não muda depois de criar.

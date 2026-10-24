@@ -3,7 +3,7 @@ import { listInfluencers, readPublicPosts, toPublicInfluencer } from "@pulso/db/
 import { couponBlockReason, getAdminCoupon, listAdvertisedCoupons, readPublicCoupons, type AdminCoupon } from "@pulso/db/catalog";
 import { getPool } from "@pulso/db/pool";
 import { listBanners, listUgc, listVideos, readLoyalty, readPublicReviews, ugcPublic } from "@pulso/db/resources";
-import { fromPgPool, type Sql } from "@pulso/db/sql";
+import { fromPgPool, type Sql, type SqlClient } from "@pulso/db/sql";
 import {
   creatinePlan,
   findCoupon,
@@ -20,6 +20,7 @@ import {
 import { Hono } from "hono";
 import { clientIp, HttpError } from "./admin/http";
 import { applyPublicCors } from "./cors";
+import { customerPointAccount, mountAccount } from "./account-routes";
 import { buildCheckoutQuote, buildCheckoutSimulation, parseCheckoutQuote, parseCheckoutSimulate } from "./checkout-quote";
 import { mountPublicDrops } from "./admin/drop-routes";
 import { mountAdmin, type AdminAppOptions } from "./admin/router";
@@ -77,7 +78,7 @@ function assertProductionDataSource(): void {
 
 export function createApp(options: AdminAppOptions = {}): Hono {
   assertProductionDataSource();
-  const dataSql = (): Sql | null => {
+  const dataSql = (): SqlClient | null => {
     if (options.sql) return options.sql;
     if (process.env.API_DATA_SOURCE === "postgres" && process.env.DATABASE_URL) return fromPgPool(getPool());
     return null;
@@ -271,7 +272,7 @@ app.post("/v1/checkout/quote", async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = parseCheckoutQuote(body);
   if ("error" in parsed) return c.json({ error: parsed.error }, 400);
-  const quote = await buildCheckoutQuote(parsed, dataSql());
+  const quote = await buildCheckoutQuote(parsed, dataSql(), await customerPointAccount(c, dataSql(), options));
   if ("error" in quote) return c.json(quote.code ? { error: quote.error, code: quote.code } : { error: quote.error }, quote.status);
   c.header("cache-control", "no-store");
   return c.json(quote);
@@ -281,7 +282,7 @@ app.post("/v1/checkout/simulate", async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = parseCheckoutSimulate(body);
   if ("error" in parsed) return c.json({ error: parsed.error }, 400);
-  const quote = await buildCheckoutSimulation(parsed, dataSql());
+  const quote = await buildCheckoutSimulation(parsed, dataSql(), await customerPointAccount(c, dataSql(), options));
   if ("error" in quote) {
     return c.json(
       {
@@ -296,6 +297,7 @@ app.post("/v1/checkout/simulate", async (c) => {
   return c.json(quote);
 });
 
+  mountAccount(app, dataSql, options);
   mountPublicDrops(app, dataSql, options.now ?? (() => new Date()));
   mountAdmin(app, options);
   return app;

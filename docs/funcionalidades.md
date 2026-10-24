@@ -46,7 +46,7 @@ Kit pronto: slug `kit-bruto`.
 
 ## Carrinho `/carrinho` e gaveta
 
-Linha, quantidade, cupom, barra de frete. Contador do header só depois de `hydrated`, senão o servidor e o cliente divergem. A gravação no `localStorage` também espera o rehydrate: um `set` anterior (o `page_view`) sobrescrevia a sacola e a conta no refresh.
+Linha, quantidade, cupom, barra de frete. Contador do header só depois de `hydrated`, senão o servidor e o cliente divergem. A gravação no `localStorage` também espera o rehydrate: um `set` anterior (o `page_view`) sobrescrevia a sacola no refresh. Conta, CPF e pedido não entram mais nesse blob.
 
 Onde: `apps/web/src/lib/store.ts`, gaveta em `chrome.tsx`.
 

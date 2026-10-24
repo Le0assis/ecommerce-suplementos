@@ -530,16 +530,16 @@ Isso é `docker compose down`. Os volumes continuam. `pnpm db:up` devolve o banc
 pnpm db:reset
 ```
 
-### Apagar só o carrinho, a conta e o admin do navegador
+### Apagar a sacola do navegador
 
-O protótipo grava sessão em `localStorage`, não no Postgres.
+A sacola, os favoritos e a raspadinha ficam em `localStorage`, na chave `pulso-store`. Conta, senha, CPF e pedido não entram mais nessa chave. Um armazenamento antigo com esses campos é ignorado.
 
 1. Abra a loja.
 2. DevTools (F12) → Application / Armazenamento → Local Storage → o endereço da loja.
 3. Apague a chave `pulso-store`.
 4. Recarregue a página.
 
-A conta `ana@pulso.dev` volta, porque ela é semeada de novo no código quando o armazenamento é lido.
+A conta `ana@pulso.dev` volta na memória, porque o código a semeia de novo. A senha dela não é a da API. O cadastro de verdade é `POST /v1/account/register`, com cookie `pulso_customer`.
 
 ### Reinstalar dependências do zero
 

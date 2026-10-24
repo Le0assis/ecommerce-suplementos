@@ -16,7 +16,7 @@ Atualizado na etapa 1 (fundação). As referências de mercado e a tabela das 6 
 | Peça | Estado |
 | --- | --- |
 | `DATA_SOURCE=api` | Função `loadStorefront` pronta. Páginas ainda importam `@pulso/data` |
-| Pedido, cliente, pontos, wishlist, assinatura | Funcionam no `localStorage`. Tabelas SQL existem vazias |
+| Pedido e cliente | A API grava `customers` e `orders` em `/v1/account`. A vitrine demo ainda não chama. Wishlist e assinatura seguem no navegador. CPF e senha não vão para o `localStorage` |
 | Admin | Login com cookie httpOnly pela API. O CRUD mostra erro se a API estiver fora e não grava o mock. `/loja`, `/atletas` e `/blog` leem a API; sem ela, o catálogo |
 | CEP e frete | Tabela demo. Contrato de função estável para trocar pela ViaCEP |
 | Pagamento | UI completa, cobrança falsa, marcada na confirmação |

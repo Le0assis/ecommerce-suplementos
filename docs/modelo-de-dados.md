@@ -68,18 +68,22 @@ Arquivo `packages/db/sql/001_init.sql`.
 | --- | --- |
 | `products` | Seed grava `payload` jsonb. A API em modo postgres lê daqui |
 | `coupons`, `influencers`, `posts`, `reviews` | Seed. Reviews referenciam `products.slug` |
-| `customers`, `addresses` | Criadas, sem escrita da loja |
-| `orders`, `order_lines` | Status: `pagamento_pendente`, `pago`, `separando`, `enviado`, `entregue`, `cancelado` |
+| `customers`, `addresses` | A API de conta grava cadastro, telefone e endereço. A vitrine demo ainda não chama |
+| `orders`, `order_lines` | A API grava o pedido da sessão. Status: `pagamento_pendente`, `pago`, `separando`, `enviado`, `entregue`, `cancelado` |
 | `payments`, `shipments` | Prontas para o gateway e o rastreio |
 | `points_ledger` | `delta` com sinal. Motivo em texto |
 | `wishlist_items` | Par (`customer_id`, `product_slug`) |
 | `subscriptions` | `ativa`, `pausada`, `cancelada`, `next_charge_on` |
 
-A conta, o pedido e a raspadinha que você vê no site estão no `localStorage`, não nessas tabelas. O pedido demo `PLDEMOANA` também é código (`apps/web/src/lib/demo.ts`).
+A raspadinha que você vê no site continua no `localStorage`. A conta demo `ana@pulso.dev` e o pedido `PLDEMOANA` ainda nascem do código (`apps/web/src/lib/demo.ts`), só na memória. A chave `pulso-store` não grava `users`, `currentUserId` nem `guestOrders`. Um blob antigo com CPF, senha ou pedido é ignorado no merge. Sacola, favoritos e patches continuam no navegador.
 
 ## Conta e pedido no servidor
 
-A vitrine ainda grava conta e pedido no `localStorage`. A migração `012_conta_pedido.sql` prepara o banco e não cria rota. O preço do checkout continua saindo do catálogo, e o saldo de pontos no orçamento fica 0 até a sessão existir. Enquanto `serverPointAccount` não tiver saldo, `pointsToRedeem` maior que zero responde 422 `pontos_indisponiveis` no quote e no simulate. O checkout esconde o resgate, inclusive na conta demo com saldo, não envia o campo e mostra a frase do 422. As tabelas `customers`, `addresses`, `orders`, `order_lines`, `payments`, `shipments` e `points_ledger` continuam.
+`POST /v1/account/register` e `POST /v1/account/login` usam `customers`. `password_hash` é scrypt, o formato de `admin_users` e o comentário da 012. Esta rota não grava argon2 nem bcrypt. O CPF do cadastro e do pedido vai para `cpf_enc`, `cpf_key_id` e `cpf_hash`. `customers.cpf` não é preenchido. A resposta leva `cpfMasked` (`***.***.***-NN`), nunca os 11 dígitos, e não leva senha. Sem `CPF_ENC_KEY`, `CPF_HMAC_KEY` e `CPF_KEY_ID` juntos, o CPF no cadastro e o pedido respondem 503.
+
+`POST /v1/account/orders` exige a sessão. O preço sai de `quoteCart` no servidor. `orders.customer_id` e `orders.account_id` recebem o id da conta. `order_lines` é a fonte dos itens. `orders.items` é um snapshot jsonb sem CPF e sem cartão. O status inicial é `pagamento_pendente`. `total_cents` vem do orçamento e o domínio recusa total negativo. O e-mail do corpo não escolhe a conta nem o saldo. O cookie `pulso_customer` é `HttpOnly`, dura 30 dias e carrega o `jti` só no token. `customer_sessions` ainda não tem migração: o logout apaga o cookie, e um bearer copiado vale até expirar. O contrato para o Frontend está em [contratos-api.md](contratos-api.md) e [api.md](api.md).
+
+Sem cookie, ou com saldo zero, `pointsToRedeem` maior que zero responde 422 `pontos_indisponiveis` no quote, no simulate e no pedido. Com sessão e `points_balance` positivo, o orçamento usa esse saldo. A vitrine ainda não chama essas rotas e o checkout continua escondendo o resgate. `payments` e `shipments` seguem sem escrita desta rota. Pix, boleto e cartão não cobram.
 
 ### Mapeamento (pedido do Backend → banco)
 
@@ -141,6 +145,6 @@ Ainda sem migração, em `orders`:
 
 `order_lines.unit_price_cents` e os totais de `orders` são gravados pela API a partir de `product_variants` e de `quoteCart`. O cliente manda `slug`, `variant` e `qty`.
 
-A API, quando essas colunas existirem: `POST /v1/account/register`, `POST /v1/account/login` (cookie `HttpOnly`, `jti` em `customer_sessions`), `POST /v1/account/logout`, `GET /v1/account/orders`. O orçamento passa a ler `points_balance` e `points_lifetime` dessa sessão. E-mail no corpo do checkout não escolhe o saldo.
+Rotas já no ar, sem a tabela `customer_sessions`: `POST /v1/account/register`, `POST /v1/account/login` (cookie `HttpOnly`; o `jti` vai no token, não numa linha), `POST /v1/account/logout` (apaga o cookie), `GET /v1/account/me`, `GET /v1/account/orders` e `POST /v1/account/orders`. O orçamento com sessão lê `points_balance` e `points_lifetime` dessa conta. E-mail no corpo do checkout não escolhe o saldo. Quando o DBA criar `customer_sessions`, o logout passa a preencher `revoked_at`.
 
 Índices: categoria de produto, review por produto, pedido por e-mail, ledger por cliente.

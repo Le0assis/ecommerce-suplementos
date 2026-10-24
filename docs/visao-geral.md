@@ -14,7 +14,7 @@ A conta `ana@pulso.dev` / `pulso123` já chega com pedido `PLDEMOANA`, pontos e 
 
 - Pagamento não cobra. Pix e boleto mostram código falso com a palavra demonstração.
 - CEP não consulta os Correios nem a ViaCEP. Há uma tabela de CEPs públicos conhecidos e uma regra por região.
-- Pedido, ponto, favorito e patch de admin ficam no `localStorage` do navegador (chave `pulso-store`).
+- Sacola, favorito e patch de admin ficam no `localStorage` (chave `pulso-store`). Conta, CPF e pedido da API ficam no Postgres. A página de conta demo ainda não chama essa API.
 - `/admin` entra com a conta da API (`admin_users`). A sessão do site é o cookie httpOnly `pulso_admin_session`. Não há senha única no `.env`.
 - `DATA_SOURCE=api` ainda não alimenta as páginas. A API, separada, já lista o catálogo.
 

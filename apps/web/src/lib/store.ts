@@ -20,6 +20,7 @@ import {
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { demoUser } from "./demo";
+import { mergePersistedStore, persistedStoreSlice } from "./store-persist";
 import type { AccountUser, CartLine, OrderRecord, SavedAddress, ScratchRecord, SubscriptionRecord } from "./types";
 
 interface Toast {
@@ -105,11 +106,6 @@ function rewardReferral(users: AccountUser[], buyerId: string, at: string): Acco
       ],
     };
   });
-}
-
-function ensureDemo(users: AccountUser[]): AccountUser[] {
-  if (users.some((user) => user.email === demoUser.email)) return users;
-  return [demoUser, ...users];
 }
 
 export const usePulso = create<PulsoState>()(
@@ -395,35 +391,8 @@ export const usePulso = create<PulsoState>()(
         removeItem: (name) => localStorage.removeItem(name),
       })),
       skipHydration: true,
-      partialize: (state) => ({
-        users: state.users,
-        currentUserId: state.currentUserId,
-        cart: state.cart,
-        couponCode: state.couponCode,
-        wishlist: state.wishlist,
-        guestOrders: state.guestOrders,
-        patches: state.patches,
-        couponPatches: state.couponPatches,
-        contentPatches: state.contentPatches,
-        analytics: state.analytics,
-        scratch: state.scratch,
-        lgpdAccepted: state.lgpdAccepted,
-        newsletter: state.newsletter,
-      }),
-      merge: (persisted, current) => {
-        const stored = (persisted ?? {}) as Partial<PulsoState>;
-        return {
-          ...current,
-          ...stored,
-          users: ensureDemo(stored.users ?? current.users),
-          couponPatches: stored.couponPatches ?? {},
-          contentPatches: stored.contentPatches ?? {},
-          analytics: stored.analytics ?? [],
-          toasts: [],
-          cartOpen: false,
-          hydrated: true,
-        };
-      },
+      partialize: (state) => persistedStoreSlice(state),
+      merge: (persisted, current) => mergePersistedStore(persisted, current),
       onRehydrateStorage: () => (state) => {
         persistWrites = true;
         state?.setHydrated(true);

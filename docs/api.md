@@ -307,6 +307,21 @@ O card da home lê esse `unitsLeft` (o do drop, ou o mínimo do sabor). Não usa
 
 `POST /v1/drops/waitlist/erase` responde `410` `{ "error": "A saída da lista é só pelo atendimento." }`. Não apaga, não anonimiza e não diz se o e-mail estava na lista. Quem quer sair pede ao suporte. O dono ou o atendimento apaga uma inscrição com `DELETE /v1/admin/drops/waitlist/:id` (o `id` da linha) ou todas as inscrições ativas daquele e-mail com `POST /v1/admin/drops/waitlist/erase`. Os dois gravam `audit_log` com a ação `waitlist.erase`, sem o e-mail. A lista (`GET /v1/admin/drops/:id/waitlist`) abre para dono e atendimento. O dono recebe o e-mail inteiro. O atendimento recebe a máscara `j***@d***.com` (`julia@dominio.com`) e apaga com `DELETE` pelo `id` da linha. O editor recebe `403` e o corpo não traz e-mail. Sem sessão, `401`. Inscrição ausente, `404`. Anonimizar continua `POST /v1/admin/drops/waitlist/anonymize`, papel de editor. A confirmação por link no e-mail fica para o Léo decidir.
 
+## Conta da loja
+
+O Frontend para de gravar conta, senha, CPF e pedido no `localStorage`. O contrato completo, com os corpos, está em [contratos-api.md](contratos-api.md). Resumo:
+
+- `POST /v1/account/register` — `{ "name", "email", "password", "cpf"? }`. Senha com 12 caracteres ou mais. `201` `{ "user": { "id", "email", "name", "cpfMasked" } }` e cookie `pulso_customer`.
+- `POST /v1/account/login` — `{ "email", "password" }`. `200` no mesmo formato. `401` não revela se o e-mail existe.
+- `POST /v1/account/logout` — `204` e `Max-Age=0`. Sem tabela `customer_sessions`, o bearer copiado segue válido até expirar. A página usa só o cookie.
+- `GET /v1/account/me` — o mesmo `user`.
+- `GET /v1/account/orders` — só a sessão. A outra conta recebe lista vazia.
+- `POST /v1/account/orders` — o corpo do simulate. O servidor recalcula. `account_id` e `customer_id` são o id da conta. `order_lines` é a fonte dos itens. `items` jsonb é opcional como snapshot. Status inicial `pagamento_pendente`. `total_cents >= 0`.
+
+Cookie `HttpOnly`, `SameSite=Lax`, 30 dias. A origem refletida inclui `Access-Control-Allow-Credentials: true`. A página manda `credentials: "include"` e não persiste o token. O hash é scrypt, como `admin_users` e como a 012 descreve. O limite é o balde do admin (30 falhas em 15 minutos, IP e e-mail+IP, `Retry-After: 900`), nas chaves `pulso:account:login:*`. Não há coluna `failed_attempts` em `customers`, então não há atraso progressivo. CPF só em `cpf_enc` / `cpf_hash` / `cpf_key_id`. JSON, log de sucesso e a lista do admin levam no máximo `***.***.***-NN`. Sem as três chaves de CPF no ambiente, cadastro com CPF e pedido respondem 503.
+
+Quote e simulate com o cookie leem `points_balance`. Sem sessão ou com saldo zero, `pointsToRedeem` maior que zero continua 422 `pontos_indisponiveis`. O e-mail do corpo não escolhe a conta.
+
 ## Variação sem porção
 
 `servings` menor que 1 é recusado também em rascunho. A API responde `400` (`A variação precisa de pelo menos uma porção.`). O painel mostra esse erro e não grava por fora. A coluna no banco já exige `servings > 0`.

@@ -29,6 +29,6 @@ O CI (`.github/workflows/ci.yml`) roda lint, typecheck, Vitest e build com `DATA
 
 - Cobrança sandbox (`mp_sandbox_` / `pm_sandbox_`).
 - CEP em tabela local.
-- Pedido, conta e analytics no `localStorage`.
+- A vitrine ainda não envia a conta para a API. O `localStorage` guarda sacola e analytics, não CPF nem senha. A API grava `customers` e `orders` quando o Frontend chama `/v1/account`.
 - Senha de admin ainda é um segredo único no `.env`, com papéis prontos mas uma conta dono no adaptador.
 - Registro `NI-DEMO`.

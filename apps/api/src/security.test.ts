@@ -97,6 +97,7 @@ describe("origem e IP", () => {
     const local = await app.request("/v1/products", { headers: { origin: "http://127.0.0.1:43123" } });
     expect(local.status).toBe(200);
     expect(local.headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:43123");
+    expect(local.headers.get("access-control-allow-credentials")).toBe("true");
     const closed = applyPublicCors(
       { req: { header: () => "https://loja.example", method: "GET" }, header() {}, json: (body: unknown, status: number) => Response.json(body, { status }) } as never,
       { NODE_ENV: "production" },

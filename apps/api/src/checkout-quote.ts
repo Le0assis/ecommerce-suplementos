@@ -69,17 +69,22 @@ function onlyKeys(row: Record<string, unknown>, allowed: Set<string>): boolean {
   return Object.keys(row).every((key) => allowed.has(key));
 }
 
+export interface PointAccount {
+  pointsBalance: number;
+  lifetimePoints: number;
+}
+
 /**
  * Saldo e pontos de vida não vêm do navegador.
- * null enquanto não houver sessão de cliente no servidor.
+ * null enquanto a requisição não tiver sessão de cliente no servidor.
  */
-export function serverPointAccount(): { pointsBalance: number; lifetimePoints: number } | null {
-  return null;
+export function serverPointAccount(account: PointAccount | null = null): PointAccount | null {
+  return account;
 }
 
 type PointsBlock = { error: string; status: 422; code: "pontos_indisponiveis" };
 
-function unavailablePoints(pointsToRedeem: number | undefined, account: ReturnType<typeof serverPointAccount>): PointsBlock | null {
+function unavailablePoints(pointsToRedeem: number | undefined, account: PointAccount | null): PointsBlock | null {
   if ((pointsToRedeem ?? 0) <= 0) return null;
   if (account && account.pointsBalance > 0) return null;
   return { error: "O saldo de pontos ainda não está no servidor.", status: 422, code: "pontos_indisponiveis" };
@@ -176,9 +181,18 @@ async function resolveCoupon(sql: Sql | null, code: string): Promise<{ coupon: C
   return findCoupon(code, await couponList(sql));
 }
 
+export interface PricedOrderLine {
+  slug: string;
+  variant: string;
+  name: string;
+  qty: number;
+  unitCents: number;
+}
+
 interface PricedCheckout {
   quoteLines: QuoteLine[];
   summaryLines: CheckoutQuoteSummary["lines"];
+  orderLines: PricedOrderLine[];
   coupon: Coupon | null;
   loyalty: Awaited<ReturnType<typeof readLoyalty>> | null;
 }
@@ -187,6 +201,7 @@ async function priceCheckout(input: CheckoutQuoteInput, sql: Sql | null): Promis
   const loaded = await loadProducts(sql ?? undefined);
   const quoteLines: QuoteLine[] = [];
   const summaryLines: CheckoutQuoteSummary["lines"] = [];
+  const orderLines: PricedOrderLine[] = [];
   for (const line of input.lines) {
     const product = loaded.products.find((item) => item.slug === line.slug);
     if (!product) return { error: "Produto não encontrado.", status: 404 };
@@ -194,6 +209,7 @@ async function priceCheckout(input: CheckoutQuoteInput, sql: Sql | null): Promis
     if (!variant) return { error: "Variação não encontrada.", status: 404 };
     const unitCents = variant.priceCents;
     summaryLines.push({ name: product.name, unitCents, qty: line.qty, totalCents: unitCents * line.qty });
+    orderLines.push({ slug: line.slug, variant: line.variant, name: product.name, qty: line.qty, unitCents });
     quoteLines.push({
       unitPriceCents: unitCents,
       quantity: line.qty,
@@ -204,7 +220,7 @@ async function priceCheckout(input: CheckoutQuoteInput, sql: Sql | null): Promis
   }
   const resolved = input.couponCode ? await resolveCoupon(sql, input.couponCode) : { coupon: null };
   if (input.couponCode && resolved.error) return { error: resolved.error, status: 400 };
-  return { quoteLines, summaryLines, coupon: resolved.coupon, loyalty: sql ? await readLoyalty(sql) : null };
+  return { quoteLines, summaryLines, orderLines, coupon: resolved.coupon, loyalty: sql ? await readLoyalty(sql) : null };
 }
 
 function loyaltyInput(loyalty: PricedCheckout["loyalty"]) {
@@ -223,10 +239,11 @@ function loyaltyInput(loyalty: PricedCheckout["loyalty"]) {
 export async function buildCheckoutQuote(
   input: CheckoutQuoteInput,
   sql: Sql | null,
+  account: PointAccount | null = null,
 ): Promise<{ summary: CheckoutQuoteSummary } | { error: string; status: 400 | 404 | 422; code?: "pontos_indisponiveis" }> {
   const priced = await priceCheckout(input, sql);
   if ("error" in priced) return priced;
-  const account = serverPointAccount();
+  account = serverPointAccount(account);
   const blocked = unavailablePoints(input.pointsToRedeem, account);
   if (blocked) return blocked;
   const points = account ?? { pointsBalance: 0, lifetimePoints: 0 };
@@ -254,10 +271,26 @@ export async function buildCheckoutQuote(
   return { summary };
 }
 
+const SIMULATED_MESSAGE = "Nenhum valor foi cobrado. Pix, boleto e cartão são simulação de Mercado Pago / Pagar.me.";
+
 export async function buildCheckoutSimulation(
   input: CheckoutSimulateInput,
   sql: Sql | null,
+  account: PointAccount | null = null,
 ): Promise<{ simulated: true; message: string; quote: Quote } | { error: string; status: 400 | 404 | 422; code?: "pontos_indisponiveis"; errors?: Record<string, string> }> {
+  const placed = await buildPlacedCheckout(input, sql, account);
+  if ("error" in placed) return placed;
+  return { simulated: true, message: SIMULATED_MESSAGE, quote: placed.quote };
+}
+
+export async function buildPlacedCheckout(
+  input: CheckoutSimulateInput,
+  sql: Sql | null,
+  account: PointAccount | null = null,
+): Promise<
+  | { quote: Quote; lines: PricedOrderLine[]; message: string }
+  | { error: string; status: 400 | 404 | 422; code?: "pontos_indisponiveis"; errors?: Record<string, string> }
+> {
   const validated = validateCheckout(input.checkout);
   if (!validated.ok) return { error: "Pedido incompleto.", status: 400, errors: validated.errors };
   const rates = shippingRates(input.checkout.cep);
@@ -267,7 +300,7 @@ export async function buildCheckoutSimulation(
   const pac = rates.rates.find((rate) => rate.id === "pac");
   const sedex = rates.rates.find((rate) => rate.id === "sedex");
   if (!pac || !sedex) return { error: "Frete indisponível.", status: 400 };
-  const account = serverPointAccount();
+  account = serverPointAccount(account);
   const blocked = unavailablePoints(input.pointsToRedeem, account);
   if (blocked) return blocked;
   const points = account ?? { pointsBalance: 0, lifetimePoints: 0 };
@@ -283,9 +316,6 @@ export async function buildCheckoutSimulation(
     sedexCents: sedex.priceCents,
     ...loyaltyInput(priced.loyalty),
   });
-  return {
-    simulated: true,
-    message: "Nenhum valor foi cobrado. Pix, boleto e cartão são simulação de Mercado Pago / Pagar.me.",
-    quote,
-  };
+  if (quote.totalCents < 0) return { error: "O total do pedido não pode ser negativo.", status: 400 };
+  return { quote, lines: priced.orderLines, message: SIMULATED_MESSAGE };
 }

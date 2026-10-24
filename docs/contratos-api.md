@@ -97,7 +97,7 @@ Body:
 }
 ```
 
-Cada linha só tem `slug`, `variant` e `qty`. Preço, desconto, `pointsBalance`, `lifetimePoints` e `redeemPoints` no corpo respondem 400 `{ "error": "O preço é calculado no servidor." }`. O preço sai de `product_variants`. O cupom sai da tabela. O saldo de pontos no servidor ainda não existe (`serverPointAccount` devolve `null`). `pointsToRedeem` maior que zero responde 422 `{ "error": "O saldo de pontos ainda não está no servidor.", "code": "pontos_indisponiveis" }`, no quote e no simulate. Zero ou campo ausente segue 200 com `pointsRedeemed` 0. A vitrine não envia o campo. Isso volta quando o Backend ler o saldo da sessão.
+Cada linha só tem `slug`, `variant` e `qty`. Preço, desconto, `pointsBalance`, `lifetimePoints` e `redeemPoints` no corpo respondem 400 `{ "error": "O preço é calculado no servidor." }`. O preço sai de `product_variants`. O cupom sai da tabela. Sem cookie de conta, ou com `points_balance` zero, `pointsToRedeem` maior que zero responde 422 `{ "error": "O saldo de pontos ainda não está no servidor.", "code": "pontos_indisponiveis" }`, no quote, no simulate e em `POST /v1/account/orders`. Com o cookie `pulso_customer` e saldo positivo, o orçamento lê `points_balance` e `points_lifetime` dessa conta. O e-mail do `checkout` não escolhe o saldo. Zero ou campo ausente segue 200 com `pointsRedeemed` 0. A vitrine ainda não envia o campo.
 
 Com o Caos limão, `PULSO10` e Pix/PAC no CEP `01310100`, o `quote` traz `discountCents` 1499, `pixCents` 1349, `shippingCents` 1890 e `totalCents` 14032. A resposta também traz `simulated: true` e a frase de que Mercado Pago e Pagar.me não cobraram. `checkout` passa por `validateCheckout`. Erro de formulário: 400 `{ "error": "Pedido incompleto.", "errors": { ... } }`.
 
@@ -131,7 +131,82 @@ O corpo não traz CEP nem meio de pagamento, então a resposta não tem Pix nem 
 }
 ```
 
-`pointsToRedeem` maior que zero, enquanto o saldo não vier do servidor, responde 422 `{ "code": "pontos_indisponiveis" }`. Zero ou ausência segue com `pointsRedeemed` 0. A vitrine não manda o campo. `pointsEarned` não inclui o bônus do Pix, porque o meio de pagamento não veio no corpo. Campo de dinheiro a mais responde 400. Cupom inexistente responde 400. `Cache-Control: no-store`. O slider e o texto de resgate na conta dependem do Backend passar a devolver `points_balance` de verdade.
+`pointsToRedeem` maior que zero, sem sessão ou com saldo zero, responde 422 `{ "code": "pontos_indisponiveis" }`. Com o cookie da conta e saldo positivo, `pointsRedeemed` sai desse saldo. Zero ou ausência segue com `pointsRedeemed` 0. A vitrine não manda o campo. `pointsEarned` não inclui o bônus do Pix, porque o meio de pagamento não veio no corpo. Campo de dinheiro a mais responde 400. Cupom inexistente responde 400. `Cache-Control: no-store`.
+
+## Conta da loja
+
+Contrato para o Frontend. A vitrine deixa de gravar conta, senha, CPF e pedido no `localStorage` (`pulso-store` não persiste `users`, `currentUserId` nem `guestOrders`; um blob antigo é descartado no merge). Sacola, cupom, favoritos, patches, raspadinha, newsletter e o aviso de cookies continuam no navegador. A conta demo `ana@pulso.dev` ainda existe só na memória do código, até as páginas chamarem estas rotas.
+
+A chamada manda `credentials: "include"`. A API reflete a origem permitida e envia `Access-Control-Allow-Credentials: true`. O cookie é `pulso_customer` (`HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` de 30 dias, `Secure` fora de `ADMIN_COOKIE_SECURE=false`). O JavaScript não lê esse cookie. Não copie o valor para `localStorage`, `sessionStorage` nem para estado persistido. `Authorization: Bearer` com o mesmo valor também vale, para um proxy servidor-a-servidor. Sem `ADMIN_SESSION_SECRET` (mínimo 16, e não o exemplo em produção) as rotas respondem 503.
+
+O limite de login segue o balde do admin: só senha errada, 30 falhas em 15 minutos, por IP e por `loginEmailIpKey` (e-mail com `trim` e minúsculas, `|`, IP). Chaves Redis: `pulso:account:login:ip:<ip>`, `pulso:account:login:ipuser:<ip>:<email>` e `pulso:account:login:emailip:<email>|<ip>`. Sem `REDIS_URL`, o `Map` do processo. A 31ª responde 429, `Retry-After: 900` e `{ "error": "Muitas tentativas de login. Espera alguns minutos." }`. Falhas de outras contas no mesmo IP também seguram a senha certa. As falhas da própria conta saem quando a senha certa entra. `customers` não tem `failed_attempts`: não há atraso progressivo nem vaga única em andamento. Estas rotas também passam pelo limite público de 60 `POST` por minuto no mesmo IP.
+
+O hash é scrypt (`scrypt$N$r$p$…`), o mesmo de `admin_users`. A migração 012 descreve esse formato. Não é argon2 nem bcrypt.
+
+CPF nunca volta em claro, nem em log de sucesso, nem no JSON. Cadastro e pedido gravam `cpf_enc` (AES-256-GCM), `cpf_key_id` e `cpf_hash` (HMAC-SHA256). `customers.cpf` fica nulo nessa escrita. A máscara é `***.***.***-NN`. As três variáveis `CPF_KEY_ID`, `CPF_ENC_KEY` e `CPF_HMAC_KEY` (32 bytes em base64) vêm juntas. Faltando, CPF no cadastro ou pedido responde 503. CPF inválido é 400. E-mail ou CPF já usado é 409. O admin continua listando só `cpfMasked`.
+
+### `POST /v1/account/register`
+
+`{ "name", "email", "password", "cpf"? }`. Senha com no mínimo 12 caracteres. E-mail gravado em minúsculas. `201` `{ "user": { "id", "email", "name", "cpfMasked" } }` e `Set-Cookie`. Sem `cpf`, `cpfMasked` é `null`. A senha não sai no JSON.
+
+### `POST /v1/account/login`
+
+`{ "email", "password" }`. `200` no mesmo formato do cadastro. Senha errada ou conta sem `password_hash`: `401` `{ "error": "E-mail ou senha não confere." }`. O corpo não diz se o e-mail existe.
+
+### `POST /v1/account/logout`
+
+`204` e cookie com `Max-Age=0`. Não há linha `customer_sessions`: o logout não revoga o bearer. Quem guardou o token fora do cookie continua autenticado até os 30 dias. A página usa só o cookie.
+
+### `GET /v1/account/me`
+
+`200` `{ "user": { "id", "email", "name", "cpfMasked" } }`. Sem sessão, `401`. `Cache-Control: no-store`.
+
+### `GET /v1/account/orders`
+
+Só pedidos em que `account_id` e `customer_id` são o id da sessão. `200`:
+
+```json
+{
+  "orders": [
+    {
+      "id": "ord_…",
+      "code": "PL…",
+      "status": "pagamento_pendente",
+      "totalCents": 15381,
+      "createdAt": "2026-10-24T15:00:00.000Z",
+      "lines": [{ "slug": "caos-conta", "variantId": "caos-conta__limao__300", "name": "Caos Teste", "quantity": 1, "unitPriceCents": 14990 }]
+    }
+  ]
+}
+```
+
+A outra conta recebe `{ "orders": [] }`. Não há CPF nem cartão.
+
+### `POST /v1/account/orders`
+
+Exige sessão. O corpo é o de `POST /v1/checkout/simulate`: `lines` (`slug`, `variant`, `qty`), `couponCode?`, `pointsToRedeem?` e `checkout`. Preço, total, `unitCents` ou qualquer chave a mais responde 400 `{ "error": "O preço é calculado no servidor." }`. O servidor recalcula. Com o Caos de teste a R$ 149,90, Pix e PAC no CEP `01310100`, sem cupom: `subtotalCents` 14990, `discountCents` 0, `pixCents` 1499, `shippingCents` 1890, `totalCents` 15381.
+
+`200`:
+
+```json
+{
+  "message": "Nenhum valor foi cobrado. Pix, boleto e cartão são simulação de Mercado Pago / Pagar.me.",
+  "order": {
+    "id": "ord_…",
+    "code": "PL…",
+    "status": "pagamento_pendente",
+    "email": "ana.conta@pulso.test",
+    "subtotalCents": 14990,
+    "discountCents": 0,
+    "pixCents": 1499,
+    "shippingCents": 1890,
+    "totalCents": 15381,
+    "lines": [{ "slug": "caos-conta", "variantId": "caos-conta__limao__300", "name": "Caos Teste", "quantity": 1, "unitPriceCents": 14990 }]
+  }
+}
+```
+
+`email` do pedido é o da conta, não o do corpo. `status` é um dos valores do CHECK da 001, e o primeiro é `pagamento_pendente`. `orders.account_id` = `orders.customer_id` = id da sessão. `order_lines` guarda os itens. `orders.items` repete o snapshot, sem CPF e sem cartão. `total_cents` é o do servidor e é maior ou igual a zero. A rota também grava o endereço em `addresses` e o telefone (só dígitos) em `customers.phone`. O CPF do checkout passa por `writeCustomerCpf`. Pontos debitados usam `floor(pointsCents / POINT_VALUE_CENTS)` com o valor padrão de 1 centavo por ponto. Não há cobrança.
 
 ## Admin
 

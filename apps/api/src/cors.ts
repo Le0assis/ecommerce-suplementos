@@ -19,6 +19,7 @@ export function applyPublicCors(c: Context, env: NodeJS.ProcessEnv = process.env
   const devLocal = env.NODE_ENV !== "production" && LOCAL_ORIGIN.test(origin);
   if (!allowed.has(origin) && !devLocal) return c.json({ error: "Origem não permitida." }, 403);
   c.header("access-control-allow-origin", origin);
+  c.header("access-control-allow-credentials", "true");
   c.header("vary", "Origin");
   c.header("access-control-allow-headers", "content-type, authorization");
   c.header("access-control-allow-methods", "GET, POST, OPTIONS");
