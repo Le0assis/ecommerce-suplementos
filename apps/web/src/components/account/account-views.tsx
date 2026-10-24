@@ -5,6 +5,7 @@ import { ProductCard } from "@/components/product/product-card";
 import { useStoreData } from "@/components/store-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { canRedeemPoints } from "@/lib/checkout-quote";
 import { useCurrentUser, usePulso, useWishlist } from "@/lib/store";
 import type { SavedAddress } from "@/lib/types";
 import { accountExport, formatBRL, formatCep, levelFor, nextLevel, referralCodeFrom, REFERRED_POINTS, REFERRER_POINTS } from "@pulso/domain";
@@ -24,6 +25,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       <h1 className="font-display text-7xl leading-none">{mode === "login" ? "Entra" : "Cria a conta"}</h1>
       <p className="mt-2 text-sm text-muted-foreground">Protótipo: a senha fica neste navegador, sem servidor. Conta demo ana@pulso.dev / pulso123.</p>
       <form
+        aria-label={mode === "login" ? "Entrar na conta" : "Criar conta"}
         className="mt-6 space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
@@ -75,7 +77,7 @@ export function AccountHome() {
           <LevelBar lifetime={user.pointsLifetime} balance={user.pointsBalance} />
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <NavCard href="/conta/pedidos" title="Pedidos" text={`${user.orders.length} na conta`} />
-            <NavCard href="/conta/pontos" title="Pontos" text={`${user.pointsBalance} pra usar`} />
+            {canRedeemPoints(user.pointsBalance) ? <NavCard href="/conta/pontos" title="Pontos" text={`${user.pointsBalance} pra usar`} /> : null}
             <NavCard href="/conta/assinaturas" title="Assinaturas" text={`${user.subscriptions.length} recorrência(s)`} />
             <NavCard href="/conta/enderecos" title="Endereços" text={`${user.addresses.length} salvos`} />
             <NavCard href="/conta/indicar" title="Indicar" text="150 pontos quando a pessoa compra" />
@@ -177,7 +179,7 @@ export function PointsView() {
       {user ? (
         <div className="mx-auto max-w-3xl px-4 py-10">
           <h1 className="font-display text-6xl">Pontos</h1>
-          <p className="mt-2 text-muted-foreground">100 pontos = R$ 1. Dá pra usar até 20% do pedido. Pix rende 20% de pontos a mais.</p>
+          {canRedeemPoints(user.pointsBalance) ? <p className="mt-2 text-muted-foreground">100 pontos = R$ 1. Dá pra usar até 20% do pedido. Pix rende 20% de pontos a mais.</p> : null}
           <LevelBar lifetime={user.pointsLifetime} balance={user.pointsBalance} />
           <ul className="mt-6 space-y-2">
             {user.pointsHistory.map((event) => (

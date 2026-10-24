@@ -9,9 +9,9 @@ export const metadata = { title: "Atletas" };
 
 function AthleteGrid({ people }: { people: PublicAthleteCard[] }) {
   return (
-    <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="mt-8 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {people.map((influencer) => (
-        <Link key={influencer.slug} href={influencer.path}>
+        <Link key={influencer.slug} href={influencer.path} className="block min-w-0">
           <AthletePoster
             name={influencer.name}
             handle={influencer.handle}
@@ -45,7 +45,7 @@ async function LiveAthletes() {
 
 export default function AthletesPage() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
+    <div className="mx-auto min-w-0 max-w-6xl px-4 py-10">
       <h1 className="font-display text-7xl leading-[0.85]">Atletas</h1>
       <p className="mt-3 max-w-xl text-muted-foreground">Cupom de quem treina com a gente. Não acumula com outro cupom de porcentagem — o maior desconto fica.</p>
       <Suspense fallback={<AthleteGrid people={catalogCards()} />}>

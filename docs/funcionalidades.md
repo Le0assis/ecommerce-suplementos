@@ -52,7 +52,7 @@ Onde: `apps/web/src/lib/store.ts`, gaveta em `chrome.tsx`.
 
 ## Checkout `/checkout`
 
-Passos: contato, entrega, pagamento, revisão. CEP preenche num único `setForm`. Frete usa o nível de quem está logado (`levelFor`). Cartão mostra a tabela de parcelas do orçamento. Pontos: slider se houver saldo.
+Passos: contato, entrega, pagamento, revisão. CEP preenche num único `setForm`. Frete usa o nível de quem está logado (`levelFor`). Cartão mostra a tabela de parcelas do orçamento. O slider de pontos só aparece com saldo positivo. Saldo 0 ou ausente esconde o resgate no checkout e na conta.
 
 Validação junta todos os erros (`validateCheckout`): e-mail, CPF, CEP, telefone, endereço, UF, cartão (Luhn e validade), 18+, termos, LGPD.
 
@@ -60,7 +60,7 @@ Pedido Pix/boleto nasce `pagamento_pendente` e os pontos esperam o avanço de st
 
 Onde: `checkout-view.tsx`. A confirmação em `/pedido/confirmado?codigo=` mostra a mensagem do sandbox e o `externalId`. A função pura é `sandboxCharge` em `packages/domain/src/sandbox-payment.ts`. A API expõe `POST /v1/payments/sandbox`. A vitrine chama a função direto, para o pedido no navegador e a API não divergirem.
 
-O payload novo está em `serverCheckoutPayload`: `{ "lines": [{ "slug", "variant", "qty" }], "couponCode"?, "pointsToRedeem"? }`. `variant` é o id da variação. No catálogo o id é `slug__sabor__tamanho`, com o id do tamanho (`caos-pre-treino__limao__300`, não `__30`). Preço e nome não entram. `POST /v1/checkout/quote` responde `{ "summary": { "lines": [{ "name", "unitCents", "qty", "totalCents" }], "subtotalCents", "discountCents", "pointsRedeemed", "pointsEarned", "totalCents" } }`. Sem CEP no corpo, `shippingCents` fica de fora. Sem sessão de cliente o saldo no servidor é 0, então `pointsRedeemed` volta 0. `POST /v1/checkout/simulate` aceita a mesma linha e recusa preço, desconto e saldo vindos do navegador. `CHECKOUT_QUOTE_SHA` está vazio, então a tela segue o `quoteCart` local e `POST /api/checkout/quote` responde 409 sem chamar a API. Quando o SHA deste contrato entrar nessa constante, o resumo visível passa a ser o `summary`. A revisão também lembra os 18 anos.
+O payload novo está em `serverCheckoutPayload`: `{ "lines": [{ "slug", "variant", "qty" }], "couponCode"? }`. `pointsToRedeem` não sai da vitrine: o Backend ainda devolve saldo 0 (`serverPointAccount` em `apps/api/src/checkout-quote.ts`) e o resgate no servidor depende de uma sessão de cliente que leia `customers.points_balance`. Quando esse saldo existir, o slider e o campo voltam. `variant` é o id da variação. No catálogo o id é `slug__sabor__tamanho`, com o id do tamanho (`caos-pre-treino__limao__300`, não `__30`). Preço e nome não entram. `POST /v1/checkout/quote` responde `{ "summary": { "lines": [{ "name", "unitCents", "qty", "totalCents" }], "subtotalCents", "discountCents", "pointsRedeemed", "pointsEarned", "totalCents" } }`. Sem CEP no corpo, `shippingCents` fica de fora. Sem sessão de cliente o saldo no servidor é 0, então `pointsRedeemed` volta 0. `POST /v1/checkout/simulate` aceita a mesma linha e recusa preço, desconto e saldo vindos do navegador. `CHECKOUT_QUOTE_SHA` está vazio, então a tela segue o `quoteCart` local e `POST /api/checkout/quote` responde 409 sem chamar a API. Quando o SHA deste contrato entrar nessa constante, o resumo visível passa a ser o `summary`. A revisão também lembra os 18 anos.
 
 ## Conta
 

@@ -161,9 +161,9 @@ export function HomeView({ dropCard, banners }: { dropCard: HomeDropCard | null;
 
       <section className="mx-auto mt-14 max-w-6xl px-4">
         <h2 className="font-display text-6xl leading-none">Treina com quem aparece</h2>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {influencers.map((influencer) => (
-            <Link key={influencer.slug} href={`/atletas/${influencer.slug}`}>
+            <Link key={influencer.slug} href={`/atletas/${influencer.slug}`} className="block min-w-0">
               <AthletePoster
                 name={influencer.name}
                 handle={influencer.handle}

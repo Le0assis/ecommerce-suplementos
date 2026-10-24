@@ -176,6 +176,7 @@ test("editor não vê pedido nem fidelidade; atendimento vê pedido", async () =
     assert.equal((await handleAdminData(session("atendimento"), "GET", ["audit"], search, undefined)).status, 403);
     assert.equal((await handleAdminData(session("editor"), "GET", ["settings", "loyalty"], search, undefined)).status, 403);
     assert.equal((await handleAdminData(session("editor"), "GET", ["drops", "drop-05", "waitlist"], search, undefined)).status, 403);
+    assert.equal((await handleAdminData({ ...session("editor"), src: "api" as const, apiToken: "token-de-teste" }, "GET", ["drops", "drop-05", "waitlist"], search, undefined)).status, 403);
     assert.equal((await handleAdminData(session("editor"), "DELETE", ["drops", "waitlist", "linha-1"], search, undefined)).status, 403);
     assert.equal((await handleAdminData(session("editor"), "POST", ["drops", "waitlist", "erase"], search, { email: "a@pulso.test" })).status, 403);
     const support = { ...session("atendimento"), src: "api" as const, apiToken: "token-de-teste" };
@@ -198,5 +199,58 @@ test("editor não vê pedido nem fidelidade; atendimento vê pedido", async () =
     if (previousApi === undefined) delete process.env.API_URL;
     else process.env.API_URL = previousApi;
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("o atendimento não recebe o e-mail cru da lista", async () => {
+  const previous = process.env.API_URL;
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({
+      items: [{ id: "linha-1", email: "joao@drop.com", anonymizedAt: null }],
+      total: 1,
+    }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  process.env.API_URL = `http://127.0.0.1:${port}`;
+  const search = new URLSearchParams();
+  try {
+    const support = await handleAdminData(
+      { ...session("atendimento"), src: "api", apiToken: "token-de-teste" },
+      "GET",
+      ["drops", "drop-1", "waitlist"],
+      search,
+      undefined,
+    );
+    assert.equal(support.status, 200);
+    const masked = support.body.items as { email: string }[];
+    assert.equal(masked[0]?.email, "j***@d***.com");
+    assert.equal(JSON.stringify(support.body).includes("joao@drop.com"), false);
+
+    const owner = await handleAdminData(
+      { ...session("dono"), src: "api", apiToken: "token-de-teste" },
+      "GET",
+      ["drops", "drop-1", "waitlist"],
+      search,
+      undefined,
+    );
+    assert.equal((owner.body.items as { email: string }[])[0]?.email, "joao@drop.com");
+
+    const editor = await handleAdminData(
+      { ...session("editor"), src: "api", apiToken: "token-de-teste" },
+      "GET",
+      ["drops", "drop-1", "waitlist"],
+      search,
+      undefined,
+    );
+    assert.equal(editor.status, 403);
+    assert.equal(editor.body.error, "Seu papel não faz isso.");
+    assert.equal(JSON.stringify(editor.body).includes("joao"), false);
+  } finally {
+    if (previous === undefined) delete process.env.API_URL;
+    else process.env.API_URL = previous;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

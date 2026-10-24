@@ -31,9 +31,10 @@ test("quiz, sabor, sacola, login e raspadinha respondem ao clique", async ({ pag
   await expect(page.getByRole("button", { name: "Revelar sem raspar" })).toBeVisible();
 
   await page.goto("/entrar");
-  await page.getByLabel("E-mail").fill("ana@pulso.dev");
-  await page.getByLabel("Senha").fill("pulso123");
-  await page.getByRole("button", { name: "Entrar" }).click();
+  const login = page.locator("#conteudo").getByRole("form", { name: "Entrar na conta" });
+  await login.getByLabel("E-mail").fill("ana@pulso.dev");
+  await login.getByLabel("Senha").fill("pulso123");
+  await login.getByRole("button", { name: "Entrar" }).click();
   await expect(page).toHaveURL(/\/conta$/);
   await expect(page.getByRole("heading", { name: /Ana/ })).toBeVisible();
   await page.reload();

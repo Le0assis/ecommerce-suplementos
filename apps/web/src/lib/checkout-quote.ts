@@ -45,6 +45,11 @@ export function serverCheckoutActive(): boolean {
   return CHECKOUT_QUOTE_SHA.trim().length > 0;
 }
 
+/** O saldo do servidor ainda é 0. Sem número positivo, a tela não oferece resgate. */
+export function canRedeemPoints(balance: number | null | undefined): boolean {
+  return typeof balance === "number" && Number.isFinite(balance) && balance > 0;
+}
+
 export function serverCheckoutPayload(input: {
   lines: { productSlug: string; variantId: string; quantity: number }[];
   couponCode?: string | null;
@@ -59,8 +64,7 @@ export function serverCheckoutPayload(input: {
   };
   const coupon = input.couponCode?.trim();
   if (coupon) payload.couponCode = coupon.toUpperCase();
-  const points = Math.floor(input.pointsToRedeem ?? 0);
-  if (points > 0) payload.pointsToRedeem = points;
+  // pointsToRedeem fica de fora: o saldo no servidor é 0 até existir sessão de cliente.
   return payload;
 }
 
@@ -90,8 +94,6 @@ export function onlyQuoteFields(body: unknown): ServerCheckoutPayload | null {
   }
   const payload: ServerCheckoutPayload = { lines };
   if (typeof root.couponCode === "string" && root.couponCode.trim()) payload.couponCode = root.couponCode.trim().toUpperCase();
-  const points = typeof root.pointsToRedeem === "number" ? Math.floor(root.pointsToRedeem) : 0;
-  if (points > 0) payload.pointsToRedeem = points;
   return payload;
 }
 

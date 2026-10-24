@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { siteConfig } from "@/lib/config";
-import { readServerQuote, serverCheckoutActive, serverCheckoutPayload, type ServerQuoteSummary } from "@/lib/checkout-quote";
+import { canRedeemPoints, readServerQuote, serverCheckoutActive, serverCheckoutPayload, type ServerQuoteSummary } from "@/lib/checkout-quote";
 import { buildSimulatedPayment, makeOrderCode, quoteFromCart, useCurrentUser, usePulso } from "@/lib/store";
 import type { OrderRecord, SavedAddress } from "@/lib/types";
 import {
@@ -73,11 +73,13 @@ export function CheckoutView() {
   const rates = shippingRates(form.cep);
   const pac = rates.ok ? rates.rates[0]!.priceCents : 0;
   const sedex = rates.ok ? rates.rates[1]!.priceCents : 0;
+  const pointsBalance = user?.pointsBalance;
+  const redeemPoints = canRedeemPoints(pointsBalance) ? redeem : 0;
   const quote = quoteFromCart({
     cart,
     couponCode,
-    redeemPoints: redeem,
-    pointsBalance: user?.pointsBalance ?? 0,
+    redeemPoints,
+    pointsBalance: pointsBalance ?? 0,
     lifetimePoints: user?.pointsLifetime ?? 0,
     payment,
     shippingMethod,
@@ -94,7 +96,7 @@ export function CheckoutView() {
     if (!serverCheckoutActive()) return;
     let cancelled = false;
     async function load() {
-      const body = serverCheckoutPayload({ lines: cart, couponCode, pointsToRedeem: redeem });
+      const body = serverCheckoutPayload({ lines: cart, couponCode });
       try {
         const response = await fetch("/api/checkout/quote", {
           method: "POST",
@@ -112,7 +114,7 @@ export function CheckoutView() {
     return () => {
       cancelled = true;
     };
-  }, [cart, couponCode, redeem]);
+  }, [cart, couponCode]);
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -373,11 +375,11 @@ export function CheckoutView() {
         </div>
         {couponError ? <p className="mt-2 text-sm text-pink">{couponError}</p> : null}
         {couponCode ? <p className="mt-2 text-sm text-lime">Cupom {couponCode}</p> : null}
-        {user ? (
-          <label className="mt-3 block text-sm">Usar pontos (saldo {user.pointsBalance})
-            <input type="range" min={0} max={user.pointsBalance} value={redeem} onChange={(event) => setRedeem(Number(event.target.value))} className="mt-2 w-full accent-lime" />
+        {canRedeemPoints(pointsBalance) ? (
+          <label className="mt-3 block text-sm">Usar pontos (saldo {pointsBalance})
+            <input type="range" min={0} max={pointsBalance} value={redeem} onChange={(event) => setRedeem(Number(event.target.value))} className="mt-2 w-full accent-lime" />
           </label>
-        ) : <p className="mt-3 text-xs text-muted-foreground"><Link href="/entrar" className="text-lime">Entra</Link> pra usar pontos.</p>}
+        ) : null}
         <dl className="mt-4 space-y-1 text-sm">
           {serverSummary ? (
             <>

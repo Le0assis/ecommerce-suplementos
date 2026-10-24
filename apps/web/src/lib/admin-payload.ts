@@ -1,5 +1,13 @@
 import { slugify } from "@/lib/admin-types";
 
+/**
+ * Id de variação ou foto só segue se este produto já o tinha.
+ * Qualquer outro vira um id novo, para não gravar a linha de outro produto.
+ */
+export function retainOwnedIds<T extends { id: string }>(rows: T[], owned: ReadonlySet<string>, mint: () => string): T[] {
+  return rows.map((row) => (row.id && owned.has(row.id) ? row : { ...row, id: mint() }));
+}
+
 /** Tira `id` vazio em qualquer nível. A API trata `id` como opcional, mas `""` falha no min(1). */
 export function omitEmptyIds<T>(value: T): T {
   return strip(value) as T;

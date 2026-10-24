@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError } from "@/lib/admin-fetch";
 import { canAccess, type AdminDrop, type AdminList, type AdminRole } from "@/lib/admin-types";
+import { maskEmail } from "@/lib/mask-email";
 import { useEffect, useState } from "react";
 
 interface DropOption {
@@ -55,6 +56,10 @@ export function WaitlistScreen({ publicDrops = NO_DROPS }: { publicDrops?: DropO
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      if (role === "editor") {
+        if (!cancelled) setLoading(false);
+        return;
+      }
       if (!canAccess(role, "drops")) {
         if (cancelled) return;
         setDrops(publicDrops);
@@ -88,7 +93,7 @@ export function WaitlistScreen({ publicDrops = NO_DROPS }: { publicDrops?: DropO
   }, [publicDrops, role]);
 
   useEffect(() => {
-    if (!dropId) return;
+    if (role === "editor" || !dropId) return;
     let cancelled = false;
     async function load() {
       setError(null);
@@ -106,7 +111,7 @@ export function WaitlistScreen({ publicDrops = NO_DROPS }: { publicDrops?: DropO
     return () => {
       cancelled = true;
     };
-  }, [dropId]);
+  }, [dropId, role]);
 
   async function refresh() {
     if (!dropId) return;
@@ -140,6 +145,21 @@ export function WaitlistScreen({ publicDrops = NO_DROPS }: { publicDrops?: DropO
     }
   }
 
+  if (role === "editor") {
+    return (
+      <div className="mx-auto max-w-5xl">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-lime">LGPD</p>
+        <h1 className="font-display text-6xl leading-none">Lista de espera</h1>
+        <p className="mt-3 max-w-xl text-sm text-muted-foreground">Seu papel não vê esta lista.</p>
+      </div>
+    );
+  }
+
+  const shownEmail = (item: WaitlistEntry) => {
+    if (item.anonymizedAt) return "Anonimizado";
+    return role === "atendimento" ? maskEmail(item.email) : item.email;
+  };
+
   return (
     <div className="mx-auto max-w-5xl">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-lime">LGPD</p>
@@ -171,7 +191,7 @@ export function WaitlistScreen({ publicDrops = NO_DROPS }: { publicDrops?: DropO
             {items.length === 0 && !loading ? <tr><td className="px-3 py-6 text-muted-foreground" colSpan={remove || anonymize ? 3 : 2}>Ninguém nesta lista.</td></tr> : null}
             {items.map((item) => (
               <tr key={item.id} className="border-t border-white/10">
-                <td className="px-3 py-3">{item.anonymizedAt ? "Anonimizado" : item.email}</td>
+                <td className="px-3 py-3">{shownEmail(item)}</td>
                 <td className="px-3 py-3">{item.consentOrigin}<br />{item.consentAt}</td>
                 {remove || anonymize ? (
                   <td className="px-3 py-3">

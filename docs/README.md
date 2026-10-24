@@ -18,6 +18,7 @@ Para instalar e rodar do zero, comece pelo [README da raiz](../README.md). Esta 
 | [como-rodar.md](como-rodar.md) | Atalho de comandos |
 | [deploy.md](deploy.md) | Publicar a demonstração |
 | [roadmap-e-status.md](roadmap-e-status.md) | O que já funciona e o que ainda é fachada |
+| [propostas.md](propostas.md) | Ideias de incremento que ainda não entram no código |
 | [guias/](guias/adicionar-produto.md) | Receitas: produto, sabor, kit, página, componente, pagamento |
 | [adr/](adr/001-monorepo-typescript.md) | Decisões registradas |
 

@@ -97,7 +97,7 @@ Body:
 }
 ```
 
-Cada linha só tem `slug`, `variant` e `qty`. Preço, desconto, `pointsBalance`, `lifetimePoints` e `redeemPoints` no corpo respondem 400 `{ "error": "O preço é calculado no servidor." }`. O preço sai de `product_variants`. O cupom sai da tabela. O saldo de pontos no servidor é 0 até existir sessão de cliente, então `pointsUsed` volta 0 mesmo que `pointsToRedeem` seja alto.
+Cada linha só tem `slug`, `variant` e `qty`. Preço, desconto, `pointsBalance`, `lifetimePoints` e `redeemPoints` no corpo respondem 400 `{ "error": "O preço é calculado no servidor." }`. O preço sai de `product_variants`. O cupom sai da tabela. O saldo de pontos no servidor é 0 até existir sessão de cliente, então `pointsUsed` volta 0 mesmo que `pointsToRedeem` seja alto. A vitrine, por isso, esconde o resgate quando o saldo é 0 ou ausente e não envia `pointsToRedeem`. Isso volta quando o Backend ler o saldo da sessão.
 
 Com o Caos limão, `PULSO10` e Pix/PAC no CEP `01310100`, o `quote` traz `discountCents` 1499, `pixCents` 1349, `shippingCents` 1890 e `totalCents` 14032. A resposta também traz `simulated: true` e a frase de que Mercado Pago e Pagar.me não cobraram. `checkout` passa por `validateCheckout`. Erro de formulário: 400 `{ "error": "Pedido incompleto.", "errors": { ... } }`.
 
@@ -110,8 +110,7 @@ O checkout novo manda só isto. Preço e nome do cliente são ignorados.
 ```json
 {
   "lines": [{ "slug": "caos-pre-treino", "variant": "caos-pre-treino__limao__300", "qty": 1 }],
-  "couponCode": "PULSO10",
-  "pointsToRedeem": 0
+  "couponCode": "PULSO10"
 }
 ```
 
@@ -132,7 +131,7 @@ O corpo não traz CEP nem meio de pagamento, então a resposta não tem Pix nem 
 }
 ```
 
-`pointsToRedeem` é o pedido. O saldo não vem do navegador: sem sessão de cliente, `pointsRedeemed` é 0. `pointsEarned` não inclui o bônus do Pix, porque o meio de pagamento não veio no corpo. Campo de dinheiro a mais responde 400. Cupom inexistente responde 400. `Cache-Control: no-store`.
+`pointsToRedeem` é o pedido, mas a vitrine não manda esse campo enquanto o saldo do servidor for 0. Sem sessão de cliente, `pointsRedeemed` é 0. `pointsEarned` não inclui o bônus do Pix, porque o meio de pagamento não veio no corpo. Campo de dinheiro a mais responde 400. Cupom inexistente responde 400. `Cache-Control: no-store`. O slider e o texto de resgate na conta dependem do Backend passar a devolver `points_balance` de verdade.
 
 ## Admin
 

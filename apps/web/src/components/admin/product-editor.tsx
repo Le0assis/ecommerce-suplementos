@@ -4,7 +4,7 @@ import { CheckRow, Field, MoneyField, Notice, Section, SelectField, TextArea } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminFetch, AdminApiError, uploadAdminImage } from "@/lib/admin-fetch";
-import { omitEmptyIds, resolveSlug, uniqueSlug } from "@/lib/admin-payload";
+import { omitEmptyIds, resolveSlug, retainOwnedIds, uniqueSlug } from "@/lib/admin-payload";
 import { safePreview } from "@/lib/admin-preview";
 import { uniqueRecordId, variantSku } from "@/lib/record-id";
 import { blankProduct, PRODUCT_STATUSES, slugify, type AdminFlavor, type AdminImage, type AdminInfluencerRef, type AdminList, type AdminOne, type AdminProduct, type AdminVariant } from "@/lib/admin-types";
@@ -13,7 +13,7 @@ import { CATEGORIES, GOALS, type FlavorFamily } from "@pulso/domain";
 const BADGE_OPTIONS = ["drop", "limited", "bestseller", "novo", "collab"] as const;
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 const FAMILIES: { id: FlavorFamily; label: string }[] = [
   { id: "citrica", label: "Cítrica" },
@@ -34,6 +34,19 @@ export function ProductEditor({ productId }: { productId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const ownedIds = useRef(new Set<string>());
+
+  function remember(ids: Iterable<string>) {
+    for (const id of ids) if (id) ownedIds.current.add(id);
+  }
+
+  function safeRows<T extends { id: string }>(rows: T[]): T[] {
+    return retainOwnedIds(rows, ownedIds.current, () => {
+      const id = uniqueRecordId();
+      ownedIds.current.add(id);
+      return id;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +61,11 @@ export function ProductEditor({ productId }: { productId: string }) {
         setCatalog(list.items.map((item) => ({ id: item.id, name: item.name, slug: item.slug })));
         if (!isNew) {
           const one = await adminFetch<AdminOne<AdminProduct>>(`products/${productId}`);
-          if (!cancelled) setProduct(one.item);
+          if (!cancelled) {
+            remember(one.item.variants.map((item) => item.id));
+            remember(one.item.images.map((item) => item.id));
+            setProduct(one.item);
+          }
         }
       } catch (caught) {
         if (!cancelled) setError(caught instanceof AdminApiError ? caught.message : "Não deu para abrir o produto.");
@@ -76,13 +93,16 @@ export function ProductEditor({ productId }: { productId: string }) {
       current: product.id ? product.slug : undefined,
     });
     const slug = resolved.slug;
+    const variants = safeRows(product.variants);
+    const images = safeRows(product.images
+      .filter((image) => (image.url ?? "").trim() || image.alt.trim())
+      .map((image) => ({ ...image, url: (image.url ?? "").trim() || null })));
     const payload = omitEmptyIds({
       ...product,
       id: isNew ? "" : product.id,
       slug,
-      images: product.images
-        .filter((image) => (image.url ?? "").trim() || image.alt.trim())
-        .map((image) => ({ ...image, url: (image.url ?? "").trim() || null })),
+      variants,
+      images,
       label: { ...product.label, nutrition: product.label.nutrition.filter((row) => row.nutrient.trim() && row.amount.trim()) },
       kitItems: product.isKit ? product.kitItems.filter((item) => item.productId) : product.kitItems,
     });
@@ -92,12 +112,16 @@ export function ProductEditor({ productId }: { productId: string }) {
     try {
       if (isNew || !product.id) {
         const created = await adminFetch<AdminOne<AdminProduct>>("products", { method: "POST", body: JSON.stringify(payload) });
+        remember(created.item.variants.map((item) => item.id));
+        remember(created.item.images.map((item) => item.id));
         const href = `/admin/produtos/${created.item.id}`;
         router.push(resolved.notice ? `${href}?aviso=${encodeURIComponent(resolved.notice)}` : href);
         router.refresh();
         return;
       }
-      const saved = await adminFetch<AdminOne<AdminProduct>>(`products/${product.id}`, { method: "PATCH", body: JSON.stringify({ ...product, slug, images: payload.images, label: payload.label, kitItems: payload.kitItems }) });
+      const saved = await adminFetch<AdminOne<AdminProduct>>(`products/${product.id}`, { method: "PATCH", body: JSON.stringify({ ...product, slug, variants, images: payload.images, label: payload.label, kitItems: payload.kitItems }) });
+      remember(saved.item.variants.map((item) => item.id));
+      remember(saved.item.images.map((item) => item.id));
       setProduct(saved.item);
       setNotice(resolved.notice ?? "Salvo.");
     } catch (caught) {
@@ -263,7 +287,7 @@ export function ProductEditor({ productId }: { productId: string }) {
 
       <Section
         title="Tamanhos, SKU e preço"
-        action={<Button type="button" size="sm" variant="outline" onClick={() => { if (!product.flavors.length) { setError("Crie um sabor antes da variante."); return; } setError(null); update({ variants: [...product.variants, newVariant(product)] }); }}>Adicionar variante</Button>}
+        action={<Button type="button" size="sm" variant="outline" onClick={() => { if (!product.flavors.length) { setError("Crie um sabor antes da variante."); return; } setError(null); const variant = newVariant(product); remember([variant.id]); update({ variants: [...product.variants, variant] }); }}>Adicionar variante</Button>}
       >
         <p className="text-xs text-muted-foreground">Preço em reais. O servidor guarda centavos. O estoque da variante é o do lote daquele tamanho.</p>
         {product.variants.map((variant) => (
@@ -311,7 +335,7 @@ export function ProductEditor({ productId }: { productId: string }) {
 
       <Section
         title="Fotos"
-        action={<Button type="button" size="sm" variant="outline" onClick={() => update({ images: [...product.images, newImage(product.images)] })}>Adicionar foto</Button>}
+        action={<Button type="button" size="sm" variant="outline" onClick={() => { const image = newImage(product.images); remember([image.id]); update({ images: [...product.images, image] }); }}>Adicionar foto</Button>}
       >
         <p className="text-xs text-muted-foreground">Texto alternativo é obrigatório. A foto sobe pelo endereço que a API devolver. Sem URL, fica a cor do sabor.</p>
         {product.images.map((image) => {

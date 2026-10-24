@@ -3,6 +3,7 @@ import { test } from "vitest";
 import { forwardCheckoutQuote } from "@/server/checkout-quote";
 import {
   CHECKOUT_QUOTE_SHA,
+  canRedeemPoints,
   onlyQuoteFields,
   readServerQuote,
   serverCheckoutActive,
@@ -24,8 +25,8 @@ test("o payload novo leva slug, variant e qty, sem preço nem nome", () => {
       { slug: "shape-whey-isolado", variant: "shape-whey-isolado__chocolate__900", qty: 1 },
     ],
     couponCode: "LUNA15",
-    pointsToRedeem: 40,
   });
+  assert.equal("pointsToRedeem" in body, false);
   assert.equal("unitPriceCents" in body, false);
   assert.equal("name" in body, false);
   assert.equal(JSON.stringify(body).includes("Caos"), false);
@@ -45,13 +46,22 @@ test("campos de dinheiro do cliente são ignorados", () => {
   const clean = onlyQuoteFields({
     lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__30", qty: 1, name: "Caos", unitPriceCents: 1 }],
     couponCode: "pulso10",
-    pointsToRedeem: 0,
+    pointsToRedeem: 400,
     totalCents: 999,
   });
   assert.deepEqual(clean, {
     lines: [{ slug: "caos-pre-treino", variant: "caos-pre-treino__limao__30", qty: 1 }],
     couponCode: "PULSO10",
   });
+  assert.equal(clean !== null && "pointsToRedeem" in clean, false);
+});
+
+test("resgate só aparece com saldo positivo", () => {
+  assert.equal(canRedeemPoints(0), false);
+  assert.equal(canRedeemPoints(undefined), false);
+  assert.equal(canRedeemPoints(null), false);
+  assert.equal(canRedeemPoints(Number.NaN), false);
+  assert.equal(canRedeemPoints(860), true);
 });
 
 test("o resumo do servidor traz nome, desconto e pontos", () => {

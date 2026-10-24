@@ -1,5 +1,6 @@
 import type { AdminPublicUser, AdminResource, AdminRole } from "@/lib/admin-types";
 import { canAccess } from "@/lib/admin-types";
+import { maskEmail } from "@/lib/mask-email";
 import type { SessionPayload } from "@/server/admin-session";
 
 /**
@@ -180,5 +181,24 @@ export async function handleAdminData(
     return { status: 403, body: { error: "Seu papel não faz isso." } };
   }
   if (!kind && !canAccess(session.role, resource)) return { status: 403, body: { error: "Seu papel não faz isso." } };
-  return callApi(session, method, segments, search, body, forwardedFor);
+  const result = await callApi(session, method, segments, search, body, forwardedFor);
+  if (kind === "read" && session.role === "atendimento") return maskWaitlistResult(result);
+  return result;
+}
+
+function maskWaitlistResult(result: AdminHandlerResult): AdminHandlerResult {
+  const items = result.body.items;
+  if (!Array.isArray(items)) return result;
+  return {
+    ...result,
+    body: {
+      ...result.body,
+      items: items.map((item) => {
+        if (!item || typeof item !== "object" || !("email" in item)) return item;
+        const email = (item as { email?: unknown }).email;
+        if (typeof email !== "string") return item;
+        return { ...item, email: maskEmail(email) };
+      }),
+    },
+  };
 }

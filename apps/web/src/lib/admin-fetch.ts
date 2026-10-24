@@ -15,7 +15,13 @@ export class AdminApiError extends Error {
   }
 }
 
-export function adminErrorMessage(body: { error?: unknown; fields?: unknown } | null, fallback = "Não deu para concluir."): string {
+const FOREIGN_RECORD: Record<string, string> = {
+  variacao_de_outro_produto: "Essa variação já pertence a outro produto. Remova a linha e crie outra.",
+  imagem_de_outro_produto: "Essa foto já pertence a outro produto. Remova a foto e envie outra.",
+};
+
+export function adminErrorMessage(body: { error?: unknown; fields?: unknown; code?: unknown } | null, fallback = "Não deu para concluir."): string {
+  if (typeof body?.code === "string" && FOREIGN_RECORD[body.code]) return FOREIGN_RECORD[body.code];
   const fields = body?.fields;
   if (fields && typeof fields === "object" && !Array.isArray(fields)) {
     const lines = Object.entries(fields as Record<string, unknown>)

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { adminErrorMessage } from "@/lib/admin-fetch";
-import { omitEmptyIds, resolveSlug, uniqueSlug } from "@/lib/admin-payload";
+import { omitEmptyIds, resolveSlug, retainOwnedIds, uniqueSlug } from "@/lib/admin-payload";
 import { safePreview } from "@/lib/admin-preview";
 import { slugify } from "@/lib/admin-types";
 
@@ -54,4 +54,26 @@ test("a prévia da foto aceita url nula", () => {
 test("erro de validação mostra o campo", () => {
   assert.equal(adminErrorMessage({ error: "Dados inválidos.", fields: { id: "String must contain at least 1 character(s)" } }), "id: String must contain at least 1 character(s)");
   assert.equal(adminErrorMessage({ error: "Fora do ar." }), "Fora do ar.");
+  assert.equal(
+    adminErrorMessage({ error: "Já existe um registro com esse identificador.", code: "variacao_de_outro_produto" }),
+    "Essa variação já pertence a outro produto. Remova a linha e crie outra.",
+  );
+  assert.equal(
+    adminErrorMessage({ error: "Já existe um registro com esse identificador.", code: "imagem_de_outro_produto" }),
+    "Essa foto já pertence a outro produto. Remova a foto e envie outra.",
+  );
+});
+
+test("variação e foto de outro produto não saem com o id antigo", () => {
+  let n = 0;
+  const rows = retainOwnedIds(
+    [{ id: "var-1", sku: "PL-A" }, { id: "desta" }, { id: "" }],
+    new Set(["desta"]),
+    () => `novo-${++n}`,
+  );
+  assert.equal(rows[0]?.id, "novo-1");
+  assert.equal(rows[0]?.sku, "PL-A");
+  assert.equal(rows[1]?.id, "desta");
+  assert.equal(rows[2]?.id, "novo-2");
+  assert.equal(rows.some((row) => row.id === "var-1"), false);
 });
