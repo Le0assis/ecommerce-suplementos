@@ -7,6 +7,7 @@ import Redis from "ioredis";
 import { z } from "zod";
 import type { Context } from "hono";
 import { clientIp, HttpError, pageQuery, parseInput, readJson, requireActor, type AdminRuntime } from "./http";
+import { loginRedisOptions, openLoginStore, requireLoginIp, runLoginStore } from "../login-store";
 import { openSession, revokeSession, sessionIsLive } from "./live-session";
 import { isRole } from "./permissions";
 import { clearCookie, readSession, sessionCookie, SESSION_SECONDS, signSession, tokenFromRequest } from "./session";
@@ -124,12 +125,7 @@ function redis(): Redis | null {
   redisClient?.disconnect();
   redisOpening = null;
   redisUrl = url;
-  redisClient = new Redis(url, {
-    connectTimeout: 800,
-    maxRetriesPerRequest: 1,
-    enableOfflineQueue: false,
-    lazyConnect: true,
-  });
+  redisClient = new Redis(url, loginRedisOptions());
   redisClient.on("error", () => {
     // connect() e o comando já devolvem a falha. Sem ouvinte o processo cai.
   });
@@ -279,39 +275,25 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
     const now = ctx.now();
     const clock = now.getTime();
     const ip = clientIp(c);
-    if (!ip) throw new HttpError(503, "Não deu para identificar o IP. O login não segue sem ele.");
+    requireLoginIp(ip);
     const body = parseInput(loginSchema, await readJson(c));
     const email = normalizeLoginEmail(body.email);
-    let memory = !process.env.REDIS_URL;
-    const blockedBeforePassword = async (): Promise<boolean> => {
-      if (!memory) {
-        try {
-          return (await ipBlockedByOthersRedis(ip, email)) || (await emailIpBlockedRedis(email, ip));
-        } catch {
-          memory = true;
-        }
-      }
-      return ipBlockedByOthers(ip, email, clock) || emailIpBlocked(email, ip, clock);
-    };
-    if (await blockedBeforePassword()) {
+    const store = openLoginStore();
+    const blockedBeforePassword = await runLoginStore(
+      store,
+      async () => (await ipBlockedByOthersRedis(ip, email)) || (await emailIpBlockedRedis(email, ip)),
+      () => ipBlockedByOthers(ip, email, clock) || emailIpBlocked(email, ip, clock),
+    );
+    if (blockedBeforePassword) {
       c.header("retry-after", "900");
       throw new HttpError(429, BUSY);
     }
     const recordFailure = async (): Promise<never> => {
-      let ipAllowed = false;
-      let emailAllowed = false;
-      if (!memory) {
-        try {
-          ipAllowed = await noteIpFailureRedis(ip, email);
-          emailAllowed = await noteEmailIpFailureRedis(email, ip);
-        } catch {
-          memory = true;
-        }
-      }
-      if (memory) {
-        ipAllowed = noteIpFailure(ip, email, clock);
-        emailAllowed = noteEmailIpFailure(email, ip, clock);
-      }
+      const [ipAllowed, emailAllowed] = await runLoginStore(
+        store,
+        async () => [await noteIpFailureRedis(ip, email), await noteEmailIpFailureRedis(email, ip)] as const,
+        () => [noteIpFailure(ip, email, clock), noteEmailIpFailure(email, ip, clock)] as const,
+      );
       if (!ipAllowed || !emailAllowed) {
         c.header("retry-after", "900");
         throw new HttpError(429, BUSY);
@@ -319,30 +301,20 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
       throw new HttpError(401, "E-mail ou senha não confere.");
     };
     const forgetFailures = async (): Promise<void> => {
-      if (!memory) {
-        try {
-          await clearIpUserRedis(ip, email);
-          await clearEmailIpRedis(email, ip);
-          return;
-        } catch {
-          memory = true;
-        }
-      }
-      clearIpUser(ip, email, clock);
-      clearEmailIp(email, ip);
+      await runLoginStore(store, async () => {
+        await clearIpUserRedis(ip, email);
+        await clearEmailIpRedis(email, ip);
+      }, () => {
+        clearIpUser(ip, email, clock);
+        clearEmailIp(email, ip);
+      });
     };
     const slotClock = Date.now();
-    let gate: { ok: true } | { ok: false; retryAfter: number };
-    if (memory) {
-      gate = reserveSlotMap(email, ip, slotClock);
-    } else {
-      try {
-        gate = await reserveSlotRedis(email, ip);
-      } catch {
-        memory = true;
-        gate = reserveSlotMap(email, ip, slotClock);
-      }
-    }
+    const gate = await runLoginStore(
+      store,
+      () => reserveSlotRedis(email, ip),
+      () => reserveSlotMap(email, ip, slotClock),
+    );
     if (!gate.ok) {
       c.header("retry-after", String(gate.retryAfter));
       throw new HttpError(429, BUSY);
@@ -350,15 +322,11 @@ export function mountAuth(admin: Hono, runtime: () => AdminRuntime): void {
     let held = true;
     const settle = async (delayMs: number) => {
       held = false;
-      if (!memory) {
-        try {
-          await settleSlotRedis(email, ip, delayMs);
-          return;
-        } catch {
-          memory = true;
-        }
-      }
-      settleSlotMap(email, ip, Date.now(), delayMs);
+      await runLoginStore(
+        store,
+        () => settleSlotRedis(email, ip, delayMs),
+        () => settleSlotMap(email, ip, Date.now(), delayMs),
+      );
     };
     try {
       const found = await ctx.sql.query<UserRow>(

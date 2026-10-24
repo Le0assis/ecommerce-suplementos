@@ -251,7 +251,7 @@ Abra o `.env` num editor de texto. Cada linha `NOME=valor` é uma variável. Lin
 | `API_PORT` | `8787` | Porta da API Hono. |
 | `API_DATA_SOURCE` | `mock` | `mock`: a API responde com o catálogo em memória. `postgres`: a API monta o produto pelas tabelas normalizadas (`product_flavors`, `product_variants`, rótulo, fotos). A coluna `products.payload` deixa de ser a leitura. Aí você precisa do Docker, da migração e do seed. |
 | `DATABASE_URL` | `postgres://pulso:pulso@127.0.0.1:5432/pulso` | Conexão do Postgres local. Usuário `pulso`, senha `pulso`, banco `pulso`, porta `5432`. Só vale para esta máquina. |
-| `REDIS_URL` | `redis://127.0.0.1:6379` | Cache da API (chave `catalog:products`, 60 segundos) e baldes do login (`pulso:login:*`). O site em produção só lê essas chaves. Sem a URL, o login do site responde 503. Fora de produção, o limite do site cai num `Map` do processo. |
+| `REDIS_URL` | `redis://127.0.0.1:6379` | Cache da API (chave `catalog:products`, 60 segundos) e baldes do login (`pulso:login:*`). O site em produção só lê essas chaves. Sem a URL, ou com o Redis fora, o login da API e do site responde 503 em produção. Fora de produção, o limite cai num `Map` do processo. |
 | `ADMIN_SESSION_SECRET` | (troque o exemplo) | Segredo que assina a sessão do admin (12 horas). O site usa o cookie `pulso_admin_session`. A API usa o cookie `pulso_admin`. O painel manda esse token como Bearer e confere `GET /v1/admin/me`. Só o servidor lê. Em produção o valor `pulso-dev-session-change-me` não assina. |
 | `PAYMENT_GATEWAY` | `auto` | Sandbox. `auto` manda Pix e boleto ao Mercado Pago e cartão à Pagar.me. `mercadopago` ou `pagarme` força o gateway. Não coloque token real. A confirmação mostra um id `mp_sandbox_` ou `pm_sandbox_`. |
 

@@ -10,6 +10,7 @@ import Redis from "ioredis";
 import { z } from "zod";
 import type { AdminAppOptions } from "./admin/router";
 import { clientIp, HttpError, parseInput, readJson } from "./admin/http";
+import { loginRedisOptions, openLoginStore, requireLoginIp, runLoginStore } from "./login-store";
 import {
   clearCustomerCookie,
   CUSTOMER_SESSION_SECONDS,
@@ -54,13 +55,19 @@ interface CustomerRow {
 const ipHits = new Map<string, { failures: number; reset: number; byUser: Map<string, number> }>();
 const emailIpHits = new Map<string, { failures: number; reset: number }>();
 let dummyHash: string | null = null;
+let proofs = 0;
 let redisClient: Redis | null = null;
 let redisUrl = "";
 let redisOpening: Promise<void> | null = null;
 
+export function accountLoginProofCount(): number {
+  return proofs;
+}
+
 export function resetAccountLoginLimits(): void {
   ipHits.clear();
   emailIpHits.clear();
+  proofs = 0;
 }
 
 export function disconnectAccountRedis(): void {
@@ -78,12 +85,7 @@ function accountRedis(): Redis | null {
   redisClient?.disconnect();
   redisOpening = null;
   redisUrl = url;
-  redisClient = new Redis(url, {
-    connectTimeout: 800,
-    maxRetriesPerRequest: 1,
-    enableOfflineQueue: false,
-    lazyConnect: true,
-  });
+  redisClient = new Redis(url, loginRedisOptions());
   redisClient.on("error", () => {
     // connect() e o comando já devolvem a falha. Sem ouvinte o processo cai.
   });
@@ -302,22 +304,14 @@ export function mountAccount(app: Hono, dataSql: () => SqlClient | null, options
 
   app.post("/v1/account/login", async (c) => {
     const ctx = runtime();
+    const ip = clientIp(c);
+    requireLoginIp(ip);
     const body = parseInput(loginSchema, await readJson(c));
     const email = normalizeLoginEmail(body.email);
-    const ip = clientIp(c);
     const now = Date.now();
-    let memory = !process.env.REDIS_URL;
-    const blocked = async () => {
-      if (!memory) {
-        try {
-          return await redisBlocked(ip, email);
-        } catch {
-          memory = true;
-        }
-      }
-      return memoryBlocked(ip, email, now);
-    };
-    if (await blocked()) {
+    const store = openLoginStore();
+    const blocked = await runLoginStore(store, () => redisBlocked(ip, email), () => memoryBlocked(ip, email, now));
+    if (blocked) {
       c.header("retry-after", "900");
       throw new HttpError(429, BUSY);
     }
@@ -328,17 +322,10 @@ export function mountAccount(app: Hono, dataSql: () => SqlClient | null, options
     );
     const row = found.rows[0];
     const hash = row?.password_hash ?? (await dummy());
+    proofs += 1;
     const matches = await verifyPassword(body.password, hash);
     const note = async () => {
-      let allowed = false;
-      if (!memory) {
-        try {
-          allowed = await redisNote(ip, email);
-        } catch {
-          memory = true;
-        }
-      }
-      if (memory) allowed = memoryNote(ip, email, now);
+      const allowed = await runLoginStore(store, () => redisNote(ip, email), () => memoryNote(ip, email, now));
       if (!allowed) {
         c.header("retry-after", "900");
         throw new HttpError(429, BUSY);
@@ -346,14 +333,7 @@ export function mountAccount(app: Hono, dataSql: () => SqlClient | null, options
       throw new HttpError(401, "E-mail ou senha não confere.");
     };
     if (!row?.password_hash || !matches) return note();
-    if (!memory) {
-      try {
-        await redisClear(ip, email);
-      } catch {
-        memory = true;
-      }
-    }
-    if (memory) memoryClear(ip, email, now);
+    await runLoginStore(store, () => redisClear(ip, email), () => memoryClear(ip, email, now));
     return issue(c, row, ctx.secret, ctx.secure, ctx.now());
   });
 

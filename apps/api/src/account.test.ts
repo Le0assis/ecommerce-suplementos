@@ -1,8 +1,12 @@
 import { randomBytes } from "node:crypto";
+import { serve } from "@hono/node-server";
 import type { SqlClient } from "@pulso/db/sql";
+import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { disconnectAccountRedis, resetAccountLoginLimits } from "./account-routes";
+import { accountLoginProofCount, disconnectAccountRedis, mountAccount, resetAccountLoginLimits } from "./account-routes";
+import { HttpError } from "./admin/http";
 import { auth, createAdminApp, createTestDb, login, resetTables, sampleProduct } from "./admin/harness";
+import { LOGIN_NO_IP, LOGIN_NO_REDIS } from "./login-store";
 
 const CPF = "52998224725";
 const CPF_B = "39053344705";
@@ -232,6 +236,102 @@ describe("conta da loja", () => {
     });
     expect(other.status).toBe(200);
   }, 20_000);
+
+  it("em produção, login sem IP ou com Redis fora responde 503 sem conferir a senha", async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const previousNode = env.NODE_ENV;
+    const previousRedis = env.REDIS_URL;
+    const previousProxiesHere = env.TRUSTED_PROXIES;
+    const previousSource = env.API_DATA_SOURCE;
+    const previousDatabase = env.DATABASE_URL;
+    env.NODE_ENV = "production";
+    delete env.REDIS_URL;
+    env.API_DATA_SOURCE = "postgres";
+    env.DATABASE_URL = previousDatabase || "postgres://pulso:pulso@127.0.0.1:5432/pulso";
+    env.TRUSTED_PROXIES = "127.0.0.1";
+    disconnectAccountRedis();
+    resetAccountLoginLimits();
+    const bare = new Hono();
+    bare.onError((error, c) => {
+      if (error instanceof HttpError) return c.json({ error: error.message }, error.status);
+      throw error;
+    });
+    mountAccount(bare, () => sql, { sessionSecret: "teste-sessao-pulso-admin", cookieSecure: true });
+    const app = createAdminApp(sql);
+    const server = await new Promise<ReturnType<typeof serve>>((resolve) => {
+      const started = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 }, () => resolve(started));
+    });
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const post = () =>
+      fetch(`http://127.0.0.1:${port}/v1/account/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.77" },
+        body: JSON.stringify({ email: "ana.login@pulso.test", password: PASSWORD }),
+      });
+    try {
+      const noIp = await bare.request("/v1/account/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.77" },
+        body: JSON.stringify({ email: "ana.login@pulso.test", password: PASSWORD }),
+      });
+      expect(noIp.status).toBe(503);
+      expect(await noIp.json()).toEqual({ error: LOGIN_NO_IP });
+      expect(accountLoginProofCount()).toBe(0);
+      const missing = await post();
+      expect(missing.status).toBe(503);
+      expect(await missing.json()).toEqual({ error: LOGIN_NO_REDIS });
+      expect(accountLoginProofCount()).toBe(0);
+      env.REDIS_URL = "redis://127.0.0.1:1";
+      disconnectAccountRedis();
+      const down = await post();
+      expect(down.status).toBe(503);
+      expect(await down.json()).toEqual({ error: LOGIN_NO_REDIS });
+      expect(accountLoginProofCount()).toBe(0);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      disconnectAccountRedis();
+      resetAccountLoginLimits();
+      if (previousNode === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNode;
+      if (previousRedis === undefined) delete env.REDIS_URL;
+      else env.REDIS_URL = previousRedis;
+      if (previousProxiesHere === undefined) delete env.TRUSTED_PROXIES;
+      else env.TRUSTED_PROXIES = previousProxiesHere;
+      if (previousSource === undefined) delete env.API_DATA_SOURCE;
+      else env.API_DATA_SOURCE = previousSource;
+      if (previousDatabase === undefined) delete env.DATABASE_URL;
+      else env.DATABASE_URL = previousDatabase;
+    }
+  });
+
+  it("fora de produção, Redis fora ainda confere a senha no Map", async () => {
+    const previous = process.env.REDIS_URL;
+    process.env.REDIS_URL = "redis://127.0.0.1:1";
+    disconnectAccountRedis();
+    const app = createAdminApp(sql);
+    const ip = "203.0.113.88";
+    try {
+      const created = await app.request("/v1/account/register", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": ip },
+        body: JSON.stringify({ name: "Ana Luz", email: "ana.redis@pulso.test", password: PASSWORD }),
+      });
+      expect(created.status).toBe(201);
+      const proofs = accountLoginProofCount();
+      const wrong = await app.request("/v1/account/login", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": ip },
+        body: JSON.stringify({ email: "ana.redis@pulso.test", password: "senha-errada-pulso" }),
+      });
+      expect(wrong.status).toBe(401);
+      expect(accountLoginProofCount()).toBe(proofs + 1);
+    } finally {
+      disconnectAccountRedis();
+      if (previous === undefined) delete process.env.REDIS_URL;
+      else process.env.REDIS_URL = previous;
+    }
+  });
 
   it("grava o pedido da sessão com preço do servidor e a outra conta não vê", async () => {
     const app = createAdminApp(sql);

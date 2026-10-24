@@ -5,6 +5,7 @@ import { createServer, type Server, type Socket } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app";
 import { disconnectLoginRedis, loginBackoffMs, loginProofCount, resetLoginLimits } from "./auth-routes";
+import { LOGIN_NO_REDIS } from "../login-store";
 import { auth, createAdminApp, createTestDb, login, resetTables } from "./harness";
 import { clientAddress } from "./http";
 import { sessionSecret } from "./session";
@@ -476,6 +477,83 @@ describe("login do admin", () => {
       else env.DATABASE_URL = previousDatabase;
       if (previousProxiesHere === undefined) delete env.TRUSTED_PROXIES;
       else env.TRUSTED_PROXIES = previousProxiesHere;
+    }
+  });
+
+  it("em produção, Redis fora responde 503 sem conferir a senha", async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const previousNode = env.NODE_ENV;
+    const previousRedis = env.REDIS_URL;
+    const previousSource = env.API_DATA_SOURCE;
+    const previousDatabase = env.DATABASE_URL;
+    const previousProxiesHere = env.TRUSTED_PROXIES;
+    env.NODE_ENV = "production";
+    env.API_DATA_SOURCE = "postgres";
+    env.DATABASE_URL = previousDatabase || "postgres://pulso:pulso@127.0.0.1:5432/pulso";
+    env.TRUSTED_PROXIES = "127.0.0.1";
+    delete env.REDIS_URL;
+    disconnectLoginRedis();
+    resetLoginLimits();
+    const app = createAdminApp(sql);
+    const server = await new Promise<ReturnType<typeof serve>>((resolve) => {
+      const started = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 }, () => resolve(started));
+    });
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const post = () =>
+      fetch(`http://127.0.0.1:${port}/v1/admin/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.77" },
+        body: JSON.stringify({ email: "dono@pulso.test", password: "senha-dona-pulso" }),
+      });
+    try {
+      const proofs = loginProofCount();
+      const audits = await sql.query<{ total: number }>("select count(*)::int as total from audit_log where action = 'login_failed'");
+      const missing = await post();
+      expect(missing.status).toBe(503);
+      expect(await missing.json()).toEqual({ error: LOGIN_NO_REDIS });
+      expect(loginProofCount()).toBe(proofs);
+      env.REDIS_URL = "redis://127.0.0.1:1";
+      disconnectLoginRedis();
+      const down = await post();
+      expect(down.status).toBe(503);
+      expect(await down.json()).toEqual({ error: LOGIN_NO_REDIS });
+      expect(loginProofCount()).toBe(proofs);
+      const after = await sql.query<{ total: number }>("select count(*)::int as total from audit_log where action = 'login_failed'");
+      expect(after.rows[0]?.total).toBe(audits.rows[0]?.total);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      disconnectLoginRedis();
+      resetLoginLimits();
+      if (previousNode === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNode;
+      if (previousRedis === undefined) delete env.REDIS_URL;
+      else env.REDIS_URL = previousRedis;
+      if (previousSource === undefined) delete env.API_DATA_SOURCE;
+      else env.API_DATA_SOURCE = previousSource;
+      if (previousDatabase === undefined) delete env.DATABASE_URL;
+      else env.DATABASE_URL = previousDatabase;
+      if (previousProxiesHere === undefined) delete env.TRUSTED_PROXIES;
+      else env.TRUSTED_PROXIES = previousProxiesHere;
+    }
+  });
+
+  it("fora de produção, Redis fora cai no Map e a senha ainda é conferida", async () => {
+    const previous = process.env.REDIS_URL;
+    process.env.REDIS_URL = "redis://127.0.0.1:1";
+    disconnectLoginRedis();
+    resetLoginLimits();
+    const app = createAdminApp(sql);
+    try {
+      const proofs = loginProofCount();
+      const failed = await login(app, "dono@pulso.test", "senha-errada-pulso", "203.0.113.79");
+      expect(failed.response.status).toBe(401);
+      expect(loginProofCount()).toBe(proofs + 1);
+    } finally {
+      disconnectLoginRedis();
+      resetLoginLimits();
+      if (previous === undefined) delete process.env.REDIS_URL;
+      else process.env.REDIS_URL = previous;
     }
   });
 
