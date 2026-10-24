@@ -3,7 +3,14 @@ import { serve } from "@hono/node-server";
 import type { SqlClient } from "@pulso/db/sql";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { accountLoginProofCount, disconnectAccountRedis, mountAccount, resetAccountLoginLimits } from "./account-routes";
+import {
+  accountLoginProofCount,
+  disconnectAccountRedis,
+  mountAccount,
+  ORDER_CONFLICT,
+  REGISTER_CONFLICT,
+  resetAccountLoginLimits,
+} from "./account-routes";
 import { HttpError } from "./admin/http";
 import { auth, createAdminApp, createTestDb, login, resetTables, sampleProduct } from "./admin/harness";
 import { LOGIN_NO_IP, LOGIN_NO_REDIS } from "./login-store";
@@ -138,6 +145,7 @@ describe("conta da loja", () => {
       body: JSON.stringify({ name: "Ana Luz", email: "ana.conta@pulso.test", password: PASSWORD }),
     });
     expect(again.status).toBe(409);
+    const againBody = await again.json();
 
     const taken = await app.request("/v1/account/register", {
       method: "POST",
@@ -145,7 +153,37 @@ describe("conta da loja", () => {
       body: JSON.stringify({ name: "Bia Luz", email: "bia.conta@pulso.test", password: PASSWORD, cpf: CPF }),
     });
     expect(taken.status).toBe(409);
-    expect(await taken.text()).not.toContain(CPF);
+    const takenBody = await taken.json();
+    expect(JSON.stringify(takenBody)).not.toContain(CPF);
+    // E-mail repetido e CPF repetido dão a mesma resposta: ninguém descobre se um CPF tem conta.
+    expect(takenBody).toEqual(againBody);
+    expect(JSON.stringify(takenBody)).toContain(REGISTER_CONFLICT);
+    expect(JSON.stringify(takenBody)).not.toMatch(/CPF/);
+  });
+
+  it("cadastro tem limite por IP: o 11º em 15 minutos recebe 429", async () => {
+    const app = createAdminApp(sql);
+    for (let i = 0; i < 10; i += 1) {
+      const res = await app.request("/v1/account/register", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.90" },
+        body: JSON.stringify({ name: "Teste Limite", email: `limite${i}@pulso.test`, password: PASSWORD }),
+      });
+      expect(res.status).toBe(201);
+    }
+    const blocked = await app.request("/v1/account/register", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.90" },
+      body: JSON.stringify({ name: "Teste Limite", email: "limite10@pulso.test", password: PASSWORD }),
+    });
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("retry-after")).toBe("900");
+    const otherIp = await app.request("/v1/account/register", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.91" },
+      body: JSON.stringify({ name: "Teste Limite", email: "limite11@pulso.test", password: PASSWORD }),
+    });
+    expect(otherIp.status).toBe(201);
   });
 
   it("entra com a senha, recusa a errada e a 31ª falha no IP espera 15 minutos", async () => {
@@ -442,6 +480,9 @@ describe("conta da loja", () => {
       }),
     });
     expect(sameCpf.status).toBe(409);
+    const sameCpfText = await sameCpf.text();
+    expect(sameCpfText).toContain(ORDER_CONFLICT);
+    expect(sameCpfText).not.toMatch(/já existe/i);
 
     const anon = await app.request("/v1/account/orders", { headers: { "x-forwarded-for": "203.0.113.42" } });
     expect(anon.status).toBe(401);
@@ -465,7 +506,14 @@ describe("conta da loja", () => {
     const loggedOut = await app.request("/v1/account/logout", { method: "POST", headers: jsonHeaders(token, ip) });
     expect(loggedOut.status).toBe(204);
     expect(loggedOut.headers.get("set-cookie") ?? "").toContain("Max-Age=0");
+    // Logout revoga o jti no servidor: o mesmo bearer para de valer na hora.
     const bearerStill = await app.request("/v1/account/me", { headers: jsonHeaders(token, ip) });
-    expect(bearerStill.status).toBe(200);
+    expect(bearerStill.status).toBe(401);
+    const ordersAfter = await app.request("/v1/account/orders", { headers: jsonHeaders(token, ip) });
+    expect(ordersAfter.status).toBe(401);
+    const revoked = await sql.query<{ revoked_at: unknown }>(
+      "select s.revoked_at from customer_sessions s join customers c on c.id = s.customer_id where c.email = 'ana.pedido@pulso.test'",
+    );
+    expect(revoked.rows.some((r) => r.revoked_at !== null)).toBe(true);
   });
 });

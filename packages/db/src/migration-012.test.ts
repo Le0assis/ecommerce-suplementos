@@ -10,7 +10,7 @@ const migration012 = readFileSync(resolve(sqlDir, "012_conta_pedido.sql"), "utf8
 async function databaseBeforeAccounts() {
   const db = new PGlite();
   const files = readdirSync(sqlDir)
-    .filter((name) => /^\d+.+\.sql$/.test(name) && name !== "012_conta_pedido.sql")
+    .filter((name) => /^\d+.+\.sql$/.test(name) && name < "012_conta_pedido.sql")
     .sort();
   for (const name of files) await db.exec(readFileSync(resolve(sqlDir, name), "utf8"));
   return db;

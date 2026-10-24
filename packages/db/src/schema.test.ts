@@ -142,7 +142,7 @@ describe("schema", () => {
 
   it("prepara conta e pedido sem duplicar tabela nem apagar dado", () => {
     const files = migrationFiles(sqlDir);
-    expect(files.at(-1)).toBe("012_conta_pedido.sql");
+    expect(files.indexOf("012_conta_pedido.sql")).toBeGreaterThan(-1);
     expect(files.indexOf("012_conta_pedido.sql")).toBeGreaterThan(files.indexOf("011_consulta_cupom_cpf.sql"));
     const sql = readFileSync(resolve(sqlDir, "012_conta_pedido.sql"), "utf8").toLowerCase();
     expect(sql).toContain("add column if not exists password_hash text");
@@ -161,5 +161,15 @@ describe("schema", () => {
     expect(sql).not.toContain("delete from");
     expect(sql).not.toContain("truncate");
     expect(sql).not.toContain("update ");
+  });
+
+  it("013 cria a sessão revogável da conta sem apagar dado", () => {
+    const files = migrationFiles(sqlDir);
+    expect(files.at(-1)).toBe("013_sessoes_conta.sql");
+    const sql = readFileSync(resolve(sqlDir, "013_sessoes_conta.sql"), "utf8").toLowerCase();
+    expect(sql).toContain("create table if not exists customer_sessions");
+    expect(sql).toContain("revoked_at timestamptz");
+    expect(sql).toContain("references customers (id) on delete cascade");
+    expect(sql).not.toContain("drop ");
   });
 });

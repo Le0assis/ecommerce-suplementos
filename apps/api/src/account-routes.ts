@@ -26,6 +26,47 @@ import { buildPlacedCheckout, parseCheckoutSimulate, type PointAccount } from ".
 const BUSY = "Muitas tentativas de login. Espera alguns minutos.";
 const IP_LIMIT = 30;
 const LOCK_MS = 15 * 60 * 1000;
+// Resposta única para conflito de cadastro: não diz se o CPF ou o e-mail já tem conta (LGPD).
+export const REGISTER_CONFLICT = "Não deu para criar a conta com esses dados. Se você já tem conta, entre ou recupere a senha.";
+export const ORDER_CONFLICT = "Não deu para concluir o pedido com esses dados. Confira o CPF ou fale com o atendimento.";
+const SIGNUP_LIMIT = 10;
+const signupHits = new Map<string, { count: number; reset: number }>();
+
+// Limite por IP de cadastro e de conflito no pedido. Freia quem testa CPFs em série.
+function signupAllowed(ip: string, now: number): boolean {
+  let bucket = signupHits.get(ip);
+  if (!bucket || bucket.reset <= now) {
+    bucket = { count: 0, reset: now + LOCK_MS };
+    signupHits.set(ip, bucket);
+  }
+  bucket.count += 1;
+  if (signupHits.size > 50_000) {
+    for (const [key, value] of signupHits) if (value.reset <= now) signupHits.delete(key);
+  }
+  return bucket.count <= SIGNUP_LIMIT;
+}
+
+function signupBlocked(ip: string, now: number): boolean {
+  const bucket = signupHits.get(ip);
+  return Boolean(bucket && bucket.reset > now && bucket.count >= SIGNUP_LIMIT);
+}
+
+async function openCustomerSession(sql: SqlClient, jti: string, customerId: string, expiresAt: Date): Promise<void> {
+  await sql.query("insert into customer_sessions (jti, customer_id, expires_at) values ($1, $2, $3)", [
+    jti,
+    customerId,
+    expiresAt.toISOString(),
+  ]);
+}
+
+async function customerSessionIsLive(sql: SqlClient, jti: string, customerId: string, now: Date): Promise<boolean> {
+  const rows = await sql.query<{ jti: string }>(
+    `select jti from customer_sessions
+     where jti = $1 and customer_id = $2 and revoked_at is null and expires_at > $3::timestamptz`,
+    [jti, customerId, now.toISOString()],
+  );
+  return rows.rows.length > 0;
+}
 
 const registerSchema = z.object({
   name: z.string().trim().min(2, "Informe o nome.").max(120),
@@ -67,6 +108,7 @@ export function accountLoginProofCount(): number {
 export function resetAccountLoginLimits(): void {
   ipHits.clear();
   emailIpHits.clear();
+  signupHits.clear();
   proofs = 0;
 }
 
@@ -230,6 +272,7 @@ export async function customerPointAccount(c: Context, sql: SqlClient | null, op
   if (!token) return null;
   const claims = readCustomerSession(token, secret);
   if (!claims) return null;
+  if (!(await customerSessionIsLive(sql, claims.jti, claims.sub, new Date()))) return null;
   const row = await loadCustomer(sql, claims.sub);
   if (!row) return null;
   return { pointsBalance: Number(row.points_balance), lifetimePoints: Number(row.points_lifetime) };
@@ -258,14 +301,27 @@ export function mountAccount(app: Hono, dataSql: () => SqlClient | null, options
     if (!token) throw new HttpError(401, "Faça login para continuar.");
     const claims = readCustomerSession(token, ctx.secret, ctx.now());
     if (!claims) throw new HttpError(401, "Sessão inválida ou vencida.");
+    if (!(await customerSessionIsLive(ctx.sql, claims.jti, claims.sub, ctx.now()))) {
+      throw new HttpError(401, "Sessão inválida ou vencida.");
+    }
     const row = await loadCustomer(ctx.sql, claims.sub);
     if (!row) throw new HttpError(401, "Sessão inválida ou vencida.");
     return { ctx, row };
   };
 
-  const issue = (c: Context, row: CustomerRow, secret: string, secure: boolean, now: Date, status: 200 | 201 = 200) => {
+  const issue = async (
+    c: Context,
+    sql: SqlClient,
+    row: CustomerRow,
+    secret: string,
+    secure: boolean,
+    now: Date,
+    status: 200 | 201 = 200,
+  ) => {
     const exp = Math.floor(now.getTime() / 1000) + CUSTOMER_SESSION_SECONDS;
-    const token = signCustomerSession({ sub: row.id, email: row.email, name: row.name, exp, jti: randomUUID() }, secret);
+    const jti = randomUUID();
+    await openCustomerSession(sql, jti, row.id, new Date(exp * 1000));
+    const token = signCustomerSession({ sub: row.id, email: row.email, name: row.name, exp, jti }, secret);
     c.header("set-cookie", customerCookie(token, CUSTOMER_SESSION_SECONDS, secure));
     c.header("cache-control", "no-store");
     return c.json({ user: publicCustomer(row, maskedCpf(row)) }, status);
@@ -273,6 +329,11 @@ export function mountAccount(app: Hono, dataSql: () => SqlClient | null, options
 
   app.post("/v1/account/register", async (c) => {
     const ctx = runtime();
+    const ip = clientIp(c);
+    if (!signupAllowed(ip || "sem-ip", Date.now())) {
+      c.header("retry-after", "900");
+      throw new HttpError(429, "Muitas tentativas de cadastro. Espera alguns minutos.");
+    }
     const body = parseInput(registerSchema, await readJson(c));
     const email = normalizeLoginEmail(body.email);
     const cpf = body.cpf?.trim() ? body.cpf : undefined;
@@ -293,13 +354,16 @@ export function mountAccount(app: Hono, dataSql: () => SqlClient | null, options
       await ctx.sql.commit();
     } catch (error) {
       await ctx.sql.rollback();
-      if (error instanceof CatalogError) throw new HttpError(error.status === 409 ? 409 : 400, error.message);
-      if (uniqueViolation(error)) throw new HttpError(409, "Esse e-mail já tem conta.");
+      if (error instanceof CatalogError) {
+        if (error.status === 409) throw new HttpError(409, REGISTER_CONFLICT);
+        throw new HttpError(400, error.message);
+      }
+      if (uniqueViolation(error)) throw new HttpError(409, REGISTER_CONFLICT);
       throw error;
     }
     const row = await loadCustomer(ctx.sql, id);
     if (!row) throw new HttpError(500, "Erro interno.");
-    return issue(c, row, ctx.secret, ctx.secure, ctx.now(), 201);
+    return issue(c, ctx.sql, row, ctx.secret, ctx.secure, ctx.now(), 201);
   });
 
   app.post("/v1/account/login", async (c) => {
@@ -334,11 +398,19 @@ export function mountAccount(app: Hono, dataSql: () => SqlClient | null, options
     };
     if (!row?.password_hash || !matches) return note();
     await runLoginStore(store, () => redisClear(ip, email), () => memoryClear(ip, email, now));
-    return issue(c, row, ctx.secret, ctx.secure, ctx.now());
+    return issue(c, ctx.sql, row, ctx.secret, ctx.secure, ctx.now());
   });
 
   app.post("/v1/account/logout", async (c) => {
     const ctx = runtime();
+    const token = customerTokenFromRequest(c.req.header("authorization"), c.req.header("cookie"));
+    const claims = token ? readCustomerSession(token, ctx.secret, ctx.now()) : null;
+    if (claims) {
+      await ctx.sql.query(
+        "update customer_sessions set revoked_at = $2::timestamptz where jti = $1 and customer_id = $3 and revoked_at is null",
+        [claims.jti, ctx.now().toISOString(), claims.sub],
+      );
+    }
     c.header("set-cookie", clearCustomerCookie(ctx.secure));
     c.header("cache-control", "no-store");
     return c.body(null, 204);
@@ -403,6 +475,11 @@ export function mountAccount(app: Hono, dataSql: () => SqlClient | null, options
 
   app.post("/v1/account/orders", async (c) => {
     const { ctx, row } = await actor(c);
+    const orderIp = clientIp(c) || "sem-ip";
+    if (signupBlocked(orderIp, Date.now())) {
+      c.header("retry-after", "900");
+      throw new HttpError(429, "Muitas tentativas. Espera alguns minutos.");
+    }
     const body = await readJson(c);
     const parsed = parseCheckoutSimulate(body);
     if ("error" in parsed) throw new HttpError(400, parsed.error);
@@ -492,8 +569,11 @@ export function mountAccount(app: Hono, dataSql: () => SqlClient | null, options
     } catch (error) {
       await ctx.sql.rollback();
       if (error instanceof HttpError) throw error;
-      if (error instanceof CatalogError) throw new HttpError(error.status === 409 ? 409 : 400, error.message);
-      if (uniqueViolation(error)) throw new HttpError(409, "Já existe um cliente com esse CPF.");
+      if ((error instanceof CatalogError && error.status === 409) || uniqueViolation(error)) {
+        signupAllowed(orderIp, Date.now());
+        throw new HttpError(409, ORDER_CONFLICT);
+      }
+      if (error instanceof CatalogError) throw new HttpError(400, error.message);
       throw error;
     }
     c.header("cache-control", "no-store");
