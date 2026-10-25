@@ -1,0 +1,256 @@
+import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { test } from "vitest";
+import type { AdminDrop } from "@/lib/admin-types";
+import { handleAdminData } from "@/server/admin-client";
+import { dispatchRecords } from "@/server/admin-records";
+import { migrateAdminDb, seedAdminDb } from "@/server/admin-seed";
+import type { SessionPayload } from "@/server/admin-session";
+import { readAdminDb } from "@/server/admin-store";
+
+function session(role: SessionPayload["role"]): SessionPayload {
+  return {
+    v: 1,
+    sub: "teste",
+    email: "teste@pulso.local",
+    name: "Teste",
+    role,
+    exp: Math.floor(Date.now() / 1000) + 60,
+    src: "adapter",
+  };
+}
+
+test("o arquivo v1 com status publicado vira ativo e guarda o cupom", () => {
+  const fresh = seedAdminDb();
+  const migrated = migrateAdminDb({
+    version: 1,
+    products: fresh.products.map((product) => ({ ...product, status: "publicado" })),
+    coupons: [...fresh.coupons, { ...fresh.coupons[0], id: "browser1", code: "BROWSER1", uses: 0 }],
+    influencers: [
+      { id: "luna-vaz", slug: "luna-vaz", name: "Luna Editada", handle: "@lunavaz" },
+      { id: "extra", slug: "extra", name: "Extra", handle: "@extra" },
+    ],
+  });
+  assert.ok(migrated);
+  assert.equal(migrated.version, 2);
+  assert.equal(migrated.products.every((product) => product.status === "ativo"), true);
+  assert.equal(migrated.coupons.some((coupon) => coupon.code === "BROWSER1"), true);
+  assert.equal(migrated.influencers.find((person) => person.id === "luna-vaz")?.name, "Luna Editada");
+  assert.equal(migrated.influencers.some((person) => person.id === "extra"), true);
+  assert.ok(migrated.categories.length > 8);
+  assert.equal(migrated.loyalty.pixDiscountPercent, 10);
+});
+
+test("a leitura reescreve o adaptador v1", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "pulso-admin-v1-"));
+  const previous = process.env.ADMIN_MOCK_PATH;
+  const file = path.join(dir, "admin-mock.json");
+  const fresh = seedAdminDb();
+  writeFileSync(file, JSON.stringify({
+    version: 1,
+    products: fresh.products.map((product) => ({ ...product, status: "publicado" })),
+    coupons: fresh.coupons,
+    influencers: [],
+  }));
+  process.env.ADMIN_MOCK_PATH = file;
+  try {
+    const db = readAdminDb();
+    assert.equal(db.version, 2);
+    assert.equal(db.products.every((product) => product.status === "ativo"), true);
+    const saved = JSON.parse(readFileSync(file, "utf8")) as { version: number };
+    assert.equal(saved.version, 2);
+  } finally {
+    if (previous === undefined) delete process.env.ADMIN_MOCK_PATH;
+    else process.env.ADMIN_MOCK_PATH = previous;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("kit, drop, post, avaliação e pontos seguem as regras", () => {
+  const db = seedAdminDb();
+  const search = new URLSearchParams();
+  assert.throws(() => dispatchRecords(db, "POST", ["kits"], search, {
+    name: "Alto",
+    discountPercent: 40,
+    kitItems: [{ productId: "base-creatina", quantity: 1 }],
+  }), /12%/);
+  const kit = dispatchRecords(db, "POST", ["kits"], search, {
+    name: "Dupla",
+    discountPercent: 10,
+    kitItems: [
+      { productId: "base-creatina", quantity: 1 },
+      { productId: "caos-pre-treino", quantity: 1 },
+    ],
+  });
+  assert.equal(kit?.status, 201);
+  assert.throws(() => dispatchRecords(db, "POST", ["promotions"], search, {
+    name: "Semana",
+    kind: "percent",
+    value: 40,
+    targetType: "produto",
+    productId: "caos-pre-treino",
+    active: true,
+  }), /30%/);
+  assert.throws(() => dispatchRecords(db, "PATCH", ["drops", "drop-04-melancia"], search, { unitsTotal: 10 }), /estoque/);
+  const drop = dispatchRecords(db, "PATCH", ["drops", "drop-04-melancia"], search, { teaser: "Chegando" });
+  assert.equal((drop?.body.item as AdminDrop).unitsLeft, 14);
+  const archived = dispatchRecords(db, "DELETE", ["posts", "pre-sem-passar-mal"], search, undefined);
+  assert.equal((archived?.body.item as { status: string }).status, "arquivado");
+  const review = dispatchRecords(db, "PATCH", ["reviews", "rv-pendente-demo"], search, { status: "aprovada", reply: "Valeu." });
+  assert.equal((review?.body.item as { reply: string }).reply, "Valeu.");
+  assert.throws(() => dispatchRecords(db, "PATCH", ["customers", "user-ana"], search, { pointsBalance: -1 }), /negativos/);
+  assert.throws(() => dispatchRecords(db, "PATCH", ["influencers", "luna-vaz"], search, {
+    images: [{ alt: "", fallbackHex: "#ff5cae" }],
+  }), /texto alternativo/);
+  for (const href of ["javascript:alert(1)", "data:text/html,hi", "http://pulso.dev", "//pulso.dev"]) {
+    assert.throws(() => dispatchRecords(db, "POST", ["banners"], search, { title: `Ruim ${href}`, slot: "destaque", href }), /https/);
+  }
+  const banner = dispatchRecords(db, "POST", ["banners"], search, { title: "Capa segura", slot: "destaque", href: "https://pulso.dev/drop" });
+  assert.equal((banner?.body.item as { href: string }).href, "https://pulso.dev/drop");
+});
+
+test("o proxy do admin manda o IP e um 404 sem rota não cai no mock", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "pulso-admin-proxy-"));
+  const previous = process.env.ADMIN_MOCK_PATH;
+  const previousApi = process.env.API_URL;
+  const file = path.join(dir, "admin-mock.json");
+  const seen: string[] = [];
+  const server = createServer((req, res) => {
+    seen.push(String(req.headers["x-forwarded-for"] ?? ""));
+    const url = req.url ?? "";
+    if (url.includes("/v1/admin/posts/some-texto")) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "Texto não encontrado." }));
+      return;
+    }
+    if (url.includes("/v1/admin/posts/")) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      res.end("404 Not Found");
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ items: [] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  process.env.ADMIN_MOCK_PATH = file;
+  process.env.API_URL = `http://127.0.0.1:${port}`;
+  const actor: SessionPayload = { ...session("dono"), src: "api", apiToken: "token-de-teste" };
+  try {
+    const list = await handleAdminData(actor, "GET", ["posts"], new URLSearchParams(), undefined, "198.51.100.4, 203.0.113.9");
+    assert.equal(list.status, 200);
+    assert.equal(seen[0], "198.51.100.4, 203.0.113.9");
+    const missing = await handleAdminData(actor, "GET", ["posts", "sem-rota"], new URLSearchParams(), undefined, "203.0.113.9");
+    assert.equal(missing.status, 404);
+    assert.equal(missing.body.error, "A API não tem GET /v1/admin/posts/sem-rota.");
+    assert.equal(missing.body.source, "api");
+    const gone = await handleAdminData(actor, "GET", ["posts", "some-texto"], new URLSearchParams(), undefined, "203.0.113.9");
+    assert.equal(gone.status, 404);
+    assert.equal(gone.body.error, "Texto não encontrado.");
+    assert.equal(existsSync(file), false);
+  } finally {
+    if (previous === undefined) delete process.env.ADMIN_MOCK_PATH;
+    else process.env.ADMIN_MOCK_PATH = previous;
+    if (previousApi === undefined) delete process.env.API_URL;
+    else process.env.API_URL = previousApi;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("editor não vê pedido nem fidelidade; atendimento vê pedido", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "pulso-admin-role-"));
+  const previous = process.env.ADMIN_MOCK_PATH;
+  const previousApi = process.env.API_URL;
+  process.env.ADMIN_MOCK_PATH = path.join(dir, "admin-mock.json");
+  process.env.API_URL = "http://127.0.0.1:9";
+  try {
+    const search = new URLSearchParams();
+    const file = path.join(dir, "admin-mock.json");
+    assert.equal((await handleAdminData(session("editor"), "GET", ["orders"], search, undefined)).status, 403);
+    assert.equal((await handleAdminData(session("editor"), "GET", ["audit"], search, undefined)).status, 403);
+    assert.equal((await handleAdminData(session("atendimento"), "GET", ["audit"], search, undefined)).status, 403);
+    assert.equal((await handleAdminData(session("editor"), "GET", ["settings", "loyalty"], search, undefined)).status, 403);
+    assert.equal((await handleAdminData(session("editor"), "GET", ["drops", "drop-05", "waitlist"], search, undefined)).status, 403);
+    assert.equal((await handleAdminData({ ...session("editor"), src: "api" as const, apiToken: "token-de-teste" }, "GET", ["drops", "drop-05", "waitlist"], search, undefined)).status, 403);
+    assert.equal((await handleAdminData(session("editor"), "DELETE", ["drops", "waitlist", "linha-1"], search, undefined)).status, 403);
+    assert.equal((await handleAdminData(session("editor"), "POST", ["drops", "waitlist", "erase"], search, { email: "a@pulso.test" })).status, 403);
+    const support = { ...session("atendimento"), src: "api" as const, apiToken: "token-de-teste" };
+    assert.equal((await handleAdminData(support, "GET", ["drops", "drop-05", "waitlist"], search, undefined)).status, 503);
+    assert.equal((await handleAdminData(support, "POST", ["drops", "waitlist", "erase"], search, { email: "a@pulso.test" })).status, 503);
+    assert.equal((await handleAdminData(support, "DELETE", ["drops", "waitlist", "nao-existe"], search, undefined)).status, 503);
+    assert.equal((await handleAdminData({ ...session("editor"), src: "api" as const, apiToken: "token-de-teste" }, "POST", ["drops", "waitlist", "erase"], search, { email: "a@pulso.test" })).status, 403);
+    const quiz = await handleAdminData(session("editor"), "GET", ["quiz"], search, undefined);
+    assert.equal(quiz.status, 401);
+    assert.notEqual(quiz.body.source, "adapter");
+    const orders = await handleAdminData(session("atendimento"), "GET", ["orders"], search, undefined);
+    assert.equal(orders.status, 401);
+    const loyalty = await handleAdminData({ ...session("dono"), src: "api", apiToken: "token-de-teste" }, "GET", ["settings", "loyalty"], search, undefined);
+    assert.equal(loyalty.status, 503);
+    assert.match(String(loyalty.body.error), /fora do ar/);
+    assert.equal(existsSync(file), false);
+  } finally {
+    if (previous === undefined) delete process.env.ADMIN_MOCK_PATH;
+    else process.env.ADMIN_MOCK_PATH = previous;
+    if (previousApi === undefined) delete process.env.API_URL;
+    else process.env.API_URL = previousApi;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("o atendimento não recebe o e-mail cru da lista", async () => {
+  const previous = process.env.API_URL;
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({
+      items: [{ id: "linha-1", email: "joao@drop.com", anonymizedAt: null }],
+      total: 1,
+    }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  process.env.API_URL = `http://127.0.0.1:${port}`;
+  const search = new URLSearchParams();
+  try {
+    const support = await handleAdminData(
+      { ...session("atendimento"), src: "api", apiToken: "token-de-teste" },
+      "GET",
+      ["drops", "drop-1", "waitlist"],
+      search,
+      undefined,
+    );
+    assert.equal(support.status, 200);
+    const masked = support.body.items as { email: string }[];
+    assert.equal(masked[0]?.email, "j***@d***.com");
+    assert.equal(JSON.stringify(support.body).includes("joao@drop.com"), false);
+
+    const owner = await handleAdminData(
+      { ...session("dono"), src: "api", apiToken: "token-de-teste" },
+      "GET",
+      ["drops", "drop-1", "waitlist"],
+      search,
+      undefined,
+    );
+    assert.equal((owner.body.items as { email: string }[])[0]?.email, "joao@drop.com");
+
+    const editor = await handleAdminData(
+      { ...session("editor"), src: "api", apiToken: "token-de-teste" },
+      "GET",
+      ["drops", "drop-1", "waitlist"],
+      search,
+      undefined,
+    );
+    assert.equal(editor.status, 403);
+    assert.equal(editor.body.error, "Seu papel não faz isso.");
+    assert.equal(JSON.stringify(editor.body).includes("joao"), false);
+  } finally {
+    if (previous === undefined) delete process.env.API_URL;
+    else process.env.API_URL = previous;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

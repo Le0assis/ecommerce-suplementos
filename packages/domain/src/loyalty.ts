@@ -69,9 +69,12 @@ export function earnedPoints(input: {
   productCents: number;
   lifetimePoints: number;
   payment: "pix" | "boleto" | "card";
+  pointsPerReal?: number;
+  pixPointsBonus?: number;
 }): number {
   if (input.productCents <= 0) return 0;
   const level = levelFor(input.lifetimePoints);
-  const bonus = input.payment === "pix" ? PIX_POINTS_BONUS : 1;
-  return Math.round((input.productCents / 100) * POINTS_PER_REAL * level.multiplier * bonus);
+  const perReal = input.pointsPerReal ?? POINTS_PER_REAL;
+  const bonus = input.payment === "pix" ? (input.pixPointsBonus ?? PIX_POINTS_BONUS) : 1;
+  return Math.round((input.productCents / 100) * perReal * level.multiplier * bonus);
 }

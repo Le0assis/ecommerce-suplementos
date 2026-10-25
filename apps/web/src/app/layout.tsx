@@ -1,19 +1,21 @@
+import { AnalyticsListener } from "@/components/analytics-listener";
 import { StoreDataProvider } from "@/components/store-data";
 import { CartDrawer, CookieBanner, Toaster } from "@/components/layout/chrome";
 import { siteConfig } from "@/lib/config";
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { Bebas_Neue, Outfit } from "next/font/google";
 import "./globals.css";
 
-const display = Bebas_Neue({ weight: "400", subsets: ["latin"], variable: "--font-bebas" });
-const sans = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
+const display = Bebas_Neue({ weight: "400", subsets: ["latin"], variable: "--font-bebas", display: "swap" });
+const sans = Outfit({ subsets: ["latin"], variable: "--font-outfit", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.siteUrl),
   title: { default: "PULSO — suplementos com cara de rua", template: "%s · PULSO" },
   description: siteConfig.description,
-  openGraph: { title: "PULSO", description: siteConfig.description, locale: "pt_BR", type: "website" },
+  openGraph: { title: "PULSO", description: siteConfig.description, locale: "pt_BR", type: "website", siteName: "PULSO", url: siteConfig.siteUrl },
+  twitter: { card: "summary", title: "PULSO", description: siteConfig.description },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -28,6 +30,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <CartDrawer />
           <CookieBanner />
           <Toaster />
+          <Suspense fallback={null}>
+            <AnalyticsListener />
+          </Suspense>
         </StoreDataProvider>
       </body>
     </html>

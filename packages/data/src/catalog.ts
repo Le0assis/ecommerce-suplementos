@@ -563,5 +563,6 @@ export const upcomingDrop = {
   edition: "Drop 05",
   name: "Sabor ainda sem nome",
   endsAt: "2026-12-15T18:00:00-03:00",
+  teaser: true,
   note: "A lista de espera guarda teu e-mail neste navegador. Não enviamos nada de verdade neste protótipo.",
 };

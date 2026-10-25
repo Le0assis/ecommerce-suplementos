@@ -18,7 +18,7 @@ export function ProductCard({ product }: { product: Product }) {
   const toggle = usePulso((state) => state.toggleWishlist);
   if (!flavor) return null;
   return (
-    <article className="group flex flex-col rounded-[1.6rem] border border-white/10 bg-black/40 p-3">
+    <article className="group flex min-w-0 flex-col rounded-[1.6rem] border border-white/10 bg-black/40 p-3 [overflow-wrap:anywhere]">
       <div className="relative">
         <Link href={`/loja/${product.slug}?sabor=${flavor.id}`} className="block">
           <Pack line={product.line} flavor={flavor.name} hex={flavor.hex} badge={product.badges[0]} />

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { siteConfig } from "@/lib/config";
-import { useCurrentUser, usePulso } from "@/lib/store";
+import { selectHydratedCart, useCurrentUser, usePulso } from "@/lib/store";
 import { formatBRL, freeShippingProgress } from "@pulso/domain";
 import { Heart, Home, Menu, Search, ShoppingBag, Sparkles, User, X } from "lucide-react";
 import Link from "next/link";
@@ -161,7 +161,7 @@ export function SiteFooter() {
         </div>
         <FooterCol title="Loja" links={[["/loja", "Catálogo"], ["/drops", "Drops"], ["/kits", "Montar kit"], ["/quiz", "Quiz de objetivo"], ["/calculadora", "Proteína e creatina"]]} />
         <FooterCol title="Conta" links={[["/conta", "Meu pulso"], ["/conta/pedidos", "Pedidos"], ["/conta/pontos", "Pontos"], ["/favoritos", "Favoritos"], ["/rastreio", "Rastreio"]]} />
-        <FooterCol title="Casa" links={[["/sobre", "Sobre"], ["/blog", "Treino e rótulo"], ["/ajuda", "Ajuda"], ["/entrega", "Entrega e CEP"], ["/trocas", "Trocas"], ["/privacidade", "Privacidade"], ["/rotulos", "Rótulos e ANVISA"]]} />
+        <FooterCol title="Casa" links={[["/sobre", "Sobre"], ["/blog", "Treino e rótulo"], ["/conteudo", "CMS"], ["/ajuda", "Ajuda"], ["/entrega", "Entrega e CEP"], ["/trocas", "Trocas"], ["/privacidade", "Privacidade"], ["/rotulos", "Rótulos e ANVISA"]]} />
       </div>
       <p className="border-t border-white/10 px-4 py-4 text-center text-xs text-muted-foreground">Suplemento alimentar não é medicamento. Protótipo com dados fictícios · © 2026 PULSO</p>
     </footer>
@@ -251,7 +251,7 @@ export function Toaster() {
 export function CartDrawer() {
   const open = usePulso((state) => state.cartOpen);
   const setOpen = usePulso((state) => state.setCartOpen);
-  const cart = usePulso((state) => (state.hydrated ? state.cart : []));
+  const cart = usePulso(selectHydratedCart);
   const setQuantity = usePulso((state) => state.setQuantity);
   const removeLine = usePulso((state) => state.removeLine);
   const merchandise = cart.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0);

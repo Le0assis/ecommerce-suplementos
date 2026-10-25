@@ -23,6 +23,8 @@
     "db:reset": "docker compose down -v && docker compose up -d && node scripts/wait-for-postgres.mjs && pnpm db:migrate && pnpm db:seed",
     "db:migrate": "pnpm --filter @pulso/db migrate",
     "db:seed": "pnpm --filter @pulso/db seed",
+    "db:audit": "pnpm --filter @pulso/db audit-orphans",
+    "db:backfill-cpf": "pnpm --filter @pulso/db backfill-cpf",
     "start": "pnpm --filter @pulso/web start",
     "start:api": "pnpm --filter @pulso/api start"
   },

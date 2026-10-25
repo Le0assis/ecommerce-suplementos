@@ -5,10 +5,23 @@ import { levelFor, nextLevel } from "./loyalty";
 import { formatBRL, parseBRLToCents } from "./money";
 import { findCoupon, quoteCart } from "./quote";
 import { quizResult } from "./quiz";
+import { dropPhase } from "./drops";
+import { accountExport, enqueueEvent } from "./analytics";
+import { applyReferralReward, matchReferral, referralCodeFrom, REFERRER_POINTS, REFERRED_POINTS } from "./referral";
+import { defaultGateway, sandboxCharge } from "./sandbox-payment";
 import { saoPauloDateKey, scratchPrize } from "./scratch";
 import { lookupCep, resolveShippingCents, shippingRates } from "./shipping";
 import type { Coupon } from "./types";
 import { isValidCpf, isValidExpiry, luhn, validateCheckout } from "./validators";
+import { loginEmailIpKey } from "./login-key";
+
+describe("chave do login", () => {
+  it("normaliza o e-mail e separa pelo IP", () => {
+    expect(loginEmailIpKey("  Dono@Pulso.Test ", "203.0.113.1")).toBe("dono@pulso.test|203.0.113.1");
+    expect(loginEmailIpKey("DONO@pulso.test", "203.0.113.1")).toBe(loginEmailIpKey("dono@pulso.test", "203.0.113.1"));
+    expect(loginEmailIpKey("dono@pulso.test", "203.0.113.2")).not.toBe(loginEmailIpKey("dono@pulso.test", "203.0.113.1"));
+  });
+});
 
 const luna: Coupon = {
   code: "LUNA15",
@@ -123,6 +136,27 @@ describe("quote do carrinho", () => {
     expect(quote.shippingFree).toBe(true);
   });
 
+  it("ignora cupom abaixo do mínimo e usa o desconto de fidelidade", () => {
+    const below = quoteCart({
+      ...baseQuote,
+      payment: "pix",
+      lines: [{ unitPriceCents: 1000, quantity: 1, subscription: false, subscriptionDiscountPercent: 0, category: "whey" }],
+      coupon: { ...luna, minCents: 5000 },
+    });
+    expect(below.discountCents).toBe(0);
+    expect(below.pixCents).toBe(100);
+    const loyal = quoteCart({
+      ...baseQuote,
+      payment: "pix",
+      lines: [{ unitPriceCents: 10000, quantity: 1, subscription: false, subscriptionDiscountPercent: 0, category: "whey" }],
+      coupon: null,
+      pixDiscountPercent: 20,
+      pointsPerReal: 2,
+    });
+    expect(loyal.pixCents).toBe(2000);
+    expect(loyal.pointsEarned).toBe(Math.round(80 * 2 * 1.2));
+  });
+
   it("não acha cupom inventado", () => {
     expect(findCoupon("nao-existe", [luna]).error).toBe("Cupom não encontrado.");
   });
@@ -174,6 +208,74 @@ describe("níveis, quiz, calculadora e raspadinha", () => {
 function SCRATCH_WEIGHT(): number {
   return [30, 15, 15, 20, 20].reduce((sum, value) => sum + value, 0);
 }
+
+describe("drops", () => {
+  it("separa edição no ar, encerrada e data inválida", () => {
+    const now = new Date("2026-10-22T12:00:00-03:00").getTime();
+    expect(dropPhase("2026-11-08T23:59:00-03:00", now)).toBe("no-ar");
+    expect(dropPhase("2026-10-01T00:00:00-03:00", now)).toBe("encerrado");
+    expect(dropPhase("amanha", now)).toBe("data-invalida");
+  });
+});
+
+describe("sandbox de pagamento", () => {
+  it("manda pix ao Mercado Pago e cartão à Pagar.me, sem cobrar", () => {
+    expect(defaultGateway("pix")).toBe("mercadopago");
+    expect(defaultGateway("boleto")).toBe("mercadopago");
+    expect(defaultGateway("card")).toBe("pagarme");
+    const pix = sandboxCharge({ method: "pix", amountCents: 10000, orderCode: "PLTESTE" });
+    expect("error" in pix).toBe(false);
+    if (!("error" in pix)) {
+      expect(pix.sandbox).toBe(true);
+      expect(pix.gateway).toBe("mercadopago");
+      expect(pix.status).toBe("pending");
+      expect(pix.externalId).toBe("mp_sandbox_PLTESTE");
+      expect(pix.pixCopyPaste).toContain("PLTESTE");
+    }
+    const card = sandboxCharge({ method: "card", amountCents: 5000, orderCode: "PLCARD" });
+    if (!("error" in card)) {
+      expect(card.gateway).toBe("pagarme");
+      expect(card.status).toBe("approved");
+      expect(card.externalId).toBe("pm_sandbox_PLCARD");
+    }
+    expect(sandboxCharge({ method: "pix", amountCents: 0, orderCode: "PL" })).toEqual({ error: "Valor inválido para o sandbox." });
+  });
+});
+
+describe("indicação", () => {
+  it("gera código estável e credita os dois lados uma vez", () => {
+    expect(referralCodeFrom("Ana Luz", "user-ana")).toBe("ANALUZRANA");
+    const directory = [{ code: "ANALUZRANA", userId: "user-ana" }];
+    expect(matchReferral("analuzrana", directory, "user-nova")).toEqual({ referrerId: "user-ana" });
+    expect(matchReferral("analuzrana", directory, "user-ana")).toEqual({ error: "Você não indica a si." });
+    expect("error" in matchReferral("nao-tem", directory, "user-nova")).toBe(true);
+    const once = applyReferralReward(
+      [
+        { id: "user-ana", pointsBalance: 10, pointsLifetime: 10 },
+        { id: "user-nova", pointsBalance: 100, pointsLifetime: 100, referredBy: "user-ana", referralRewarded: false },
+      ],
+      "user-nova",
+    );
+    expect(once.find((account) => account.id === "user-ana")?.pointsBalance).toBe(10 + REFERRER_POINTS);
+    expect(once.find((account) => account.id === "user-nova")?.pointsBalance).toBe(100 + REFERRED_POINTS);
+    expect(once.find((account) => account.id === "user-nova")?.referralRewarded).toBe(true);
+    const twice = applyReferralReward(once, "user-nova");
+    expect(twice.find((account) => account.id === "user-ana")?.pointsBalance).toBe(10 + REFERRER_POINTS);
+  });
+});
+
+describe("privacidade e analytics", () => {
+  it("não grava evento sem consentimento e omite a senha na exportação", () => {
+    expect(enqueueEvent([], { name: "page_view", path: "/" }, false)).toEqual([]);
+    const queue = enqueueEvent([], { name: "page_view", path: "/loja" }, true);
+    expect(queue).toEqual([{ name: "page_view", path: "/loja" }]);
+    expect(enqueueEvent(queue, { name: "   " }, true)).toEqual(queue);
+    const exported = accountExport({ email: "ana@pulso.dev", password: "pulso123", name: "Ana" });
+    expect(exported.password).toBe("omitido");
+    expect(exported.email).toBe("ana@pulso.dev");
+    expect(JSON.stringify(exported)).not.toContain("pulso123");
+  });
+});
 
 describe("checkout", () => {
   it("recusa pedido sem idade e sem cartão válido", () => {

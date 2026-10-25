@@ -8,7 +8,8 @@
     "start": "node ../../scripts/next.mjs start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "node -e \"console.error('Playwright ainda nao esta instalado. Rode pnpm test (Vitest). O plano de e2e esta em docs/roadmap-e-status.md.'); process.exit(1)\""
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@pulso/data": "workspace:*",
@@ -24,6 +25,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.22",
+    "ioredis": "5.8.2",
     "lucide-react": "^0.546.0",
     "next": "16.4.2",
     "react": "19.3.0",
@@ -33,6 +35,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -40,6 +43,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }

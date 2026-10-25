@@ -5,10 +5,10 @@ import { ProductCard } from "@/components/product/product-card";
 import { useStoreData } from "@/components/store-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { siteConfig } from "@/lib/config";
+import { canRedeemPoints } from "@/lib/checkout-quote";
 import { useCurrentUser, usePulso, useWishlist } from "@/lib/store";
 import type { SavedAddress } from "@/lib/types";
-import { formatBRL, formatCep, levelFor, nextLevel, parseBRLToCents } from "@pulso/domain";
+import { accountExport, formatBRL, formatCep, levelFor, nextLevel, referralCodeFrom, REFERRED_POINTS, REFERRER_POINTS } from "@pulso/domain";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -18,19 +18,20 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const register = usePulso((state) => state.register);
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", email: mode === "login" ? "ana@pulso.dev" : "", password: mode === "login" ? "pulso123" : "", marketing: false });
+  const [form, setForm] = useState({ name: "", email: "", password: "", marketing: false, referral: "" });
 
   return (
     <div className="mx-auto max-w-md px-4 py-12">
       <h1 className="font-display text-7xl leading-none">{mode === "login" ? "Entra" : "Cria a conta"}</h1>
       <p className="mt-2 text-sm text-muted-foreground">Protótipo: a senha fica neste navegador, sem servidor. Conta demo ana@pulso.dev / pulso123.</p>
       <form
+        aria-label={mode === "login" ? "Entrar na conta" : "Criar conta"}
         className="mt-6 space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
           const message = mode === "login"
             ? login(form.email, form.password)
-            : register({ name: form.name, email: form.email, password: form.password, marketingOptIn: form.marketing });
+            : register({ name: form.name, email: form.email, password: form.password, marketingOptIn: form.marketing, referralCode: form.referral });
           setError(message);
           if (!message) router.push("/conta");
         }}
@@ -38,6 +39,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         {mode === "register" ? <Input aria-label="Nome" placeholder="Nome" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /> : null}
         <Input aria-label="E-mail" type="email" placeholder="E-mail" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
         <Input aria-label="Senha" type="password" placeholder="Senha" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required />
+        {mode === "register" ? <Input aria-label="Código de indicação" placeholder="Código de quem te chamou (opcional)" value={form.referral} onChange={(event) => setForm({ ...form, referral: event.target.value })} /> : null}
         {mode === "register" ? <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.marketing} onChange={(event) => setForm({ ...form, marketing: event.target.checked })} className="accent-lime" />Quero novidade de drop por e-mail (fica só neste aparelho).</label> : null}
         {error ? <p className="text-sm text-pink">{error}</p> : null}
         <Button className="w-full rounded-full" type="submit">{mode === "login" ? "Entrar" : "Criar e ganhar 100 pontos"}</Button>
@@ -65,6 +67,7 @@ function Gate({ children }: { children: React.ReactNode }) {
 export function AccountHome() {
   const user = useCurrentUser();
   const logout = usePulso((state) => state.logout);
+  const remove = usePulso((state) => state.deleteAccount);
   return (
     <Gate>
       {user ? (
@@ -74,11 +77,30 @@ export function AccountHome() {
           <LevelBar lifetime={user.pointsLifetime} balance={user.pointsBalance} />
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <NavCard href="/conta/pedidos" title="Pedidos" text={`${user.orders.length} na conta`} />
-            <NavCard href="/conta/pontos" title="Pontos" text={`${user.pointsBalance} pra usar`} />
+            {canRedeemPoints(user.pointsBalance) ? <NavCard href="/conta/pontos" title="Pontos" text={`${user.pointsBalance} pra usar`} /> : null}
             <NavCard href="/conta/assinaturas" title="Assinaturas" text={`${user.subscriptions.length} recorrência(s)`} />
             <NavCard href="/conta/enderecos" title="Endereços" text={`${user.addresses.length} salvos`} />
+            <NavCard href="/conta/indicar" title="Indicar" text="150 pontos quando a pessoa compra" />
           </div>
-          <Button variant="outline" className="mt-6 rounded-full" onClick={logout}>Sair</Button>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <Button variant="outline" className="rounded-full" onClick={logout}>Sair</Button>
+            <Button
+              variant="outline"
+              className="rounded-full"
+              onClick={() => {
+                const blob = new Blob([JSON.stringify(accountExport(user), null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = "pulso-meus-dados.json";
+                link.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              Baixar meus dados
+            </Button>
+            <Button variant="outline" className="rounded-full" onClick={remove}>Apagar conta neste aparelho</Button>
+          </div>
         </div>
       ) : null}
     </Gate>
@@ -101,6 +123,21 @@ function LevelBar({ lifetime, balance }: { lifetime: number; balance: number }) 
 
 function NavCard({ href, title, text }: { href: string; title: string; text: string }) {
   return <Link href={href} className="rounded-[1.4rem] border border-white/10 p-4 hover:border-lime"><p className="font-display text-4xl leading-none">{title}</p><p className="text-sm text-muted-foreground">{text}</p></Link>;
+}
+
+export function ReferralView() {
+  const user = useCurrentUser();
+  return (
+    <Gate>
+      {user ? (
+        <div className="mx-auto max-w-xl px-4 py-10">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-lime">Indica a crew</p>
+          <h1 className="font-display text-7xl leading-none">{user.referralCode ?? referralCodeFrom(user.name, user.id)}</h1>
+          <p className="mt-3 text-sm text-muted-foreground">Quem cria a conta com esse código e paga o primeiro pedido ganha {REFERRED_POINTS} pontos. Você ganha {REFERRER_POINTS} nesse momento. Uma vez por pessoa. O código da Ana é {referralCodeFrom("Ana Luz", "user-ana")}.</p>
+        </div>
+      ) : null}
+    </Gate>
+  );
 }
 
 export function OrdersView() {
@@ -142,7 +179,7 @@ export function PointsView() {
       {user ? (
         <div className="mx-auto max-w-3xl px-4 py-10">
           <h1 className="font-display text-6xl">Pontos</h1>
-          <p className="mt-2 text-muted-foreground">100 pontos = R$ 1. Dá pra usar até 20% do pedido. Pix rende 20% de pontos a mais.</p>
+          {canRedeemPoints(user.pointsBalance) ? <p className="mt-2 text-muted-foreground">100 pontos = R$ 1. Dá pra usar até 20% do pedido. Pix rende 20% de pontos a mais.</p> : null}
           <LevelBar lifetime={user.pointsLifetime} balance={user.pointsBalance} />
           <ul className="mt-6 space-y-2">
             {user.pointsHistory.map((event) => (
@@ -247,7 +284,8 @@ export function OrderResult() {
     <div className="mx-auto max-w-xl px-4 py-10">
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-lime">Pedido {order.code}</p>
       <h1 className="font-display text-6xl leading-none">{order.status === "pagamento_pendente" ? "Falta o pagamento simulado" : "Tá pago na simulação"}</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Nenhum valor foi cobrado. Mercado Pago e Pagar.me entram na fase seguinte.</p>
+      <p className="mt-2 text-sm text-muted-foreground">{order.payment.sandboxMessage ?? "Nenhum valor foi cobrado. Sandbox Mercado Pago / Pagar.me."}</p>
+      {order.payment.externalId ? <p className="mt-1 text-xs text-muted-foreground">Cobrança {order.payment.externalId}</p> : null}
       {order.payment.pixPayload ? <CopyBlock title="Pix copia e cola (demo)" value={order.payment.pixPayload} /> : null}
       {order.payment.boletoLine ? <CopyBlock title="Linha digitável (demo)" value={order.payment.boletoLine} /> : null}
       <p className="mt-4 font-display text-4xl">{formatBRL(order.quote.totalCents)}</p>
@@ -291,52 +329,3 @@ export function TrackingView() {
   );
 }
 
-export function AdminView() {
-  const { allProducts } = useStoreData();
-  const savePatch = usePulso((state) => state.savePatch);
-  const orders = usePulso((state) => state.users.flatMap((user) => user.orders));
-  const [password, setPassword] = useState("");
-  const [ok, setOk] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  if (!ok) {
-    return (
-      <form className="mx-auto max-w-md space-y-3 px-4 py-12" onSubmit={(event) => { event.preventDefault(); if (password === siteConfig.adminPassword) setOk(true); else setError("Senha do protótipo não confere."); }}>
-        <h1 className="font-display text-6xl">Admin</h1>
-        <p className="text-sm text-muted-foreground">CMS local. A senha padrão está no .env (NEXT_PUBLIC_ADMIN_PASSWORD) e não protege um servidor.</p>
-        <Input type="password" aria-label="Senha do admin" value={password} onChange={(event) => setPassword(event.target.value)} />
-        {error ? <p className="text-sm text-pink">{error}</p> : null}
-        <Button type="submit" className="rounded-full">Entrar</Button>
-      </form>
-    );
-  }
-  return (
-    <div className="mx-auto max-w-5xl px-4 py-10">
-      <h1 className="font-display text-6xl">Catálogo local</h1>
-      <p className="text-sm text-muted-foreground">Preço e ocultar valem só neste navegador, por cima do mock. {orders.length} pedidos nesta sessão.</p>
-      <div className="mt-4 overflow-auto">
-        <table className="w-full min-w-[40rem] text-left text-sm">
-          <thead><tr className="text-xs uppercase tracking-[0.14em] text-muted-foreground"><th className="py-2">Produto</th><th>Preço base</th><th>Nome</th><th>Visível</th></tr></thead>
-          <tbody>
-            {allProducts.map((product) => (
-              <tr key={product.slug} className="border-t border-white/10">
-                <td className="py-3 font-display text-2xl">{product.line}</td>
-                <td>
-                  <Input
-                    aria-label={`Preço de ${product.name}`}
-                    defaultValue={(Math.min(...product.variants.map((variant) => variant.priceCents)) / 100).toFixed(2).replace(".", ",")}
-                    onBlur={(event) => {
-                      const cents = parseBRLToCents(event.target.value);
-                      if (cents) savePatch(product.slug, { priceCents: cents });
-                    }}
-                  />
-                </td>
-                <td><Input aria-label={`Nome de ${product.name}`} defaultValue={product.name} onBlur={(event) => savePatch(product.slug, { name: event.target.value })} /></td>
-                <td><input type="checkbox" aria-label={`Visível ${product.name}`} defaultChecked={!product.hidden} onChange={(event) => savePatch(product.slug, { hidden: !event.target.checked })} className="accent-lime" /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}

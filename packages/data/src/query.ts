@@ -37,6 +37,19 @@ export function applyCatalogPatches<T extends Product>(products: T[], patches: R
     if (patch.priceCents && patch.priceCents > 0) {
       next.variants = product.variants.map((variant) => ({ ...variant, priceCents: patch.priceCents! }));
     }
+    if (patch.stockByFlavor) {
+      next.flavors = product.flavors.map((flavor) => ({
+        ...flavor,
+        stock: patch.stockByFlavor?.[flavor.id] ?? flavor.stock,
+      }));
+      next.variants = next.variants.map((variant) => ({
+        ...variant,
+        stock: patch.stockByFlavor?.[variant.flavorId] ?? variant.stock,
+      }));
+    }
+    if (patch.dropEndsAt && product.drop) {
+      next.drop = { ...product.drop, endsAt: patch.dropEndsAt };
+    }
     return next;
   });
 }
@@ -66,6 +79,16 @@ export function sortProducts<T extends Product>(products: T[], sort: ProductSort
     list.sort((a, b) => Number(b.badges.includes("bestseller")) - Number(a.badges.includes("bestseller")) || b.rating - a.rating);
   }
   return list;
+}
+
+export function applyCouponPatches<T extends { code: string; active: boolean }>(
+  coupons: T[],
+  patches: Record<string, { active?: boolean }>,
+): T[] {
+  return coupons.map((coupon) => {
+    const active = patches[coupon.code]?.active;
+    return active === undefined ? coupon : { ...coupon, active };
+  });
 }
 
 export function searchProducts<T extends Product>(products: T[], q: string): T[] {

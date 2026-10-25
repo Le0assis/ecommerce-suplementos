@@ -1,17 +1,37 @@
 "use client";
 
+import { dropPhase } from "@pulso/domain";
 import { useSyncExternalStore } from "react";
 
+const SERVER_NOW = null;
+let clientNow: number | null = null;
+
+function getServerNow(): null {
+  return SERVER_NOW;
+}
+
+function getClientNow(): number {
+  clientNow ??= Date.now();
+  return clientNow;
+}
+
 function subscribe(callback: () => void) {
-  const id = setInterval(callback, 1000);
+  const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+  if (media.matches) return () => undefined;
+  const id = setInterval(() => {
+    clientNow = Date.now();
+    callback();
+  }, 1000);
   return () => clearInterval(id);
 }
 
 export function Countdown({ endsAt }: { endsAt: string }) {
-  const now = useSyncExternalStore(subscribe, () => Date.now(), () => null);
-  if (now === null) return <p className="font-display text-4xl">--d --h --m</p>;
+  const now = useSyncExternalStore(subscribe, getClientNow, getServerNow);
+  if (now === null) return <p className="font-display text-4xl">--d --h --m --s</p>;
+  const phase = dropPhase(endsAt, now);
+  if (phase === "data-invalida") return <p className="font-display text-4xl">Data do drop inválida</p>;
+  if (phase === "encerrado") return <p className="font-display text-4xl text-pink">Encerrado</p>;
   const diff = new Date(endsAt).getTime() - now;
-  if (diff <= 0) return <p className="font-display text-4xl text-pink">Encerrado</p>;
   const days = Math.floor(diff / 86400000);
   const hours = Math.floor((diff % 86400000) / 3600000);
   const minutes = Math.floor((diff % 3600000) / 60000);

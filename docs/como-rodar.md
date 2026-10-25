@@ -6,7 +6,7 @@ O passo a passo para quem está instalando a primeira vez, com Windows, Linux e 
 
 ```bash
 pnpm install          # só quando o lockfile mudar
-pnpm dev              # site em http://127.0.0.1:43123
+pnpm dev              # site em http://127.0.0.1:43123 (allowedDevOrigins libera esse host)
 pnpm dev:api          # API em http://127.0.0.1:8787
 pnpm dev:all          # os dois
 ```
@@ -19,7 +19,9 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
-No `.env`, `API_DATA_SOURCE=postgres` faz a API ler `products.payload`. A vitrine continua no mock até as páginas usarem `loadStorefront`.
+`pnpm db:seed` grava o mock de exemplo. Banco vazio ou que ainda só tem esse exemplo aceita rodar de novo. `NODE_ENV=production`, produto fora do mock ou edição posterior ao marcador `example_seed` recusam, e os filhos do mock não são apagados. A exceção consciente é `PULSO_SEED_ALLOW_OVERWRITE=1` ou `--force-example`. Detalhe na seção 6 do README. `pnpm db:backfill-cpf` cifra o CPF já gravado nas colunas da migração `010` e não mexe em `customers.cpf`. `pnpm db:audit` só lista órfãos.
+
+No `.env`, `API_DATA_SOURCE=postgres` faz a API montar o catálogo pelas tabelas (`product_flavors`, variantes, rótulo, fotos). `products.payload` não é mais a leitura. A vitrine continua no mock até as páginas usarem `loadStorefront`. A conta dono nasce com `pnpm --filter @pulso/db create-owner` (senha num arquivo fora do repo, variável `ADMIN_OWNER_PASSWORD_FILE`).
 
 ## Qualidade
 
@@ -32,7 +34,7 @@ pnpm --filter @pulso/web build
 
 CI: `.github/workflows/ci.yml` em push e pull request. Node 22, pnpm 10.33.4, lockfile congelado, `DATA_SOURCE=mock`. Não sobe Postgres.
 
-`pnpm test:e2e` avisa que o Playwright ainda não está instalado.
+`pnpm test:e2e` usa Playwright. Instale o Chromium com `pnpm --filter @pulso/web exec playwright install chromium`. Publicar a demo: [deploy.md](deploy.md).
 
 ## Produção local
 
@@ -47,10 +49,10 @@ pnpm start:api        # tsx, sem pasta dist
 Ainda não há Dockerfile de app nem projeto na Vercel. Quando for publicar:
 
 1. Site: Next.js com as `NEXT_PUBLIC_*` do ambiente e `WEB_PORT` definido pelo host. Build command `pnpm --filter @pulso/web build`.
-2. API: processo Node `pnpm --filter @pulso/api start`, `API_PORT` atrás do proxy.
+2. API: processo Node `pnpm --filter @pulso/api start`, `API_PORT` atrás do proxy. Atrás de proxy, `TRUSTED_PROXIES` é obrigatório. Sem a lista, o limite de login vê só o IP do proxy.
 3. Postgres gerenciado. Rode `pnpm db:migrate` e `pnpm db:seed` uma vez. Não use a senha `pulso` fora da máquina local.
 4. Redis gerenciado, ou apague `REDIS_URL` para seguir sem cache.
-5. Não publique `NEXT_PUBLIC_ADMIN_PASSWORD` como se fosse senha de operação. Troque o admin por sessão de servidor antes do domínio real.
+5. Defina `ADMIN_SESSION_SECRET` no servidor, diferente do exemplo. Ele não usa prefixo `NEXT_PUBLIC_`. O cookie da sessão já é httpOnly. Crie o dono com `pnpm --filter @pulso/db create-owner`. A API de produção exige `API_DATA_SOURCE=postgres`. O `/admin` não entra se a API estiver fora.
 6. Domínio e `NEXT_PUBLIC_SITE_URL` iguais, senão o sitemap aponta para o localhost.
 
 Até a fase 3 do roadmap, o deploy continua sendo uma vitrine de demonstração: Pix não liquida.

@@ -6,6 +6,7 @@ export function AthletePoster({
   accent,
   city,
   variant = "luna",
+  compact = false,
   className,
 }: {
   name: string;
@@ -13,10 +14,11 @@ export function AthletePoster({
   accent: string;
   city: string;
   variant?: "luna" | "caio" | "nanda" | "theo";
+  compact?: boolean;
   className?: string;
 }) {
   return (
-    <figure className={cn("relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-black", className)}>
+    <figure className={cn("relative min-w-0 overflow-hidden rounded-[1.8rem] border border-white/10 bg-black", className)}>
       <svg viewBox="0 0 360 460" className="h-full w-full" role="img" aria-label={`Ilustração de ${name}`}>
         <rect width="360" height="460" fill="#09090b" />
         <circle cx="280" cy="80" r="90" fill={accent} opacity="0.9" />
@@ -26,13 +28,15 @@ export function AthletePoster({
         {variant === "nanda" ? <Nanda accent={accent} /> : null}
         {variant === "theo" ? <Theo accent={accent} /> : null}
       </svg>
-      <figcaption className="absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-black via-black/70 to-transparent p-4">
-        <div>
-          <p className="font-display text-5xl leading-none text-white">{name}</p>
-          <p className="text-sm text-white/80">{handle} · {city}</p>
-        </div>
-        <span className="rounded-full bg-lime px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-primary-foreground">Collab</span>
-      </figcaption>
+      {compact ? null : (
+        <figcaption className="absolute inset-x-0 bottom-0 flex min-w-0 items-end justify-between gap-3 bg-gradient-to-t from-black via-black/70 to-transparent p-4">
+          <div className="min-w-0">
+            <p className="font-display text-5xl leading-none text-white [overflow-wrap:anywhere]">{name}</p>
+            <p className="text-sm text-white/80 [overflow-wrap:anywhere]">{handle} · {city}</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-lime px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-primary-foreground">Collab</span>
+        </figcaption>
+      )}
     </figure>
   );
 }

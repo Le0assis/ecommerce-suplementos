@@ -20,7 +20,7 @@
 
 **Postgres 16 + Redis 7** via Docker Compose. SQL na mão, sem ORM. O volume ainda não paga Prisma. Quando a escrita de pedido crescer, um migrador com histórico (drizzle, prisma ou dbmate) entra no lugar do `tsx` que executa um arquivo.
 
-**Vitest.** Teste de domínio, catálogo, SQL (o arquivo existe e tem as tabelas) e rotas. Playwright está no alvo e não no `package.json`.
+**Vitest e Playwright.** Vitest cobre domínio, catálogo, SQL e API. Playwright cobre a home em `apps/web/e2e`. O CI roda só o Vitest.
 
 ## Alternativas de produto (não instaladas)
 

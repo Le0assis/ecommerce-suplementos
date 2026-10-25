@@ -1,13 +1,18 @@
 "use client";
 
-import { coupons } from "@pulso/data";
+import { applyCouponPatches, coupons } from "@pulso/data";
+import type { ContentPatch } from "@pulso/data";
 import {
-  fakeBoletoLine,
-  fakePixPayload,
+  applyReferralReward,
+  enqueueEvent,
   findCoupon,
+  matchReferral,
   orderCode,
   quoteCart,
+  referralCodeFrom,
+  sandboxCharge,
   WELCOME_POINTS,
+  type AnalyticsEvent,
   type CatalogPatch,
   type PaymentMethod,
   type ShippingMethod,
@@ -15,6 +20,7 @@ import {
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { demoUser } from "./demo";
+import { mergePersistedStore, persistedStoreSlice } from "./store-persist";
 import type { AccountUser, CartLine, OrderRecord, SavedAddress, ScratchRecord, SubscriptionRecord } from "./types";
 
 interface Toast {
@@ -32,6 +38,9 @@ interface PulsoState {
   wishlist: Record<string, string[]>;
   guestOrders: OrderRecord[];
   patches: Record<string, CatalogPatch>;
+  couponPatches: Record<string, { active?: boolean }>;
+  contentPatches: Record<string, ContentPatch>;
+  analytics: AnalyticsEvent[];
   scratch: Record<string, ScratchRecord>;
   lgpdAccepted: boolean;
   newsletter: string[];
@@ -47,7 +56,7 @@ interface PulsoState {
   applyCoupon: (code: string) => string | null;
   clearCoupon: () => void;
   toggleWishlist: (slug: string) => void;
-  register: (input: { name: string; email: string; password: string; marketingOptIn: boolean }) => string | null;
+  register: (input: { name: string; email: string; password: string; marketingOptIn: boolean; referralCode?: string }) => string | null;
   login: (email: string, password: string) => string | null;
   logout: () => void;
   saveAddress: (address: SavedAddress) => void;
@@ -57,11 +66,17 @@ interface PulsoState {
   cancelOrder: (code: string) => void;
   setSubscriptionStatus: (id: string, status: SubscriptionRecord["status"]) => void;
   savePatch: (slug: string, patch: CatalogPatch) => void;
+  saveCouponPatch: (code: string, active: boolean) => void;
+  saveContentPatch: (id: string, patch: ContentPatch) => void;
+  recordEvent: (event: AnalyticsEvent) => void;
+  deleteAccount: () => void;
   acceptLgpd: () => void;
   saveScratch: (record: ScratchRecord) => void;
   addPoints: (delta: number, label: string) => void;
   joinNewsletter: (email: string) => void;
 }
+
+let persistWrites = false;
 
 function uid(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
@@ -76,9 +91,21 @@ function withUser(users: AccountUser[], id: string | null, update: (user: Accoun
   return users.map((user) => (user.id === id ? update(user) : user));
 }
 
-function ensureDemo(users: AccountUser[]): AccountUser[] {
-  if (users.some((user) => user.email === demoUser.email)) return users;
-  return [demoUser, ...users];
+function rewardReferral(users: AccountUser[], buyerId: string, at: string): AccountUser[] {
+  const next = applyReferralReward(users, buyerId);
+  if (next === users) return users;
+  return next.map((user) => {
+    const previous = users.find((item) => item.id === user.id);
+    if (!previous || previous.pointsBalance === user.pointsBalance) return user;
+    const delta = user.pointsBalance - previous.pointsBalance;
+    return {
+      ...user,
+      pointsHistory: [
+        { id: uid("ph"), at, label: user.id === buyerId ? "Bônus de indicação" : "Indicação convertida", delta },
+        ...user.pointsHistory,
+      ],
+    };
+  });
 }
 
 export const usePulso = create<PulsoState>()(
@@ -93,6 +120,9 @@ export const usePulso = create<PulsoState>()(
       wishlist: { guest: [] },
       guestOrders: [],
       patches: {},
+      couponPatches: {},
+      contentPatches: {},
+      analytics: [],
       scratch: {},
       lgpdAccepted: false,
       newsletter: [],
@@ -125,7 +155,7 @@ export const usePulso = create<PulsoState>()(
       removeLine: (lineId) => set((state) => ({ cart: state.cart.filter((item) => item.lineId !== lineId) })),
       clearCart: () => set({ cart: [], couponCode: null }),
       applyCoupon: (code) => {
-        const found = findCoupon(code, coupons);
+        const found = findCoupon(code, applyCouponPatches(coupons, get().couponPatches));
         if (!found.coupon) return found.error ?? "Cupom inválido.";
         set({ couponCode: found.coupon.code });
         get().toast(`Cupom ${found.coupon.code} aplicado.`);
@@ -139,12 +169,23 @@ export const usePulso = create<PulsoState>()(
           const next = current.includes(slug) ? current.filter((item) => item !== slug) : [...current, slug];
           return { wishlist: { ...state.wishlist, [key]: next } };
         }),
-      register: ({ name, email, password, marketingOptIn }) => {
+      register: ({ name, email, password, marketingOptIn, referralCode }) => {
         const normalized = email.trim().toLowerCase();
         if (get().users.some((user) => user.email === normalized)) return "Esse e-mail já tem conta.";
         if (password.length < 6) return "Senha com pelo menos 6 caracteres.";
+        const id = uid("user");
+        let referredBy: string | undefined;
+        if (referralCode?.trim()) {
+          const match = matchReferral(
+            referralCode,
+            get().users.map((user) => ({ code: user.referralCode ?? referralCodeFrom(user.name, user.id), userId: user.id })),
+            id,
+          );
+          if ("error" in match) return match.error;
+          referredBy = match.referrerId;
+        }
         const user: AccountUser = {
-          id: uid("user"),
+          id,
           name: name.trim(),
           email: normalized,
           password,
@@ -158,6 +199,9 @@ export const usePulso = create<PulsoState>()(
           orders: [],
           subscriptions: [],
           pointsHistory: [{ id: uid("ph"), at: new Date().toISOString(), label: "Boas-vindas", delta: WELCOME_POINTS }],
+          referralCode: referralCodeFrom(name, id),
+          referredBy,
+          referralRewarded: false,
         };
         set((state) => ({ users: [...state.users, user], currentUserId: user.id }));
         get().toast(`Conta criada. +${WELCOME_POINTS} pontos.`);
@@ -216,10 +260,7 @@ export const usePulso = create<PulsoState>()(
           const credit = order.pointsCredited ? order.quote.pointsEarned : 0;
           const spent = order.quote.pointsUsed;
           if (!user) return { guestOrders: [order, ...state.guestOrders], cart: [], couponCode: null };
-          return {
-            cart: [],
-            couponCode: null,
-            users: withUser(state.users, user.id, (current) => ({
+          let users = withUser(state.users, user.id, (current) => ({
               ...current,
               cpf: order.cpf || current.cpf,
               orders: [order, ...current.orders],
@@ -234,8 +275,9 @@ export const usePulso = create<PulsoState>()(
                 ...(credit ? [{ id: uid("ph"), at: order.createdAt, label: `Pedido ${order.code}`, delta: credit }] : []),
                 ...current.pointsHistory,
               ],
-            })),
-          };
+            }));
+          if (order.pointsCredited) users = rewardReferral(users, user.id, order.createdAt);
+          return { cart: [], couponCode: null, users };
         }),
       advanceOrder: (code) =>
         set((state) => {
@@ -274,15 +316,19 @@ export const usePulso = create<PulsoState>()(
           const after = findOrder({ ...state, users, guestOrders }, code);
           let nextUsers = users;
           if (before && after && !before.pointsCredited && after.pointsCredited && state.currentUserId) {
-            nextUsers = withUser(users, state.currentUserId, (user) => ({
-              ...user,
-              pointsBalance: user.pointsBalance + after.quote.pointsEarned,
-              pointsLifetime: user.pointsLifetime + after.quote.pointsEarned,
-              pointsHistory: [
-                { id: uid("ph"), at: new Date().toISOString(), label: `Pedido ${after.code}`, delta: after.quote.pointsEarned },
-                ...user.pointsHistory,
-              ],
-            }));
+            nextUsers = rewardReferral(
+              withUser(users, state.currentUserId, (user) => ({
+                ...user,
+                pointsBalance: user.pointsBalance + after.quote.pointsEarned,
+                pointsLifetime: user.pointsLifetime + after.quote.pointsEarned,
+                pointsHistory: [
+                  { id: uid("ph"), at: new Date().toISOString(), label: `Pedido ${after.code}`, delta: after.quote.pointsEarned },
+                  ...user.pointsHistory,
+                ],
+              })),
+              state.currentUserId,
+              new Date().toISOString(),
+            );
           }
           return { users: nextUsers, guestOrders };
         }),
@@ -314,7 +360,11 @@ export const usePulso = create<PulsoState>()(
             subscriptions: user.subscriptions.map((item) => (item.id === id ? { ...item, status } : item)),
           })),
         })),
-      savePatch: (slug, patch) => set((state) => ({ patches: { ...state.patches, [slug]: { ...state.patches[slug], ...patch } } })),
+      savePatch: (slug, patch) => set((state) => ({ patches: { ...state.patches, [slug]: { ...state.patches[slug], ...patch, stockByFlavor: { ...state.patches[slug]?.stockByFlavor, ...patch.stockByFlavor } } } })),
+      saveCouponPatch: (code, active) => set((state) => ({ couponPatches: { ...state.couponPatches, [code]: { active } } })),
+      saveContentPatch: (id, patch) => set((state) => ({ contentPatches: { ...state.contentPatches, [id]: { ...state.contentPatches[id], ...patch } } })),
+      recordEvent: (event) => set((state) => ({ analytics: enqueueEvent(state.analytics, event, state.lgpdAccepted) })),
+      deleteAccount: () => set((state) => ({ users: state.users.filter((user) => user.id !== state.currentUserId), currentUserId: null })),
       acceptLgpd: () => set({ lgpdAccepted: true }),
       saveScratch: (record) =>
         set((state) => ({ scratch: { ...state.scratch, [wishlistKey(state.currentUserId)]: record } })),
@@ -332,32 +382,19 @@ export const usePulso = create<PulsoState>()(
     }),
     {
       name: "pulso-store",
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => ({
+        getItem: (name) => localStorage.getItem(name),
+        setItem: (name, value) => {
+          if (!persistWrites) return;
+          localStorage.setItem(name, value);
+        },
+        removeItem: (name) => localStorage.removeItem(name),
+      })),
       skipHydration: true,
-      partialize: (state) => ({
-        users: state.users,
-        currentUserId: state.currentUserId,
-        cart: state.cart,
-        couponCode: state.couponCode,
-        wishlist: state.wishlist,
-        guestOrders: state.guestOrders,
-        patches: state.patches,
-        scratch: state.scratch,
-        lgpdAccepted: state.lgpdAccepted,
-        newsletter: state.newsletter,
-      }),
-      merge: (persisted, current) => {
-        const stored = (persisted ?? {}) as Partial<PulsoState>;
-        return {
-          ...current,
-          ...stored,
-          users: ensureDemo(stored.users ?? current.users),
-          toasts: [],
-          cartOpen: false,
-          hydrated: true,
-        };
-      },
+      partialize: (state) => persistedStoreSlice(state),
+      merge: (persisted, current) => mergePersistedStore(persisted, current),
       onRehydrateStorage: () => (state) => {
+        persistWrites = true;
         state?.setHydrated(true);
       },
     },
@@ -372,6 +409,14 @@ function findOrder(state: Pick<PulsoState, "users" | "guestOrders">, code: strin
   return state.guestOrders.find((order) => order.code === code);
 }
 
+const EMPTY_CART: CartLine[] = [];
+const EMPTY_WISHLIST: string[] = [];
+
+/** O array vazio é o mesmo objeto. Um `[]` novo a cada snapshot dispara o aviso do React. */
+export function selectHydratedCart(state: Pick<PulsoState, "hydrated" | "cart">): CartLine[] {
+  return state.hydrated ? state.cart : EMPTY_CART;
+}
+
 export function useCurrentUser(): AccountUser | null {
   return usePulso((state) => state.users.find((user) => user.id === state.currentUserId) ?? null);
 }
@@ -379,7 +424,7 @@ export function useCurrentUser(): AccountUser | null {
 export function useWishlist(): string[] {
   const userId = usePulso((state) => state.currentUserId);
   const wishlist = usePulso((state) => state.wishlist);
-  return wishlist[wishlistKey(userId)] ?? [];
+  return wishlist[wishlistKey(userId)] ?? EMPTY_WISHLIST;
 }
 
 export function buildSimulatedPayment(input: {
@@ -390,19 +435,22 @@ export function buildSimulatedPayment(input: {
   installmentAmountCents?: number;
   cardLast4?: string;
 }): OrderRecord["payment"] {
-  if (input.method === "pix") {
-    return { method: "pix", status: "pendente", pixPayload: fakePixPayload(input.code, input.totalCents) };
-  }
-  if (input.method === "boleto") {
-    return { method: "boleto", status: "pendente", boletoLine: fakeBoletoLine(input.code) };
+  const charge = sandboxCharge({ method: input.method, amountCents: input.totalCents, orderCode: input.code });
+  if ("error" in charge) {
+    return { method: input.method, status: "recusado", sandboxMessage: charge.error };
   }
   return {
-    method: "card",
-    status: "aprovado",
-    cardBrand: "visa",
-    cardLast4: input.cardLast4 ?? "4242",
+    method: input.method,
+    status: charge.status === "approved" ? "aprovado" : "pendente",
+    pixPayload: charge.pixCopyPaste,
+    boletoLine: charge.boletoLine,
+    cardBrand: input.method === "card" ? "visa" : undefined,
+    cardLast4: input.method === "card" ? (input.cardLast4 ?? "4242") : undefined,
     installments: input.installments ?? 1,
     installmentAmountCents: input.installmentAmountCents,
+    gateway: charge.gateway,
+    externalId: charge.externalId,
+    sandboxMessage: charge.message,
   };
 }
 

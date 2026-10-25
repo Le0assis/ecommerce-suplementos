@@ -12,4 +12,4 @@ O checkout calcula de verdade e cobra de mentira. Cartão de teste `424242424242
 
 ## Consequências
 
-Não remover o aviso da confirmação até existir gateway. Segredo de gateway não usa prefixo `NEXT_PUBLIC_`. A senha de admin atual também é pública e não serve de modelo para o token do pagamento.
+Não remover o aviso da confirmação até existir gateway. Segredo de gateway não usa prefixo `NEXT_PUBLIC_`. O cookie do admin é httpOnly e não serve de modelo para o token do pagamento.

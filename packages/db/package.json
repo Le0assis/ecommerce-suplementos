@@ -6,7 +6,16 @@
   "exports": {
     ".": "./src/read.ts",
     "./env": "./src/env.ts",
-    "./pool": "./src/pool.ts"
+    "./pool": "./src/pool.ts",
+    "./sql": "./src/sql.ts",
+    "./audit": "./src/audit.ts",
+    "./catalog": "./src/catalog.ts",
+    "./resources": "./src/resources.ts",
+    "./content": "./src/content.ts",
+    "./drops": "./src/drops.ts",
+    "./password": "./src/password.ts",
+    "./audit-orphans": "./src/audit-orphans.ts",
+    "./cpf": "./src/cpf.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
@@ -14,14 +23,19 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "migrate": "tsx src/migrate.ts",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "create-owner": "tsx src/create-owner.ts",
+    "audit-orphans": "tsx src/audit-orphans.ts",
+    "backfill-cpf": "tsx src/backfill-cpf.ts"
   },
   "dependencies": {
     "@pulso/data": "workspace:*",
+    "@pulso/domain": "workspace:*",
     "dotenv": "^17.2.3",
     "pg": "^8.16.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
     "@types/node": "^22.19.0",
     "@types/pg": "^8.15.5",
     "tsx": "^4.20.6",

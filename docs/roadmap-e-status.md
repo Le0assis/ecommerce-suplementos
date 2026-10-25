@@ -1,6 +1,6 @@
 # Roadmap e status
 
-Atualizado para o corte que está neste repositório.
+Atualizado na etapa 1 (fundação). As referências de mercado e a tabela das 6 etapas estão em [REQUISITOS-TECNICOS.md](REQUISITOS-TECNICOS.md).
 
 ## Pronto
 
@@ -16,13 +16,13 @@ Atualizado para o corte que está neste repositório.
 | Peça | Estado |
 | --- | --- |
 | `DATA_SOURCE=api` | Função `loadStorefront` pronta. Páginas ainda importam `@pulso/data` |
-| Pedido, cliente, pontos, wishlist, assinatura | Funcionam no `localStorage`. Tabelas SQL existem vazias |
-| Admin | Patch local de nome, preço e ocultar. Não é CMS |
+| Pedido e cliente | A API grava `customers` e `orders` em `/v1/account`. A vitrine demo ainda não chama. Wishlist e assinatura seguem no navegador. CPF e senha não vão para o `localStorage` |
+| Admin | Login com cookie httpOnly pela API. O CRUD mostra erro se a API estiver fora e não grava o mock. `/loja`, `/atletas` e `/blog` leem a API; sem ela, o catálogo |
 | CEP e frete | Tabela demo. Contrato de função estável para trocar pela ViaCEP |
 | Pagamento | UI completa, cobrança falsa, marcada na confirmação |
 | Raspadinha | Uma por dia no navegador. Prêmio não persiste no servidor |
 | Framer Motion | Dependência instalada, movimento feito em CSS |
-| Playwright | Script `pnpm test:e2e` explica que não está instalado. Fora do CI |
+| Playwright | `pnpm test:e2e` abre a home e o Caos. Fora do CI, porque o browser não vem no workflow |
 
 ## Próximo corte sugerido
 
@@ -33,4 +33,4 @@ Atualizado para o corte que está neste repositório.
 
 ## Não vender com este build
 
-Registro ANVISA fictício, sem nota fiscal, sem gateway, senha de admin no bundle, conta sem hash de senha. O rodapé já diz que é protótipo.
+Registro ANVISA fictício, sem nota fiscal, sem gateway, conta da loja sem hash de senha. O admin entra pela API, com hash scrypt em `admin_users` e sessão revogável. O rodapé já diz que é protótipo.

@@ -16,10 +16,13 @@
     "@pulso/data": "workspace:*",
     "@pulso/db": "workspace:*",
     "@pulso/domain": "workspace:*",
+    "@vercel/blob": "^2.8.2",
     "hono": "^4.10.1",
-    "ioredis": "^5.8.2"
+    "ioredis": "^5.8.2",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
     "@types/node": "^22.19.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",

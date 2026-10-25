@@ -159,8 +159,11 @@ export interface Coupon {
   label: string;
   kind: "percent" | "shipping";
   percent?: number;
+  minCents?: number;
   influencerSlug?: string;
   active: boolean;
+  /** Cupom que a vitrine pode listar. Os outros só entram pelo código, em POST /v1/coupons/validate. */
+  public?: boolean;
 }
 
 export interface Level {
@@ -175,4 +178,6 @@ export interface CatalogPatch {
   hidden?: boolean;
   priceCents?: number;
   name?: string;
+  stockByFlavor?: Record<string, number>;
+  dropEndsAt?: string;
 }

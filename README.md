@@ -4,14 +4,35 @@ Loja de suplementos para quem treina. Marca fictícia do Gustavo, feita para o p
 
 Este arquivo é o caminho do zero até a loja aberta no navegador. Se você nunca programou, leia na ordem. Cada passo diz o que instalar, o comando e o que deve aparecer.
 
-A documentação para quem vai evoluir o código está em [docs/](docs/README.md). O mapa para agentes de IA está em [AGENTS.md](AGENTS.md).
+A documentação para quem vai evoluir o código está em [docs/](docs/README.md). O mapa para agentes de IA está em [AGENTS.md](AGENTS.md). As referências de mercado e o plano em 6 etapas estão em [docs/REQUISITOS-TECNICOS.md](docs/REQUISITOS-TECNICOS.md).
+
+## Plano de entrega
+
+O Gustavo aprovou seis etapas, cada uma numa branch e num pull request, empilhadas. Esta linha fecha a etapa 6, em cima das etapas 1 a 5.
+
+Operação: `/admin` entra com a conta da API (`dono`, `editor` ou `atendimento`). Não há senha única no `.env`. A senha não vai para o JavaScript. Na conta da loja, “Baixar meus dados” gera um JSON sem a senha. “Apagar conta neste aparelho” tira o usuário deste navegador. O guia de publicação está em [docs/deploy.md](docs/deploy.md). O contrato do login está em [docs/api.md](docs/api.md).
+
+Conteúdo: `/conteudo` lista o que está publicado. Na home, a faixa “No ar” troca de quadro e mostra a transcrição do spot. A foto de avaliação abre num diálogo e é um bloco de cor, com texto alternativo.
+
+Indicação: entre com a Ana e abra `/conta/indicar`. O código dela é `ANALUZRANA`. No cadastro, quem cola esse código ganha 80 pontos, e a Ana ganha 150, quando o primeiro pedido é pago.
+
+| Etapa | O que você encontra | Nesta linha |
+| --- | --- | --- |
+| 1. Fundação | Visual escuro com lima, título em caixa alta, home com atleta, catálogo, busca, página de produto com sabor e rótulo | Fechada |
+| 2. Descoberta | Quiz, calculadora, kit, drops com contagem, atletas e cupons | Fechada |
+| 3. Compra | Carrinho, frete por CEP, Pix, boleto, parcela sandbox, conta, rastreio, favoritos | Fechada |
+| 4. Recorrência e jogo | Assinatura, pontos, raspadinha, indicação | Fechada |
+| 5. Conteúdo | Avaliações, blog, feed, vídeo, CMS | Fechada |
+| 6. Operação | Admin, SEO, analytics, acessibilidade, LGPD, testes de ponta a ponta, deploy | Fechada |
+
+O protótipo anterior já deixava a maior parte das telas navegáveis. Cada etapa acrescenta regra testada e documentação daquela faixa.
 
 ## O que você vai ver no final
 
 - O site em [http://127.0.0.1:43123](http://127.0.0.1:43123)
 - A API em [http://127.0.0.1:8787/health](http://127.0.0.1:8787/health), se você subir o backend
 - Uma conta de demonstração: `ana@pulso.dev` / `pulso123`
-- A tela `/admin` com a senha `pulso-admin`
+- A tela `/admin` com a conta criada por `pnpm --filter @pulso/db create-owner` (a API precisa estar no ar)
 
 O site funciona **sem Docker e sem banco**. O catálogo mora no código. Postgres e Redis são opcionais e servem para a API ler os mesmos produtos de um banco de verdade.
 
@@ -226,13 +247,17 @@ Abra o `.env` num editor de texto. Cada linha `NOME=valor` é uma variável. Lin
 | `NEXT_PUBLIC_SITE_URL` | `http://127.0.0.1:43123` | URL pública do site, usada em SEO (sitemap, metadados). Se mudar `WEB_PORT`, mude aqui também. Variáveis `NEXT_PUBLIC_` entram no JavaScript do navegador. |
 | `NEXT_PUBLIC_PIX_DISCOUNT` | `10` | Porcentagem inteira do desconto de Pix **mostrada** na interface. A conta do carrinho usa a regra do pacote `@pulso/domain` (também 10%). |
 | `NEXT_PUBLIC_FREE_SHIPPING_CENTS` | `29900` | Piso do frete PAC grátis em **centavos**. `29900` é R$ 299,00. Níveis Bruto e Lenda podem baixar esse piso na regra de domínio. |
-| `NEXT_PUBLIC_ADMIN_PASSWORD` | `pulso-admin` | Senha da página `/admin` **deste protótipo**. Ela vai para o bundle do browser. Não protege servidor nenhum. Não reuse em produção. |
+| `ADMIN_OWNER_EMAIL` | `dono@pulso.local` | E-mail da conta dono. O script `pnpm --filter @pulso/db create-owner` lê esta variável. O `/admin` não tem senha no `.env`. |
 | `API_PORT` | `8787` | Porta da API Hono. |
-| `API_DATA_SOURCE` | `mock` | `mock`: a API responde com o catálogo em memória. `postgres`: a API lê a coluna `products.payload`. Aí você precisa do Docker, da migração e do seed. |
+| `API_DATA_SOURCE` | `mock` | `mock`: a API responde com o catálogo em memória. `postgres`: a API monta o produto pelas tabelas normalizadas (`product_flavors`, `product_variants`, rótulo, fotos). A coluna `products.payload` deixa de ser a leitura. Aí você precisa do Docker, da migração e do seed. |
 | `DATABASE_URL` | `postgres://pulso:pulso@127.0.0.1:5432/pulso` | Conexão do Postgres local. Usuário `pulso`, senha `pulso`, banco `pulso`, porta `5432`. Só vale para esta máquina. |
-| `REDIS_URL` | `redis://127.0.0.1:6379` | Cache opcional da API (chave `catalog:products`, 60 segundos). Se apagar a linha, a API não tenta Redis. |
+| `REDIS_URL` | `redis://127.0.0.1:6379` | Cache da API (chave `catalog:products`, 60 segundos) e baldes do login (`pulso:login:*`). O site em produção só lê essas chaves. Sem a URL, ou com o Redis fora, o login da API e do site responde 503 em produção. Fora de produção, o limite cai num `Map` do processo. |
+| `ADMIN_SESSION_SECRET` | (troque o exemplo) | Segredo que assina a sessão do admin (12 horas). O site usa o cookie `pulso_admin_session`. A API usa o cookie `pulso_admin`. O painel manda esse token como Bearer e confere `GET /v1/admin/me`. Só o servidor lê. Em produção o valor `pulso-dev-session-change-me` não assina. |
+| `PAYMENT_GATEWAY` | `auto` | Sandbox. `auto` manda Pix e boleto ao Mercado Pago e cartão à Pagar.me. `mercadopago` ou `pagarme` força o gateway. Não coloque token real. A confirmação mostra um id `mp_sandbox_` ou `pm_sandbox_`. |
 
 O arquivo `.env` está no `.gitignore`. Não faça commit dele.
+
+Na Vercel, `x-vercel-forwarded-for` e `x-real-ip` só entram no IP do cliente quando `VERCEL=1` e existe `VERCEL_ENV` ou `VERCEL_URL`. A plataforma preenche os três e sobrescreve esses cabeçalhos. `VERCEL=1` sozinho não basta: o processo do Next apaga os dois e usa o IP do socket. Fora da Vercel, `TRUSTED_PROXY=1` deixa o site ler só `x-real-ip`, e só se o proxy sobrescrever esse cabeçalho. `X-Forwarded-For` não entra. Sem a Vercel, sem `TRUSTED_PROXY=1` e sem o carimbo do socket, o Next em produção não sobe. Sem IP na requisição, o login responde 503 e não agrupa os clientes em `local`. O contrato está em [docs/api.md](docs/api.md).
 
 ---
 
@@ -288,14 +313,36 @@ O mesmo vale para o Redis (`6379:6379` vira `6380:6379` e `REDIS_URL=redis://127
 
 Só faça isto se o Postgres estiver no ar. No modo mock, pule a seção.
 
-A migração cria as tabelas com `packages/db/sql/001_init.sql`. O arquivo é idempotente (`create table if not exists`): rodar de novo não apaga dados.
+A migração aplica, em ordem, todos os arquivos `packages/db/sql/*.sql`. Eles são idempotentes (`create table if not exists`): rodar de novo não apaga dados.
 
-O seed grava produtos, cupons, atletas, posts e avaliações a partir do catálogo TypeScript.
+O seed grava um exemplo fictício: produtos, cupons, atletas, posts e avaliações a partir do catálogo TypeScript, nas colunas normalizadas. A API, com `API_DATA_SOURCE=postgres`, lê essas colunas. Foto de mock fica com `url` nula e `fallback_hex` com a cor.
+
+Em banco vazio, ou que ainda só tem esse exemplo, `pnpm db:seed` pode rodar de novo. Atualiza as chaves do mock, não duplica, e recria os filhos dessas chaves (nutrição, imagem, meta, selo, item de kit, produto do atleta, opção do quiz e bloco do post). A conta dono, a sessão e o login não travam essa repetição. O marcador fica em `example_seed`.
+
+O comando recusa (código de saída diferente de zero, com a mensagem na saída de erro) quando `NODE_ENV=production`, ou quando o banco já tem algo que não veio do exemplo: produto fora das chaves do mock, `updated_at` posterior ao marcador, edição registrada na auditoria, pedido, cliente ou lista de espera. Nesse caso nada é regravado, e a parte que apaga e recria os filhos do mock não roda.
+
+Para regravar mesmo assim:
+
+```bash
+PULSO_SEED_ALLOW_OVERWRITE=1 pnpm db:seed
+```
+
+O mesmo vale para `pnpm --filter @pulso/db seed -- --force-example`. A flag não apaga pedido, cliente, lista de espera nem a senha do admin. Ela libera de novo a regravação das chaves do mock, inclusive os filhos. Em produção a primeira carga do exemplo também pede essa flag.
+
+A conta dono não entra no seed. Com o Postgres no ar, grave a senha num arquivo fora do repositório (modo 600) e rode o script que já existe:
+
+```bash
+pnpm --filter @pulso/db create-owner
+```
+
+Ele lê `ADMIN_OWNER_EMAIL`, `ADMIN_OWNER_NAME` e `ADMIN_OWNER_PASSWORD_FILE`. Não imprime a senha e não aceita senha na linha de comando.
 
 ```bash
 pnpm db:migrate
 pnpm db:seed
 ```
+
+O CPF em claro continua em `customers.cpf`. A migração `010` só acrescenta `cpf_enc`, `cpf_key_id` e `cpf_hash`. Com `CPF_KEY_ID`, `CPF_ENC_KEY` e `CPF_HMAC_KEY` no `.env`, `pnpm db:backfill-cpf` grava o AES-256-GCM e o HMAC e não reescreve o texto. Sem as três chaves, o comando sai com código 2 e não grava nada. `pnpm db:audit` só lista órfãos de variação e de slug.
 
 Se o Postgres ainda estiver acordando:
 
@@ -372,7 +419,7 @@ O Turborepo sobe site e API no mesmo terminal. `Ctrl+C` para os dois.
 4. Checkout. CEP de teste: `01310-100` (Avenida Paulista). CPF de teste: `529.982.247-25`. Cartão de teste: `4242 4242 4242 4242`, validade futura, qualquer CVV.
 5. Marque 18+, termos e LGPD. A confirmação mostra Pix ou boleto com o aviso de simulação.
 6. Entrar com `ana@pulso.dev` / `pulso123`. Ela já tem pedido, pontos e nível.
-7. `/raspadinha` uma vez por dia (fuso de São Paulo). `/quiz` e `/calculadora`. `/admin` com `pulso-admin`.
+7. `/raspadinha` uma vez por dia (fuso de São Paulo). `/quiz` e `/calculadora`. `/admin` com o e-mail e a senha da conta criada por `create-owner`. A API precisa estar no ar.
 
 Cupons que funcionam: `LUNA15`, `CAIO10`, `NANDA10`, `THEO10`, `PULSO10`, `RASPA5`, `RASPA10`, `RASPAFRETE`. `VENCIDO` existe e está inativo.
 
@@ -396,7 +443,7 @@ pnpm build
 | `pnpm test` | Vitest: 14 testes de domínio, 2 de catálogo, 1 de schema SQL, 3 da API |
 | `pnpm build` | Build de produção do Next e checagem de tipos dos pacotes |
 | `pnpm --filter @pulso/domain test` | Só as regras de preço, Pix, frete, CPF e cupom |
-| `pnpm test:e2e` | **Ainda não roda.** O Playwright não está instalado. O comando explica isso e sai com erro |
+| `pnpm test:e2e` | Playwright abre a home e a página do Caos. Antes, uma vez: `pnpm --filter @pulso/web exec playwright install chromium` |
 
 O CI (`.github/workflows/ci.yml`) usa pnpm 10.33.4, Node 22, `pnpm install --frozen-lockfile`, lint, typecheck, test e build com `DATA_SOURCE=mock`.
 
@@ -433,6 +480,9 @@ O Docker não está aberto, ou o nome do serviço não é `postgres`. Abra o Doc
 **`permission denied` no Docker (Linux).**  
 Seu usuário não está no grupo `docker`. Rode `sudo usermod -aG docker "$USER"`, saia e entre de novo. Não use `sudo pnpm` no dia a dia.
 
+**Botão não responde, quiz parado em "1 / 5" ou login vai para `/entrar?`.**  
+O JavaScript de desenvolvimento não carregou. O Next 16 bloqueia chunk quando o site abre em `127.0.0.1` e o processo escuta em `0.0.0.0`. A config `allowedDevOrigins` em `apps/web/next.config.ts` libera esse host. Pare o `pnpm dev` e suba de novo. No console, um 403 em `/_next/static` é esse caso.
+
 **Página em branco ou estilo sem Tailwind depois de mudar CSS.**  
 Pare o servidor, apague o cache e suba de novo:
 
@@ -447,7 +497,7 @@ No Windows PowerShell: `Remove-Item -Recurse -Force apps/web/.next`.
 Esperado neste protótipo. As páginas leem `@pulso/data`. A função pronta para a troca é `loadStorefront` em `apps/web/src/server/catalog.ts`. A API, sim, obedece `API_DATA_SOURCE`.
 
 **`/admin` recusa a senha.**  
-A senha é a do `.env` no momento em que o site subiu (`NEXT_PUBLIC_ADMIN_PASSWORD`). Reinicie `pnpm dev` depois de editar. O padrão é `pulso-admin`.
+A conta está em `admin_users`, não numa variável do site. Crie o dono com `pnpm --filter @pulso/db create-owner` e entre com esse e-mail. A API precisa responder em `API_URL`. Se ela estiver fora, o login devolve 503. O cookie da sessão precisa de `ADMIN_SESSION_SECRET` diferente do exemplo antes de publicar.
 
 **Carrinho ou login “fantasma”.**  
 O estado fica no `localStorage`, chave `pulso-store`. Limpe o armazenamento do site no navegador (seção 10).
@@ -480,16 +530,16 @@ Isso é `docker compose down`. Os volumes continuam. `pnpm db:up` devolve o banc
 pnpm db:reset
 ```
 
-### Apagar só o carrinho, a conta e o admin do navegador
+### Apagar a sacola do navegador
 
-O protótipo grava sessão em `localStorage`, não no Postgres.
+A sacola, os favoritos e a raspadinha ficam em `localStorage`, na chave `pulso-store`. Conta, senha, CPF e pedido não entram mais nessa chave. Um armazenamento antigo com esses campos é ignorado.
 
 1. Abra a loja.
 2. DevTools (F12) → Application / Armazenamento → Local Storage → o endereço da loja.
 3. Apague a chave `pulso-store`.
 4. Recarregue a página.
 
-A conta `ana@pulso.dev` volta, porque ela é semeada de novo no código quando o armazenamento é lido.
+A conta `ana@pulso.dev` volta na memória, porque o código a semeia de novo. A senha dela não é a da API. O cadastro de verdade é `POST /v1/account/register`, com cookie `pulso_customer`.
 
 ### Reinstalar dependências do zero
 

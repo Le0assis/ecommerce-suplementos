@@ -15,4 +15,4 @@ O sabor não é um produto. Ele é uma entrada em `flavorSeeds` e vira uma varia
 6. Edição limitada: `limited: true` e, se for drop, preencha `drop.endsAt` e `unitsLeft`.
 7. A query `?sabor=melancia` na PDP seleciona esse id. O nome do parâmetro na buy box é o id, não o nome visível.
 
-Não precisa de migração se a API estiver em mock. No modo postgres, `pnpm db:seed`.
+Não precisa de migração se a API estiver em mock. No modo postgres, `pnpm db:seed` se o banco ainda for só o exemplo. Produção e banco editado pedem `PULSO_SEED_ALLOW_OVERWRITE=1`.
